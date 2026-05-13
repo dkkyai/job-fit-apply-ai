@@ -1,0 +1,972 @@
+†2026-05-09 21:33:34 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9510988836059924410/jobs.db
+s2026-05-09 21:33:34 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+K2026-05-09 21:33:34 [INFO] ktor.test: Application started in 0.02 seconds.
+H2026-05-09 21:33:34 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:34 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:34 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9510988836059924410/jobs.db
+ù2026-05-09 21:33:34 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9510988836059924410/jobs
+q2026-05-09 21:33:35 [INFO] com.jdbridge.Routes: Job accepted: fb314ebf-cc80-449e-acbd-4f52434ecb3e (null @ null)
+∆2026-05-09 21:33:35 [INFO] com.jdbridge.Pipeline: [fb314ebf-cc80-449e-acbd-4f52434ecb3e] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9510988836059924410/jobs/fb314ebf-cc80-449e-acbd-4f52434ecb3e/e2e_output_1778387615211763000","fit_score":82,"pipeline_action":"tailor","error":""}
+Ì2026-05-09 21:33:35 [INFO] com.jdbridge.Pipeline: [fb314ebf-cc80-449e-acbd-4f52434ecb3e] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9510988836059924410/jobs/fb314ebf-cc80-449e-acbd-4f52434ecb3e
+†2026-05-09 21:33:35 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9255093160288235791/jobs.db
+s2026-05-09 21:33:35 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:35 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:35 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:35 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:35 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9255093160288235791/jobs.db
+ù2026-05-09 21:33:35 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9255093160288235791/jobs
+|2026-05-09 21:33:35 [INFO] com.jdbridge.Routes: Job accepted: ba378388-2df6-4502-8a7d-818ee88fec36 (Staff SDET @ Acme Corp)
+∆2026-05-09 21:33:35 [INFO] com.jdbridge.Pipeline: [ba378388-2df6-4502-8a7d-818ee88fec36] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9255093160288235791/jobs/ba378388-2df6-4502-8a7d-818ee88fec36/e2e_output_1778387615696434000","fit_score":82,"pipeline_action":"tailor","error":""}
+Ì2026-05-09 21:33:35 [INFO] com.jdbridge.Pipeline: [ba378388-2df6-4502-8a7d-818ee88fec36] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9255093160288235791/jobs/ba378388-2df6-4502-8a7d-818ee88fec36
+†2026-05-09 21:33:36 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3066828592220253172/jobs.db
+s2026-05-09 21:33:36 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+J2026-05-09 21:33:36 [INFO] ktor.test: Application started in 0.0 seconds.
+H2026-05-09 21:33:36 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:36 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:36 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3066828592220253172/jobs.db
+ù2026-05-09 21:33:36 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3066828592220253172/jobs
+q2026-05-09 21:33:36 [INFO] com.jdbridge.Routes: Job accepted: 63d491e8-e648-41e0-827b-b03fffd9462a (null @ null)
+¨2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [63d491e8-e648-41e0-827b-b03fffd9462a] summary: {"output_path":"/tmp","fit_score":40,"pipeline_action":"skip","error":""}
+†2026-05-09 21:33:36 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs.db
+s2026-05-09 21:33:36 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:36 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:36 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:36 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:36 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs.db
+ù2026-05-09 21:33:36 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs
+u2026-05-09 21:33:36 [INFO] com.jdbridge.Routes: Job accepted: 5e3cc9d3-4814-4964-b827-06f1b1e4bc86 (null @ Company1)
+u2026-05-09 21:33:36 [INFO] com.jdbridge.Routes: Job accepted: 6de4ae44-ce23-40f8-8ada-f659f02323da (null @ Company2)
+u2026-05-09 21:33:36 [INFO] com.jdbridge.Routes: Job accepted: 8e199229-16c3-4b7e-9a45-ba38ddacabfb (null @ Company3)
+∆2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [5e3cc9d3-4814-4964-b827-06f1b1e4bc86] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/5e3cc9d3-4814-4964-b827-06f1b1e4bc86/e2e_output_1778387616785652000","fit_score":82,"pipeline_action":"tailor","error":""}
+∆2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [6de4ae44-ce23-40f8-8ada-f659f02323da] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/6de4ae44-ce23-40f8-8ada-f659f02323da/e2e_output_1778387616785668000","fit_score":82,"pipeline_action":"tailor","error":""}
+∆2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [8e199229-16c3-4b7e-9a45-ba38ddacabfb] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/8e199229-16c3-4b7e-9a45-ba38ddacabfb/e2e_output_1778387616785642000","fit_score":82,"pipeline_action":"tailor","error":""}
+Ì2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [5e3cc9d3-4814-4964-b827-06f1b1e4bc86] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/5e3cc9d3-4814-4964-b827-06f1b1e4bc86
+Ì2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [8e199229-16c3-4b7e-9a45-ba38ddacabfb] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/8e199229-16c3-4b7e-9a45-ba38ddacabfb
+Ì2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [6de4ae44-ce23-40f8-8ada-f659f02323da] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/6de4ae44-ce23-40f8-8ada-f659f02323da
+†2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1748880781647936597/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1748880781647936597/jobs.db
+ù2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1748880781647936597/jobs
+q2026-05-09 21:33:38 [INFO] com.jdbridge.Routes: Job accepted: b597fcba-f774-4472-a967-8d52046d9062 (null @ null)
+è2026-05-09 21:33:38 [ERROR] com.jdbridge.Pipeline: [b597fcba-f774-4472-a967-8d52046d9062] jd-pipeline-kotlin exited 1: fatal error in pipeline
+j2026-05-09 21:33:38 [ERROR] com.jdbridge.Pipeline: [b597fcba-f774-4472-a967-8d52046d9062] pipeline failed
+Xjava.lang.RuntimeException: jd-pipeline-kotlin failed (exit 1): fatal error in pipeline
+?	at com.jdbridge.GradlePipelineRunner.execute(Pipeline.kt:107)
+E	at com.jdbridge.GradlePipelineRunner.access$execute(Pipeline.kt:45)
+K	at com.jdbridge.GradlePipelineRunner$execute$1.invokeSuspend(Pipeline.kt)
+[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+A	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+Z	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+c	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:811)
+a	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:715)
+[	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:702)
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14472532349300176475/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14472532349300176475/jobs.db
+û2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14472532349300176475/jobs
+	†2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-6497539446404582004/jobs.db
+	s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+	L2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.001 seconds.
+	H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+	J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+	†2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-6497539446404582004/jobs.db
+	ù2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-6497539446404582004/jobs
+
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12887287015622428631/jobs.db
+
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+
+L2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.002 seconds.
+
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12887287015622428631/jobs.db
+
+û2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12887287015622428631/jobs
+†2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-5787498678080670772/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-5787498678080670772/jobs.db
+ù2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-5787498678080670772/jobs
+†2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1953991750357988910/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1953991750357988910/jobs.db
+ù2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1953991750357988910/jobs
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-11444993638278175928/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-11444993638278175928/jobs.db
+û2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-11444993638278175928/jobs
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12791602907465302647/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+J2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.0 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12791602907465302647/jobs.db
+û2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12791602907465302647/jobs
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13507846308746091192/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+J2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.0 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13507846308746091192/jobs.db
+û2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13507846308746091192/jobs
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16816825226486710696/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+J2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.0 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16816825226486710696/jobs.db
+û2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16816825226486710696/jobs
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16428977656195418238/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16428977656195418238/jobs.db
+û2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16428977656195418238/jobs
+q2026-05-09 21:33:38 [INFO] com.jdbridge.Routes: Job accepted: 528220c5-ab44-440e-adf2-3c7fe6e0d687 (null @ null)
+†2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1718220428885882110/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1718220428885882110/jobs.db
+ù2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1718220428885882110/jobs
+q2026-05-09 21:33:38 [INFO] com.jdbridge.Routes: Job accepted: 9ffb61ef-dd98-4ab3-9897-4488d5395d7b (null @ null)
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13086716811632950141/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+J2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.0 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13086716811632950141/jobs.db
+û2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13086716811632950141/jobs
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13282943084257912471/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+J2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.0 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13282943084257912471/jobs.db
+û2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13282943084257912471/jobs
+q2026-05-09 21:33:38 [INFO] com.jdbridge.Routes: Job accepted: 6b7afddd-494d-46e8-825e-d73265eea7ee (null @ null)
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12644577052481063679/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+J2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.0 seconds.
+H2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12644577052481063679/jobs.db
+û2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12644577052481063679/jobs
+q2026-05-09 21:33:38 [INFO] com.jdbridge.Routes: Job accepted: 64432556-b808-4bc3-90ff-011617c34c70 (null @ null)
+°2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12156043273621660807/jobs.db
+s2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12156043273621660807/jobs.db
+û2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12156043273621660807/jobs
+†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1765613644618978916/jobs.db
+s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+J2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.0 seconds.
+H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1765613644618978916/jobs.db
+ù2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1765613644618978916/jobs
+q2026-05-09 21:33:39 [INFO] com.jdbridge.Routes: Job accepted: 57c736e9-bc89-498a-9b90-1adcc815e62f (null @ null)
+†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9985158495916418377/jobs.db
+s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+J2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.0 seconds.
+H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9985158495916418377/jobs.db
+ù2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9985158495916418377/jobs
+q2026-05-09 21:33:39 [INFO] com.jdbridge.Routes: Job accepted: dc5c8269-66bb-4ee1-850c-b7bf20a75868 (null @ null)
+†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9444479685041642596/jobs.db
+s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9444479685041642596/jobs.db
+ù2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9444479685041642596/jobs
+|2026-05-09 21:33:39 [INFO] com.jdbridge.Routes: Job accepted: 5e58b4b4-a69b-4eef-82c5-170889e158a5 (Staff SDET @ Acme Corp)
+†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-5188612506913871528/jobs.db
+s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-5188612506913871528/jobs.db
+ù2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-5188612506913871528/jobs
+q2026-05-09 21:33:39 [INFO] com.jdbridge.Routes: Job accepted: 02170228-b0d0-45cb-b74e-d2a4b5607a45 (null @ null)
+°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12431058562468126516/jobs.db
+s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+L2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.001 seconds.
+H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12431058562468126516/jobs.db
+û2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12431058562468126516/jobs
+†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-4805838585742530673/jobs.db
+s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+J2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.0 seconds.
+H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-4805838585742530673/jobs.db
+ù2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-4805838585742530673/jobs
+q2026-05-09 21:33:39 [INFO] com.jdbridge.Routes: Job accepted: 4cafea3e-c944-4d30-9513-e7c1211ac32e (null @ null)
+ †2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3981510003129125991/jobs.db
+ s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+ L2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.001 seconds.
+ H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+ J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+ †2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3981510003129125991/jobs.db
+ ù2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3981510003129125991/jobs
+!ü2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-634619234551585083/jobs.db
+!s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+!J2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.0 seconds.
+!H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+!J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+!ü2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-634619234551585083/jobs.db
+!ú2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-634619234551585083/jobs
+"°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-10003871244046915855/jobs.db
+"s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+"J2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.0 seconds.
+"H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+"J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+"°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-10003871244046915855/jobs.db
+"û2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-10003871244046915855/jobs
+#†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-6345115867084451195/jobs.db
+#s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+#L2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.001 seconds.
+#H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+#J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+#†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-6345115867084451195/jobs.db
+#ù2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-6345115867084451195/jobs
+#q2026-05-09 21:33:39 [INFO] com.jdbridge.Routes: Job accepted: fb2d191e-b010-45e5-9155-b6d9b3844b0b (null @ null)
+#q2026-05-09 21:33:39 [INFO] com.jdbridge.Routes: Job accepted: 7e42c65c-c126-4b30-a929-44bf14583888 (null @ null)
+#q2026-05-09 21:33:39 [INFO] com.jdbridge.Routes: Job accepted: 4216bca2-49f0-4523-90e0-ed591529fdc4 (null @ null)
+$†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-2957778703189347480/jobs.db
+$s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+$J2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.0 seconds.
+$H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+$J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+$†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-2957778703189347480/jobs.db
+$ù2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-2957778703189347480/jobs
+$q2026-05-09 21:33:39 [INFO] com.jdbridge.Routes: Job accepted: 90372dac-8f07-4c83-9892-265543311961 (null @ null)
+%†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-4118063552056164693/jobs.db
+%s2026-05-09 21:33:39 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+%L2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.001 seconds.
+%H2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+%J2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+*)°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14589231636988949014/jobs.db
+*+°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-15808884696184606232/jobs.db
+76†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7877816723060860581/jobs.db
+76›2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-003] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit3988296914529612587/out3","fit_score":82.7,"pipeline_action":"tailor","error":""}
+76Z2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-003] No cover_letter.txt in output
+76≥2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-003] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7877816723060860581/jobs/art-003
+78°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14640065253874452523/jobs.db
+78Î2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-multi-001] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit6854946899514002605/out_multiple","fit_score":82.0,"pipeline_action":"tailor","error":""}
+78¿2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-multi-001] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14640065253874452523/jobs/art-multi-001
+79†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9766781862413296473/jobs.db
+79›2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-001] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit6720535765317682346/out1","fit_score":82.0,"pipeline_action":"tailor","error":""}
+79≥2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-001] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9766781862413296473/jobs/art-001
+7:°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16925625185749129851/jobs.db
+7:›2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-002] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit6868007842429090856/out2","fit_score":82.0,"pipeline_action":"tailor","error":""}
+7:Z2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-002] No cover_letter.txt in output
+7:¥2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-002] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16925625185749129851/jobs/art-002
+<;†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7651594826282403903/jobs.db
+<;Â2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [cmd-test-001] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit11390296985537868662/output","fit_score":82.0,"pipeline_action":"tailor","error":""}
+<;_2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [cmd-test-001] No cover_letter.txt in output
+<;Ω2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [cmd-test-001] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7651594826282403903/jobs/cmd-test-001
+<=°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-18310280507323000441/jobs.db
+<=Â2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [wd-test-001] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit13905937830465006289/output2","fit_score":82.0,"pipeline_action":"tailor","error":""}
+<=^2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [wd-test-001] No cover_letter.txt in output
+<=º2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [wd-test-001] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-18310280507323000441/jobs/wd-test-001
+?>°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-17807851847006975513/jobs.db
+?@†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7670318173882165819/jobs.db
+BA†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-8234906571286210941/jobs.db
+BA’2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [err-006] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/no-pdf-55597462591583","fit_score":82.0,"pipeline_action":"tailor","error":""}
+BAM2026-05-09 21:33:39 [ERROR] com.jdbridge.Pipeline: [err-006] pipeline failed
+BAsjava.lang.RuntimeException: No PDF found in /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/no-pdf-55597462591583
+BA?	at com.jdbridge.GradlePipelineRunner.execute(Pipeline.kt:152)
+BAE	at com.jdbridge.GradlePipelineRunner.access$execute(Pipeline.kt:45)
+BAK	at com.jdbridge.GradlePipelineRunner$execute$1.invokeSuspend(Pipeline.kt)
+BA[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BAA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BAf	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+BA~	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+BAw	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:322)
+BA[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BAA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BAS	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+BAF	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+BAJ	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+BA>	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+BAR	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+BAF	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+BAV	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+BA`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:310)
+BAK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BA`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:168)
+BAK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BAh	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0$default(TestBuilders.kt:160)
+BAS	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0$default(Unknown Source)
+BAu	at com.jdbridge.unit.PipelineErrorHandlingTest.no PDF in output directory transitions to ERROR(PipelineTest.kt:160)
+BAU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BA>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BA[	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:728)
+BAZ	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
+BAÑ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
+BA]	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+BAk	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+BAf	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+BAù	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+BA|	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+BAÖ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+BAn	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+BAu	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+BAm	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+BAs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+BAs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+BA~	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$7(TestMethodTestDescriptor.java:218)
+BAj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BAu	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:214)
+BAl	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:139)
+BAk	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:69)
+BAs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:151)
+BAj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BAs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BAN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BAs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BAj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BAj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BA^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BA:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BAö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BAs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BAj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BAs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BAN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BAs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BAj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BAj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BA^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BA:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BAö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BAs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BAj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BAs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BAN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BAs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BAj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BAj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BA^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BAó	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+BAv	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+BAr	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+BAo	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:107)
+BAn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:88)
+BAw	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:54)
+BA}	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:67)
+BAn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:52)
+BAW	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+BAV	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:86)
+BAw	at org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:86)
+BA∂	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.processAllTestClasses(JUnitPlatformTestClassProcessor.java:119)
+BA™	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.access$000(JUnitPlatformTestClassProcessor.java:94)
+BAÜ	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor.stop(JUnitPlatformTestClassProcessor.java:89)
+BAh	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.stop(SuiteTestClassProcessor.java:62)
+BAU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BA>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BAY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+BAY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+BAi	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+BAx	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+BA7	at jdk.proxy1/jdk.proxy1.$Proxy2.stop(Unknown Source)
+BAW	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:193)
+BAn	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+BAY	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+BAX	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+BAj	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+BAÇ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+BAÅ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+BA]	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+BA^	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+BC°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-18323673487114073803/jobs.db
+BCM2026-05-09 21:33:39 [ERROR] com.jdbridge.Pipeline: [err-002] pipeline failed
+BCLjava.lang.RuntimeException: jd-pipeline-kotlin produced no output on stdout
+BC?	at com.jdbridge.GradlePipelineRunner.execute(Pipeline.kt:116)
+BCE	at com.jdbridge.GradlePipelineRunner.access$execute(Pipeline.kt:45)
+BCK	at com.jdbridge.GradlePipelineRunner$execute$1.invokeSuspend(Pipeline.kt)
+BC[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BCA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BCf	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+BC~	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+BCw	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:322)
+BC[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BCA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BCS	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+BCF	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+BCJ	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+BC>	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+BCR	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+BCF	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+BCV	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+BC`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:310)
+BCK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BC`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:168)
+BCK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BCh	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0$default(TestBuilders.kt:160)
+BCS	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0$default(Unknown Source)
+BCÇ	at com.jdbridge.unit.PipelineErrorHandlingTest.empty stdout transitions job to ERROR with no-output message(PipelineTest.kt:117)
+BCU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BC>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BC[	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:728)
+BCZ	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
+BCÑ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
+BC]	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+BCk	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+BCf	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+BCù	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+BC|	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+BCÖ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+BCn	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+BCu	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+BCm	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+BCs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+BCs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+BC~	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$7(TestMethodTestDescriptor.java:218)
+BCj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BCu	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:214)
+BCl	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:139)
+BCk	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:69)
+BCs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:151)
+BCj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BCs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BCN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BCs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BCj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BCj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BC^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BC:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BCö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BCs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BCj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BCs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BCN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BCs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BCj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BCj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BC^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BC:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BCö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BCs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BCj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BCs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BCN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BCs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BCj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BCj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BC^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BCó	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+BCv	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+BCr	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+BCo	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:107)
+BCn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:88)
+BCw	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:54)
+BC}	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:67)
+BCn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:52)
+BCW	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+BCV	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:86)
+BCw	at org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:86)
+BC∂	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.processAllTestClasses(JUnitPlatformTestClassProcessor.java:119)
+BC™	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.access$000(JUnitPlatformTestClassProcessor.java:94)
+BCÜ	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor.stop(JUnitPlatformTestClassProcessor.java:89)
+BCh	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.stop(SuiteTestClassProcessor.java:62)
+BCU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BC>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BCY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+BCY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+BCi	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+BCx	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+BC7	at jdk.proxy1/jdk.proxy1.$Proxy2.stop(Unknown Source)
+BCW	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:193)
+BCn	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+BCY	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+BCX	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+BCj	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+BCÇ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+BCÅ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+BC]	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+BC^	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+BD†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-2184912707103711613/jobs.db
+BDm2026-05-09 21:33:39 [ERROR] com.jdbridge.Pipeline: [err-001] jd-pipeline-kotlin exited 1: fatal kotlin error
+BDM2026-05-09 21:33:39 [ERROR] com.jdbridge.Pipeline: [err-001] pipeline failed
+BDSjava.lang.RuntimeException: jd-pipeline-kotlin failed (exit 1): fatal kotlin error
+BD?	at com.jdbridge.GradlePipelineRunner.execute(Pipeline.kt:107)
+BDE	at com.jdbridge.GradlePipelineRunner.access$execute(Pipeline.kt:45)
+BDK	at com.jdbridge.GradlePipelineRunner$execute$1.invokeSuspend(Pipeline.kt)
+BD[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BDA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BDf	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+BD~	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+BDw	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:322)
+BD[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BDA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BDS	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+BDF	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+BDJ	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+BD>	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+BDR	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+BDF	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+BDV	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+BD`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:310)
+BDK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BD`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:168)
+BDK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BDh	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0$default(TestBuilders.kt:160)
+BDS	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0$default(Unknown Source)
+BDl	at com.jdbridge.unit.PipelineErrorHandlingTest.non-zero exit transitions job to ERROR(PipelineTest.kt:108)
+BDU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BD>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BD[	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:728)
+BDZ	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
+BDÑ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
+BD]	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+BDk	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+BDf	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+BDù	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+BD|	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+BDÖ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+BDn	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+BDu	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+BDm	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+BDs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+BDs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+BD~	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$7(TestMethodTestDescriptor.java:218)
+BDj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BDu	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:214)
+BDl	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:139)
+BDk	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:69)
+BDs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:151)
+BDj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BDs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BDN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BDs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BDj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BDj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BD^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BD:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BDö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BDs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BDj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BDs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BDN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BDs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BDj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BDj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BD^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BD:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BDö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BDs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BDj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BDs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BDN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BDs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BDj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BDj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BD^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BDó	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+BDv	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+BDr	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+BDo	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:107)
+BDn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:88)
+BDw	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:54)
+BD}	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:67)
+BDn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:52)
+BDW	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+BDV	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:86)
+BDw	at org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:86)
+BD∂	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.processAllTestClasses(JUnitPlatformTestClassProcessor.java:119)
+BD™	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.access$000(JUnitPlatformTestClassProcessor.java:94)
+BDÜ	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor.stop(JUnitPlatformTestClassProcessor.java:89)
+BDh	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.stop(SuiteTestClassProcessor.java:62)
+BDU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BD>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BDY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+BDY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+BDi	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+BDx	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+BD7	at jdk.proxy1/jdk.proxy1.$Proxy2.stop(Unknown Source)
+BDW	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:193)
+BDn	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+BDY	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+BDX	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+BDj	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+BDÇ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+BDÅ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+BD]	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+BD^	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+BE†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-4987322153018793064/jobs.db
+BEM2026-05-09 21:33:39 [ERROR] com.jdbridge.Pipeline: [err-003] pipeline failed
+BE¢java.lang.RuntimeException: Could not parse jd-pipeline summary JSON: Unexpected JSON token at offset 5: Expected EOF after parsing, but had { instead at path: $
+BEJSON input: not { valid } json
+BE?	at com.jdbridge.GradlePipelineRunner.execute(Pipeline.kt:119)
+BEE	at com.jdbridge.GradlePipelineRunner.access$execute(Pipeline.kt:45)
+BEK	at com.jdbridge.GradlePipelineRunner$execute$1.invokeSuspend(Pipeline.kt)
+BE[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BEA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BEf	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+BE~	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+BEw	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:322)
+BE[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BEA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BES	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+BEF	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+BEJ	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+BE>	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+BER	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+BEF	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+BEV	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+BE`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:310)
+BEK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BE`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:168)
+BEK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BEh	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0$default(TestBuilders.kt:160)
+BES	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0$default(Unknown Source)
+BEÑ	at com.jdbridge.unit.PipelineErrorHandlingTest.invalid JSON stdout transitions job to ERROR with JSON message(PipelineTest.kt:126)
+BEU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BE>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BE[	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:728)
+BEZ	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
+BEÑ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
+BE]	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+BEk	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+BEf	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+BEù	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+BE|	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+BEÖ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+BEn	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+BEu	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+BEm	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+BEs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+BEs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+BE~	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$7(TestMethodTestDescriptor.java:218)
+BEj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BEu	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:214)
+BEl	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:139)
+BEk	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:69)
+BEs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:151)
+BEj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BEs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BEN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BEs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BEj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BEj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BE^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BE:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BEö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BEs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BEj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BEs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BEN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BEs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BEj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BEj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BE^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BE:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BEö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BEs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BEj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BEs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BEN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BEs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BEj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BEj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BE^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BEó	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+BEv	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+BEr	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+BEo	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:107)
+BEn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:88)
+BEw	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:54)
+BE}	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:67)
+BEn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:52)
+BEW	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+BEV	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:86)
+BEw	at org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:86)
+BE∂	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.processAllTestClasses(JUnitPlatformTestClassProcessor.java:119)
+BE™	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.access$000(JUnitPlatformTestClassProcessor.java:94)
+BEÜ	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor.stop(JUnitPlatformTestClassProcessor.java:89)
+BEh	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.stop(SuiteTestClassProcessor.java:62)
+BEU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BE>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BEY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+BEY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+BEi	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+BEx	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+BE7	at jdk.proxy1/jdk.proxy1.$Proxy2.stop(Unknown Source)
+BEW	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:193)
+BEn	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+BEY	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+BEX	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+BEj	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+BEÇ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+BEÅ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+BE]	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+BE^	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+BFü2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-741807501395585853/jobs.db
+BFï2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [err-004] summary: {"output_path":"/tmp/out","fit_score":40.0,"pipeline_action":"skip","error":""}
+BG°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-17752512528334352413/jobs.db
+BGè2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [err-005] summary: {"output_path":"","fit_score":82.0,"pipeline_action":"tailor","error":""}
+BGM2026-05-09 21:33:39 [ERROR] com.jdbridge.Pipeline: [err-005] pipeline failed
+BGGjava.lang.RuntimeException: jd-pipeline-kotlin returned no output_path
+BG?	at com.jdbridge.GradlePipelineRunner.execute(Pipeline.kt:145)
+BGE	at com.jdbridge.GradlePipelineRunner.access$execute(Pipeline.kt:45)
+BGK	at com.jdbridge.GradlePipelineRunner$execute$1.invokeSuspend(Pipeline.kt)
+BG[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BGA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BGf	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+BG~	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+BGw	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:322)
+BG[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BGA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BGS	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+BGF	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+BGJ	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+BG>	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+BGR	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+BGF	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+BGV	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+BG`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:310)
+BGK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BG`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:168)
+BGK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BGh	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0$default(TestBuilders.kt:160)
+BGS	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0$default(Unknown Source)
+BGn	at com.jdbridge.unit.PipelineErrorHandlingTest.missing output_path transitions to ERROR(PipelineTest.kt:146)
+BGU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BG>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BG[	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:728)
+BGZ	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
+BGÑ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
+BG]	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+BGk	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+BGf	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+BGù	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+BG|	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+BGÖ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+BGn	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+BGu	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+BGm	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+BGs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+BGs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+BG~	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$7(TestMethodTestDescriptor.java:218)
+BGj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BGu	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:214)
+BGl	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:139)
+BGk	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:69)
+BGs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:151)
+BGj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BGs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BGN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BGs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BGj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BGj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BG^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BG:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BGö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BGs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BGj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BGs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BGN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BGs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BGj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BGj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BG^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BG:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BGö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BGs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BGj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BGs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BGN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BGs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BGj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BGj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BG^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BGó	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+BGv	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+BGr	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+BGo	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:107)
+BGn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:88)
+BGw	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:54)
+BG}	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:67)
+BGn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:52)
+BGW	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+BGV	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:86)
+BGw	at org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:86)
+BG∂	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.processAllTestClasses(JUnitPlatformTestClassProcessor.java:119)
+BG™	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.access$000(JUnitPlatformTestClassProcessor.java:94)
+BGÜ	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor.stop(JUnitPlatformTestClassProcessor.java:89)
+BGh	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.stop(SuiteTestClassProcessor.java:62)
+BGU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BG>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BGY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+BGY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+BGi	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+BGx	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+BG7	at jdk.proxy1/jdk.proxy1.$Proxy2.stop(Unknown Source)
+BGW	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:193)
+BGn	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+BGY	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+BGX	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+BGj	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+BGÇ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+BGÅ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+BG]	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+BG^	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+BH†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9912601769678382322/jobs.db
+BHM2026-05-09 21:33:39 [ERROR] com.jdbridge.Pipeline: [err-007] pipeline failed
+BHvjava.lang.RuntimeException: JD_BRIDGE_PIPELINE_DIR is not set. Point it to your jd-pipeline-kotlin project directory.
+BH>	at com.jdbridge.GradlePipelineRunner.execute(Pipeline.kt:65)
+BH:	at com.jdbridge.GradlePipelineRunner.run(Pipeline.kt:51)
+BHF	at com.jdbridge.unit.PipelineTestKt.createAndRun(PipelineTest.kt:20)
+BHS	at com.jdbridge.unit.PipelineTestKt$createAndRun$1.invokeSuspend(PipelineTest.kt)
+BH[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BHA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BHf	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+BH~	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+BHw	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:322)
+BH[	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+BHA	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+BHS	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:277)
+BHF	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:95)
+BHJ	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:69)
+BH>	at kotlinx.coroutines.BuildersKt.runBlocking(Unknown Source)
+BHR	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+BHF	at kotlinx.coroutines.BuildersKt.runBlocking$default(Unknown Source)
+BHV	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+BH`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:310)
+BHK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BH`	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:168)
+BHK	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(Unknown Source)
+BHh	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0$default(TestBuilders.kt:160)
+BHS	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0$default(Unknown Source)
+BHy	at com.jdbridge.unit.PipelineErrorHandlingTest.missing JD_BRIDGE_PIPELINE_DIR transitions to ERROR(PipelineTest.kt:175)
+BHU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BH>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BH[	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:728)
+BHZ	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
+BHÑ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
+BH]	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+BHk	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+BHf	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+BHù	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+BH|	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+BHÖ	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+BHn	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+BHu	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+BHm	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+BHs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+BHs	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+BH~	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$7(TestMethodTestDescriptor.java:218)
+BHj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BHu	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:214)
+BHl	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:139)
+BHk	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:69)
+BHs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:151)
+BHj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BHs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BHN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BHs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BHj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BHj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BH^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BH:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BHö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BHs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BHj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BHs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BHN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BHs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BHj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BHj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BH^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BH:	at java.base/java.util.ArrayList.forEach(Unknown Source)
+BHö	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+BHs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+BHj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BHs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+BHN	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+BHs	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+BHj	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+BHj	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+BH^	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+BHó	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+BHv	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+BHr	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+BHo	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:107)
+BHn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:88)
+BHw	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:54)
+BH}	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:67)
+BHn	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:52)
+BHW	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+BHV	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:86)
+BHw	at org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:86)
+BH∂	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.processAllTestClasses(JUnitPlatformTestClassProcessor.java:119)
+BH™	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.access$000(JUnitPlatformTestClassProcessor.java:94)
+BHÜ	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor.stop(JUnitPlatformTestClassProcessor.java:89)
+BHh	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.stop(SuiteTestClassProcessor.java:62)
+BHU	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+BH>	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+BHY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+BHY	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+BHi	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+BHx	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:94)
+BH7	at jdk.proxy1/jdk.proxy1.$Proxy2.stop(Unknown Source)
+BHW	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:193)
+BHn	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:129)
+BHY	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:100)
+BHX	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:60)
+BHj	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+BHÇ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:113)
+BHÅ	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:65)
+BH]	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+BH^	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+JI°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14540286275445828926/jobs.db
+JIÂ2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [trans-001] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit9662996108941728991/transition","fit_score":82.0,"pipeline_action":"tailor","error":""}
+JI∏2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [trans-001] pipeline complete ‚Üí /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14540286275445828926/jobs/trans-001
+LK°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-17668202762118054530/jobs.db
+NM†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-2687868869255604570/jobs.db
+NO†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-8076327636328315823/jobs.db
+NP†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1782091664805206134/jobs.db
+NQ°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-15644161646084790946/jobs.db
+SR°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-11371038672225725317/jobs.db
+ST†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-8106652633041899589/jobs.db
+SU†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3555609741914444657/jobs.db
+SV°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-15369786181798046177/jobs.db
+SW†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-2145130014523206695/jobs.db
+YX†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-6455134391969769097/jobs.db
+YZ†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3049844438487156821/jobs.db
+Y[†2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-5863503128267586198/jobs.db
+]\°2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-17464313615404669338/jobs.db
+]^†2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9569698325714908584/jobs.db
+]_°2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-11417576607170758503/jobs.db
+]`†2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-2120985835624394975/jobs.db
+]a°2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-10810418221071078991/jobs.db
+]b°2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-18176480543176834235/jobs.db
+]c°2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12612746621661783773/jobs.db
+ihY2026-05-09 21:33:40 [INFO] com.jdbridge.Application: Resolved Tailscale IP: 100.83.183.3
+ijY2026-05-09 21:33:40 [INFO] com.jdbridge.Application: Resolved Tailscale IP: 100.83.183.3

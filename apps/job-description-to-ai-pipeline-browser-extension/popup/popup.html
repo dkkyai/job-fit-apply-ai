@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenClaw</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="shell">
+
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">🦞</span>
+        <span class="logo-text">OPENCLAW</span>
+      </div>
+      <div class="header-tag" id="site-badge">—</div>
+    </header>
+
+    <!-- Job Card (hidden until a JD is detected / submitted) -->
+    <section class="job-card" id="job-card">
+      <div class="job-title" id="job-title">Untitled Role</div>
+      <div class="job-meta" id="job-company">—</div>
+    </section>
+
+    <!-- Pipeline status track -->
+    <div class="pipeline" id="pipeline">
+      <div class="pipe-step" id="step-extract"  data-step="extracting">
+        <span class="pipe-dot"></span>
+        <span class="pipe-label">Extract</span>
+      </div>
+      <div class="pipe-connector"></div>
+      <div class="pipe-step" id="step-submit"   data-step="submitting">
+        <span class="pipe-dot"></span>
+        <span class="pipe-label">Submit</span>
+      </div>
+      <div class="pipe-connector"></div>
+      <div class="pipe-step" id="step-process"  data-step="processing">
+        <span class="pipe-dot"></span>
+        <span class="pipe-label">Generate</span>
+      </div>
+      <div class="pipe-connector"></div>
+      <div class="pipe-step" id="step-complete" data-step="complete">
+        <span class="pipe-dot"></span>
+        <span class="pipe-label">Done</span>
+      </div>
+    </div>
+
+    <!-- Progress message (shown during processing) -->
+    <div class="progress-msg" id="progress-msg"></div>
+
+    <!-- Idle / call-to-action -->
+    <div class="cta-block" id="cta-idle">
+      <p class="cta-hint">Navigate to a job listing, then click below.</p>
+      <button class="btn-primary" id="btn-generate">
+        <span class="btn-icon">⚡</span> Generate Resume &amp; Cover Letter
+      </button>
+    </div>
+
+    <!-- Error block -->
+    <div class="error-block" id="error-block" hidden>
+      <div class="error-label">Error</div>
+      <div class="error-msg" id="error-msg">—</div>
+      <button class="btn-reset" id="btn-retry">Try again</button>
+    </div>
+
+    <!-- Complete block -->
+    <div class="done-block" id="done-block" hidden>
+      <div class="done-label">✓ Ready to download</div>
+      <div class="artifact-links" id="artifact-links">
+        <!-- Injected by popup.js -->
+      </div>
+      <button class="btn-reset" id="btn-reset">Start over</button>
+    </div>
+
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

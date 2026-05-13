@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.jdbridge.unit.ArtifactUrlsSerializationTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-05-10T04:33:39" hostname="Richards-MacBook-M3-Max.local" time="0.001">
+  <properties/>
+  <testcase name="full ArtifactUrls round-trips()" classname="com.jdbridge.unit.ArtifactUrlsSerializationTest" time="0.0"/>
+  <testcase name="empty cover_letter_txt round-trips()" classname="com.jdbridge.unit.ArtifactUrlsSerializationTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

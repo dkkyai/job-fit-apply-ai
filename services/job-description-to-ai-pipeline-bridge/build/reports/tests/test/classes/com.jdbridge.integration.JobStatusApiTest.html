@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta http-equiv="x-ua-compatible" content="IE=edge"/>
+<title>Test results - JobStatusApiTest</title>
+<link href="../css/base-style.css" rel="stylesheet" type="text/css"/>
+<link href="../css/style.css" rel="stylesheet" type="text/css"/>
+<script src="../js/report.js" type="text/javascript"></script>
+</head>
+<body>
+<div id="content">
+<h1>JobStatusApiTest</h1>
+<div class="breadcrumbs">
+<a href="../index.html">all</a> &gt; 
+<a href="../packages/com.jdbridge.integration.html">com.jdbridge.integration</a> &gt; JobStatusApiTest</div>
+<div id="summary">
+<table>
+<tr>
+<td>
+<div class="summaryGroup">
+<table>
+<tr>
+<td>
+<div class="infoBox" id="tests">
+<div class="counter">6</div>
+<p>tests</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="failures">
+<div class="counter">0</div>
+<p>failures</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="ignored">
+<div class="counter">0</div>
+<p>ignored</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="duration">
+<div class="counter">0.198s</div>
+<p>duration</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</td>
+<td>
+<div class="infoBox success" id="successRate">
+<div class="percent">100%</div>
+<p>successful</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div id="tabs">
+<ul class="tabLinks">
+<li>
+<a href="#tab0">Tests</a>
+</li>
+<li>
+<a href="#tab1">Standard output</a>
+</li>
+</ul>
+<div id="tab0" class="tab">
+<h2>Tests</h2>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Duration</th>
+<th>Result</th>
+</tr>
+</thead>
+<tr>
+<td class="success">GET complete job has artifacts and fit_score()</td>
+<td class="success">0.098s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">GET queued job returns status queued and no artifacts()</td>
+<td class="success">0.008s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">GET unknown job_id returns 404 with detail()</td>
+<td class="success">0.005s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">artifacts field is null when status is not complete()</td>
+<td class="success">0.009s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">error field is null on complete job()</td>
+<td class="success">0.066s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">progress_message is non-null after pipeline runs()</td>
+<td class="success">0.012s</td>
+<td class="success">passed</td>
+</tr>
+</table>
+</div>
+<div id="tab1" class="tab">
+<h2>Standard output</h2>
+<span class="code">
+<pre>2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16428977656195418238/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.001 seconds.
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16428977656195418238/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16428977656195418238/jobs
+2026-05-09 21:33:38 [INFO] com.jdbridge.Routes: Job accepted: 528220c5-ab44-440e-adf2-3c7fe6e0d687 (null @ null)
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1718220428885882110/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.001 seconds.
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1718220428885882110/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1718220428885882110/jobs
+2026-05-09 21:33:38 [INFO] com.jdbridge.Routes: Job accepted: 9ffb61ef-dd98-4ab3-9897-4488d5395d7b (null @ null)
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13086716811632950141/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.0 seconds.
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13086716811632950141/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13086716811632950141/jobs
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13282943084257912471/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.0 seconds.
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13282943084257912471/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-13282943084257912471/jobs
+2026-05-09 21:33:38 [INFO] com.jdbridge.Routes: Job accepted: 6b7afddd-494d-46e8-825e-d73265eea7ee (null @ null)
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12644577052481063679/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.0 seconds.
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12644577052481063679/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12644577052481063679/jobs
+2026-05-09 21:33:38 [INFO] com.jdbridge.Routes: Job accepted: 64432556-b808-4bc3-90ff-011617c34c70 (null @ null)
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12156043273621660807/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+2026-05-09 21:33:39 [INFO] ktor.test: Application started in 0.001 seconds.
+2026-05-09 21:33:39 [INFO] ktor.test: Responding at http://localhost:80
+2026-05-09 21:33:39 [INFO] ktor.test: Responding at https://localhost:443
+2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12156043273621660807/jobs.db
+2026-05-09 21:33:39 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12156043273621660807/jobs
+</pre>
+</span>
+</div>
+</div>
+<div id="footer">
+<p>
+<div>
+<label class="hidden" id="label-for-line-wrapping-toggle" for="line-wrapping-toggle">Wrap lines
+<input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
+</label>
+</div>Generated by 
+<a href="http://www.gradle.org">Gradle 8.5</a> at May 9, 2026, 9:33:40 PM</p>
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.jdbridge.unit.StoreJobDirTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-05-10T04:33:39" hostname="Richards-MacBook-M3-Max.local" time="0.007">
+  <properties/>
+  <testcase name="jobDir creates directory()" classname="com.jdbridge.unit.StoreJobDirTest" time="0.002"/>
+  <testcase name="jobDir is idempotent()" classname="com.jdbridge.unit.StoreJobDirTest" time="0.003"/>
+  <testcase name="jobDir returns path containing jobId()" classname="com.jdbridge.unit.StoreJobDirTest" time="0.002"/>
+  <system-out><![CDATA[2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-6455134391969769097/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3049844438487156821/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-5863503128267586198/jobs.db
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

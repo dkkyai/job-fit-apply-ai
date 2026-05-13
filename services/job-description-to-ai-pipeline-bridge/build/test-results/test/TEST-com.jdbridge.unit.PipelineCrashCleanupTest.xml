@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.jdbridge.unit.PipelineCrashCleanupTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-05-10T04:33:39" hostname="Richards-MacBook-M3-Max.local" time="0.008">
+  <properties/>
+  <testcase name="job directory is preserved after crash()" classname="com.jdbridge.unit.PipelineCrashCleanupTest" time="0.004"/>
+  <testcase name="pipeline crash leaves job in ERROR status()" classname="com.jdbridge.unit.PipelineCrashCleanupTest" time="0.004"/>
+  <system-out><![CDATA[2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-17807851847006975513/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7670318173882165819/jobs.db
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

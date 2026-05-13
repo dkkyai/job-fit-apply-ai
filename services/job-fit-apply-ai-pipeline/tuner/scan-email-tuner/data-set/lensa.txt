@@ -1,0 +1,107 @@
+Email subject: "Be the first to apply to Senior Databricks AI/ML Engineer at LHH US"
+<format>
+Company Name
+Job Title
+Location
+Salary
+</format>
+
+
+LHH US
+Senior Databricks AI/ML Engineer
+Seattle, WA
+$133K-$162K / yr.
+
+Belva․ai
+AI/ML Engineer
+Bellevue, WA
+$132K-$162K / yr. (est.)
+
+Sinclair Broadcast Group
+Senior Software Development Engineer - Mobile & Living Room Apps
+Seattle, WA
+$220K-$240K / yr.
+
+Open Systems Technologies
+Testing Data Engineer
+Remote
+$82K-$100K / yr. (est.)
+
+Cognitiv
+Senior Site Reliability Engineer
+Bellevue, WA
+$160K-$210K / yr.
+
+Apidel Technologies
+Senior Engineer, Quality Assurance Engineering
+Redmond, WA
+$74K-$90K / yr. (est.)
+
+DocuSign, Inc․
+Senior Backend Engineer Scalable Search Platform
+$111K-$136K / yr. (est.)
+
+Jobot
+Software Engineer (Typescript)
+Seattle, WA
+$110K-$139K / yr.
+
+iSpot
+Site Reliability Engineer 3
+Bellevue, WA
+$136K-$174K / yr.
+
+America's Test Kitchen
+Senior Software Engineer - Scale CMS & MarTech
+Remote
+$130K-$150K / yr.
+
+1inch Group
+Senior Backend Engineer (TypeScript) for DeFi APIs
+Remote
+$116K-$142K / yr. (est.)
+
+Motion Recruitment Partners LLC
+Python ML Engineer - GenAI/LLM Specialist
+[location not shown]
+$86K-$106K / yr. (est.)
+
+Project 44
+Senior Software Engineer 1 New Bangalore
+[location not shown]
+$98K-$120K / yr. (est.)
+
+SynergisticIT
+junior software programmer fullstack/Data Engineer
+Remote
+$95K-$154K / yr.
+
+Early Warning Services LLC
+Head of Software Engineering & Automation
+[location not shown]
+$160K-$196K / yr. (est.)
+
+Microsoft Corporation
+Principal Software Engineer - Red Team
+Redmond, WA
+$140K-$275K / yr.
+
+Logoslabs
+Senior Backend Engineer - Remote, Impact & Autonomy
+[location not shown]
+$83K-$102K / yr. (est.)
+
+Kraftverkehr Nagel SE & Co․ KG
+Senior Fullstack Engineer (m/w/d)
+Remote
+$91K-$111K / yr. (est.)
+
+Nerdleveltech
+Senior Software Engineer
+Santa Clara, CA or Remote
+$127K-$156K / yr. (est.)
+
+Atexo
+Senior AI/ML Engineer: Cloud-Native RAG Solutions (Hybrid)
+[location not shown]
+$99K-$121K / yr. (est.)

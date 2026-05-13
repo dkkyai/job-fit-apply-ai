@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.jdbridge.unit.SubmitJobRequestSerializationTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-05-10T04:33:40" hostname="Richards-MacBook-M3-Max.local" time="0.0">
+  <properties/>
+  <testcase name="all optional fields round-trip correctly()" classname="com.jdbridge.unit.SubmitJobRequestSerializationTest" time="0.0"/>
+  <testcase name="exactly 150 char jd_text serializes correctly()" classname="com.jdbridge.unit.SubmitJobRequestSerializationTest" time="0.0"/>
+  <testcase name="optional fields are absent from JSON when null()" classname="com.jdbridge.unit.SubmitJobRequestSerializationTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

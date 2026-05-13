@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta http-equiv="x-ua-compatible" content="IE=edge"/>
+<title>Test results - FullFlowE2ETest</title>
+<link href="../css/base-style.css" rel="stylesheet" type="text/css"/>
+<link href="../css/style.css" rel="stylesheet" type="text/css"/>
+<script src="../js/report.js" type="text/javascript"></script>
+</head>
+<body>
+<div id="content">
+<h1>FullFlowE2ETest</h1>
+<div class="breadcrumbs">
+<a href="../index.html">all</a> &gt; 
+<a href="../packages/com.jdbridge.e2e.html">com.jdbridge.e2e</a> &gt; FullFlowE2ETest</div>
+<div id="summary">
+<table>
+<tr>
+<td>
+<div class="summaryGroup">
+<table>
+<tr>
+<td>
+<div class="infoBox" id="tests">
+<div class="counter">5</div>
+<p>tests</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="failures">
+<div class="counter">0</div>
+<p>failures</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="ignored">
+<div class="counter">0</div>
+<p>ignored</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="duration">
+<div class="counter">4.315s</div>
+<p>duration</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</td>
+<td>
+<div class="infoBox success" id="successRate">
+<div class="percent">100%</div>
+<p>successful</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div id="tabs">
+<ul class="tabLinks">
+<li>
+<a href="#tab0">Tests</a>
+</li>
+<li>
+<a href="#tab1">Standard output</a>
+</li>
+</ul>
+<div id="tab0" class="tab">
+<h2>Tests</h2>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Duration</th>
+<th>Result</th>
+</tr>
+</thead>
+<tr>
+<td class="success">full happy-path flow mirrors Chrome extension usage()</td>
+<td class="success">0.539s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">minimal payload E2E reaches complete()</td>
+<td class="success">1.161s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">score-too-low flow results in error with score in message()</td>
+<td class="success">0.535s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">subprocess failure flow results in error with non-empty message()</td>
+<td class="success">0.522s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">three concurrent jobs all complete with distinct artifact paths()</td>
+<td class="success">1.558s</td>
+<td class="success">passed</td>
+</tr>
+</table>
+</div>
+<div id="tab1" class="tab">
+<h2>Standard output</h2>
+<span class="code">
+<pre>2026-05-09 21:33:34 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9510988836059924410/jobs.db
+2026-05-09 21:33:34 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+2026-05-09 21:33:34 [INFO] ktor.test: Application started in 0.02 seconds.
+2026-05-09 21:33:34 [INFO] ktor.test: Responding at http://localhost:80
+2026-05-09 21:33:34 [INFO] ktor.test: Responding at https://localhost:443
+2026-05-09 21:33:34 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9510988836059924410/jobs.db
+2026-05-09 21:33:34 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9510988836059924410/jobs
+2026-05-09 21:33:35 [INFO] com.jdbridge.Routes: Job accepted: fb314ebf-cc80-449e-acbd-4f52434ecb3e (null @ null)
+2026-05-09 21:33:35 [INFO] com.jdbridge.Pipeline: [fb314ebf-cc80-449e-acbd-4f52434ecb3e] summary: {&quot;output_path&quot;:&quot;/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9510988836059924410/jobs/fb314ebf-cc80-449e-acbd-4f52434ecb3e/e2e_output_1778387615211763000&quot;,&quot;fit_score&quot;:82,&quot;pipeline_action&quot;:&quot;tailor&quot;,&quot;error&quot;:&quot;&quot;}
+2026-05-09 21:33:35 [INFO] com.jdbridge.Pipeline: [fb314ebf-cc80-449e-acbd-4f52434ecb3e] pipeline complete → /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9510988836059924410/jobs/fb314ebf-cc80-449e-acbd-4f52434ecb3e
+2026-05-09 21:33:35 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9255093160288235791/jobs.db
+2026-05-09 21:33:35 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+2026-05-09 21:33:35 [INFO] ktor.test: Application started in 0.001 seconds.
+2026-05-09 21:33:35 [INFO] ktor.test: Responding at http://localhost:80
+2026-05-09 21:33:35 [INFO] ktor.test: Responding at https://localhost:443
+2026-05-09 21:33:35 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9255093160288235791/jobs.db
+2026-05-09 21:33:35 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9255093160288235791/jobs
+2026-05-09 21:33:35 [INFO] com.jdbridge.Routes: Job accepted: ba378388-2df6-4502-8a7d-818ee88fec36 (Staff SDET @ Acme Corp)
+2026-05-09 21:33:35 [INFO] com.jdbridge.Pipeline: [ba378388-2df6-4502-8a7d-818ee88fec36] summary: {&quot;output_path&quot;:&quot;/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9255093160288235791/jobs/ba378388-2df6-4502-8a7d-818ee88fec36/e2e_output_1778387615696434000&quot;,&quot;fit_score&quot;:82,&quot;pipeline_action&quot;:&quot;tailor&quot;,&quot;error&quot;:&quot;&quot;}
+2026-05-09 21:33:35 [INFO] com.jdbridge.Pipeline: [ba378388-2df6-4502-8a7d-818ee88fec36] pipeline complete → /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9255093160288235791/jobs/ba378388-2df6-4502-8a7d-818ee88fec36
+2026-05-09 21:33:36 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3066828592220253172/jobs.db
+2026-05-09 21:33:36 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+2026-05-09 21:33:36 [INFO] ktor.test: Application started in 0.0 seconds.
+2026-05-09 21:33:36 [INFO] ktor.test: Responding at http://localhost:80
+2026-05-09 21:33:36 [INFO] ktor.test: Responding at https://localhost:443
+2026-05-09 21:33:36 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3066828592220253172/jobs.db
+2026-05-09 21:33:36 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3066828592220253172/jobs
+2026-05-09 21:33:36 [INFO] com.jdbridge.Routes: Job accepted: 63d491e8-e648-41e0-827b-b03fffd9462a (null @ null)
+2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [63d491e8-e648-41e0-827b-b03fffd9462a] summary: {&quot;output_path&quot;:&quot;/tmp&quot;,&quot;fit_score&quot;:40,&quot;pipeline_action&quot;:&quot;skip&quot;,&quot;error&quot;:&quot;&quot;}
+2026-05-09 21:33:36 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs.db
+2026-05-09 21:33:36 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+2026-05-09 21:33:36 [INFO] ktor.test: Application started in 0.001 seconds.
+2026-05-09 21:33:36 [INFO] ktor.test: Responding at http://localhost:80
+2026-05-09 21:33:36 [INFO] ktor.test: Responding at https://localhost:443
+2026-05-09 21:33:36 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs.db
+2026-05-09 21:33:36 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs
+2026-05-09 21:33:36 [INFO] com.jdbridge.Routes: Job accepted: 5e3cc9d3-4814-4964-b827-06f1b1e4bc86 (null @ Company1)
+2026-05-09 21:33:36 [INFO] com.jdbridge.Routes: Job accepted: 6de4ae44-ce23-40f8-8ada-f659f02323da (null @ Company2)
+2026-05-09 21:33:36 [INFO] com.jdbridge.Routes: Job accepted: 8e199229-16c3-4b7e-9a45-ba38ddacabfb (null @ Company3)
+2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [5e3cc9d3-4814-4964-b827-06f1b1e4bc86] summary: {&quot;output_path&quot;:&quot;/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/5e3cc9d3-4814-4964-b827-06f1b1e4bc86/e2e_output_1778387616785652000&quot;,&quot;fit_score&quot;:82,&quot;pipeline_action&quot;:&quot;tailor&quot;,&quot;error&quot;:&quot;&quot;}
+2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [6de4ae44-ce23-40f8-8ada-f659f02323da] summary: {&quot;output_path&quot;:&quot;/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/6de4ae44-ce23-40f8-8ada-f659f02323da/e2e_output_1778387616785668000&quot;,&quot;fit_score&quot;:82,&quot;pipeline_action&quot;:&quot;tailor&quot;,&quot;error&quot;:&quot;&quot;}
+2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [8e199229-16c3-4b7e-9a45-ba38ddacabfb] summary: {&quot;output_path&quot;:&quot;/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/8e199229-16c3-4b7e-9a45-ba38ddacabfb/e2e_output_1778387616785642000&quot;,&quot;fit_score&quot;:82,&quot;pipeline_action&quot;:&quot;tailor&quot;,&quot;error&quot;:&quot;&quot;}
+2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [5e3cc9d3-4814-4964-b827-06f1b1e4bc86] pipeline complete → /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/5e3cc9d3-4814-4964-b827-06f1b1e4bc86
+2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [8e199229-16c3-4b7e-9a45-ba38ddacabfb] pipeline complete → /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/8e199229-16c3-4b7e-9a45-ba38ddacabfb
+2026-05-09 21:33:36 [INFO] com.jdbridge.Pipeline: [6de4ae44-ce23-40f8-8ada-f659f02323da] pipeline complete → /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7332464112582697392/jobs/6de4ae44-ce23-40f8-8ada-f659f02323da
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1748880781647936597/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: No ktor.deployment.watch patterns specified, automatic reload is not active.
+2026-05-09 21:33:38 [INFO] ktor.test: Application started in 0.001 seconds.
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at http://localhost:80
+2026-05-09 21:33:38 [INFO] ktor.test: Responding at https://localhost:443
+2026-05-09 21:33:38 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1748880781647936597/jobs.db
+2026-05-09 21:33:38 [INFO] ktor.test: jd-bridge ready. Artifacts at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-1748880781647936597/jobs
+2026-05-09 21:33:38 [INFO] com.jdbridge.Routes: Job accepted: b597fcba-f774-4472-a967-8d52046d9062 (null @ null)
+2026-05-09 21:33:38 [ERROR] com.jdbridge.Pipeline: [b597fcba-f774-4472-a967-8d52046d9062] jd-pipeline-kotlin exited 1: fatal error in pipeline
+2026-05-09 21:33:38 [ERROR] com.jdbridge.Pipeline: [b597fcba-f774-4472-a967-8d52046d9062] pipeline failed
+java.lang.RuntimeException: jd-pipeline-kotlin failed (exit 1): fatal error in pipeline
+	at com.jdbridge.GradlePipelineRunner.execute(Pipeline.kt:107)
+	at com.jdbridge.GradlePipelineRunner.access$execute(Pipeline.kt:45)
+	at com.jdbridge.GradlePipelineRunner$execute$1.invokeSuspend(Pipeline.kt)
+	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:33)
+	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:104)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler.runSafely(CoroutineScheduler.kt:584)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.executeTask(CoroutineScheduler.kt:811)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.runWorker(CoroutineScheduler.kt:715)
+	at kotlinx.coroutines.scheduling.CoroutineScheduler$Worker.run(CoroutineScheduler.kt:702)
+</pre>
+</span>
+</div>
+</div>
+<div id="footer">
+<p>
+<div>
+<label class="hidden" id="label-for-line-wrapping-toggle" for="line-wrapping-toggle">Wrap lines
+<input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
+</label>
+</div>Generated by 
+<a href="http://www.gradle.org">Gradle 8.5</a> at May 9, 2026, 9:33:40 PM</p>
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.jdbridge.unit.StoreUpdateJobTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-05-10T04:33:39" hostname="Richards-MacBook-M3-Max.local" time="1.066">
+  <properties/>
+  <testcase name="updateJob bumps updated_at()" classname="com.jdbridge.unit.StoreUpdateJobTest" time="1.024"/>
+  <testcase name="updateJob on nonexistent job does not throw()" classname="com.jdbridge.unit.StoreUpdateJobTest" time="0.006"/>
+  <testcase name="updateJob serializes and deserializes ArtifactUrls()" classname="com.jdbridge.unit.StoreUpdateJobTest" time="0.007"/>
+  <testcase name="updateJob stores fit_score of 100()" classname="com.jdbridge.unit.StoreUpdateJobTest" time="0.007"/>
+  <testcase name="updateJob stores fit_score of 0()" classname="com.jdbridge.unit.StoreUpdateJobTest" time="0.007"/>
+  <testcase name="updateJob updates multiple fields atomically()" classname="com.jdbridge.unit.StoreUpdateJobTest" time="0.006"/>
+  <testcase name="updateJob changes status()" classname="com.jdbridge.unit.StoreUpdateJobTest" time="0.005"/>
+  <system-out><![CDATA[2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-17464313615404669338/jobs.db
+2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9569698325714908584/jobs.db
+2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-11417576607170758503/jobs.db
+2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-2120985835624394975/jobs.db
+2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-10810418221071078991/jobs.db
+2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-18176480543176834235/jobs.db
+2026-05-09 21:33:40 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-12612746621661783773/jobs.db
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,10 @@
+{
+  "_comment": "SCRAPE_JD_URL_TUNER dataset template. Copy this file and fill in the fields for each new test case.",
+  "job_url": "https://example.com/jobs/123",
+  "company": "Example Corp",
+  "role_title": "Senior Software Engineer",
+  "location": "San Francisco, CA",
+  "salary_range": "$150k - $200k",
+  "email_jd_text": "",
+  "expected_jd_text": "Paste the full, clean job description here. This is the gold standard the scraper should produce. Leave empty if you only want to test field extraction without content comparison."
+}

@@ -1,0 +1,25 @@
+Email subject "New match: Director of Software Engineering at Upstart"
+
+
+<format>
+Company Name
+Job Title
+Location
+Salary
+</format>
+
+Upstart
+Director of Software Engineering (Mobile Platform)
+Remote (within the US)
+Salary: $228-316K
+
+Paxos
+Senior Engineering Manager (Brokerage)
+Remote (within the US)
+Salary: $233-275K
+
+Qualified.com
+Agentic marketing platform
+Software Engineering Manager
+Remote (within the US)
+Salary: $170-230K

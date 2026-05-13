@@ -1,0 +1,20 @@
+FROM qwen3:32b
+
+# Deterministic scoring — no sampling variance
+PARAMETER temperature 0
+PARAMETER seed 42
+PARAMETER num_ctx 8192
+
+# Hardcode /no_think so the model never enters chain-of-thought mode.
+# The stock Qwen3 template uses {{- if $.Think }} to toggle this at runtime;
+# we remove that branch entirely so thinking is structurally impossible.
+TEMPLATE """{{- if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{- range $i, $_ := .Messages }}{{- $last := eq (len (slice $.Messages $i)) 1 }}{{- if eq .Role "user" }}<|im_start|>user
+{{ .Content }}<|im_end|>
+{{- if $last }}
+<|im_start|>assistant
+/no_think
+{{- end }}{{- else if eq .Role "assistant" }}<|im_start|>assistant
+{{ .Content }}<|im_end|>
+{{- end }}{{- end }}"""

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.jdbridge.unit.StoreGetJobTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-05-10T04:33:39" hostname="Richards-MacBook-M3-Max.local" time="0.022">
+  <properties/>
+  <testcase name="getJob preserves unicode in jd_json()" classname="com.jdbridge.unit.StoreGetJobTest" time="0.006"/>
+  <testcase name="getJob exposes deserialized artifacts, not raw column()" classname="com.jdbridge.unit.StoreGetJobTest" time="0.005"/>
+  <testcase name="getJob returns all fields after create and update()" classname="com.jdbridge.unit.StoreGetJobTest" time="0.004"/>
+  <testcase name="getJob returns fit_score of 0 not null()" classname="com.jdbridge.unit.StoreGetJobTest" time="0.004"/>
+  <testcase name="getJob returns null for unknown id()" classname="com.jdbridge.unit.StoreGetJobTest" time="0.003"/>
+  <system-out><![CDATA[2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-11371038672225725317/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-8106652633041899589/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-3555609741914444657/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-15369786181798046177/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-2145130014523206695/jobs.db
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta http-equiv="x-ua-compatible" content="IE=edge"/>
+<title>Test results - PipelineArtifactCopyTest</title>
+<link href="../css/base-style.css" rel="stylesheet" type="text/css"/>
+<link href="../css/style.css" rel="stylesheet" type="text/css"/>
+<script src="../js/report.js" type="text/javascript"></script>
+</head>
+<body>
+<div id="content">
+<h1>PipelineArtifactCopyTest</h1>
+<div class="breadcrumbs">
+<a href="../index.html">all</a> &gt; 
+<a href="../packages/com.jdbridge.unit.html">com.jdbridge.unit</a> &gt; PipelineArtifactCopyTest</div>
+<div id="summary">
+<table>
+<tr>
+<td>
+<div class="summaryGroup">
+<table>
+<tr>
+<td>
+<div class="infoBox" id="tests">
+<div class="counter">4</div>
+<p>tests</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="failures">
+<div class="counter">0</div>
+<p>failures</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="ignored">
+<div class="counter">0</div>
+<p>ignored</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="duration">
+<div class="counter">0.032s</div>
+<p>duration</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</td>
+<td>
+<div class="infoBox success" id="successRate">
+<div class="percent">100%</div>
+<p>successful</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div id="tabs">
+<ul class="tabLinks">
+<li>
+<a href="#tab0">Tests</a>
+</li>
+<li>
+<a href="#tab1">Standard output</a>
+</li>
+</ul>
+<div id="tab0" class="tab">
+<h2>Tests</h2>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Duration</th>
+<th>Result</th>
+</tr>
+</thead>
+<tr>
+<td class="success">absent cover_letter results in empty cover_letter_txt()</td>
+<td class="success">0.009s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">first PDF in output dir is copied to resume_pdf()</td>
+<td class="success">0.007s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">float fit_score 82_7 is stored as int 82()</td>
+<td class="success">0.009s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">when multiple PDFs exist the first one by name is chosen()</td>
+<td class="success">0.007s</td>
+<td class="success">passed</td>
+</tr>
+</table>
+</div>
+<div id="tab1" class="tab">
+<h2>Standard output</h2>
+<span class="code">
+<pre>2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7877816723060860581/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-003] summary: {&quot;output_path&quot;:&quot;/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit3988296914529612587/out3&quot;,&quot;fit_score&quot;:82.7,&quot;pipeline_action&quot;:&quot;tailor&quot;,&quot;error&quot;:&quot;&quot;}
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-003] No cover_letter.txt in output
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-003] pipeline complete → /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-7877816723060860581/jobs/art-003
+2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14640065253874452523/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-multi-001] summary: {&quot;output_path&quot;:&quot;/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit6854946899514002605/out_multiple&quot;,&quot;fit_score&quot;:82.0,&quot;pipeline_action&quot;:&quot;tailor&quot;,&quot;error&quot;:&quot;&quot;}
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-multi-001] pipeline complete → /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14640065253874452523/jobs/art-multi-001
+2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9766781862413296473/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-001] summary: {&quot;output_path&quot;:&quot;/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit6720535765317682346/out1&quot;,&quot;fit_score&quot;:82.0,&quot;pipeline_action&quot;:&quot;tailor&quot;,&quot;error&quot;:&quot;&quot;}
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-001] pipeline complete → /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-9766781862413296473/jobs/art-001
+2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16925625185749129851/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-002] summary: {&quot;output_path&quot;:&quot;/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit6868007842429090856/out2&quot;,&quot;fit_score&quot;:82.0,&quot;pipeline_action&quot;:&quot;tailor&quot;,&quot;error&quot;:&quot;&quot;}
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-002] No cover_letter.txt in output
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [art-002] pipeline complete → /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-16925625185749129851/jobs/art-002
+</pre>
+</span>
+</div>
+</div>
+<div id="footer">
+<p>
+<div>
+<label class="hidden" id="label-for-line-wrapping-toggle" for="line-wrapping-toggle">Wrap lines
+<input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
+</label>
+</div>Generated by 
+<a href="http://www.gradle.org">Gradle 8.5</a> at May 9, 2026, 9:33:40 PM</p>
+</div>
+</div>
+</body>
+</html>

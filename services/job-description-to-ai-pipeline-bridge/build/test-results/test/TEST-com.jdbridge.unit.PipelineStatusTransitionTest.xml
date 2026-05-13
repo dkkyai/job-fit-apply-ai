@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.jdbridge.unit.PipelineStatusTransitionTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-05-10T04:33:39" hostname="Richards-MacBook-M3-Max.local" time="0.007">
+  <properties/>
+  <testcase name="successful run transitions SCORING then TAILORING then COMPLETE()" classname="com.jdbridge.unit.PipelineStatusTransitionTest" time="0.007"/>
+  <system-out><![CDATA[2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14540286275445828926/jobs.db
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [trans-001] summary: {"output_path":"/var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/junit9662996108941728991/transition","fit_score":82.0,"pipeline_action":"tailor","error":""}
+2026-05-09 21:33:39 [INFO] com.jdbridge.Pipeline: [trans-001] pipeline complete → /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-14540286275445828926/jobs/trans-001
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

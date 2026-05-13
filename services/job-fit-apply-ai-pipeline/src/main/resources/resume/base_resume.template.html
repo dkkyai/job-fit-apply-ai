@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resume</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    @page {
+      margin: 0.5in;
+    }
+
+    body {
+      font-family: 'Roboto', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      font-size: 10pt;
+      color: #222;
+      line-height: 1.4;
+    }
+
+    h2 {
+      font-family: 'Roboto', Arial, sans-serif;
+      font-size: 18pt;
+      font-weight: 300;
+      border-bottom: 1px solid #999;
+      padding-bottom: 2px;
+      margin-top: 18px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin: 0 0 8px 0;
+    }
+
+    ul {
+      margin: 4px 0 10px 0;
+      padding-left: 22px;
+    }
+
+    ul li {
+      margin-bottom: 4px;
+      line-height: 1.45;
+    }
+
+    .resume-header {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .resume-name {
+      display: block;
+      font-family: 'Roboto', Arial, sans-serif;
+      font-size: 30pt;
+      font-weight: 300;
+      margin: 0 0 4px 0;
+      line-height: 1;
+    }
+
+    .resume-contact {
+      display: block;
+      font-size: 11pt;
+      margin-top: 4px;
+    }
+
+    .resume-contact a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .spacer {
+      margin: 0 10px;
+      color: #666;
+    }
+
+    .full-page-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 0;
+    }
+
+    .full-page-table td {
+      border: 0;
+      padding: 0;
+      vertical-align: bottom;
+    }
+
+    .left-align {
+      text-align: left;
+    }
+
+    .right-align {
+      text-align: right;
+      font-size: 10pt;
+      white-space: nowrap;
+      width: 160px;
+    }
+
+    .bold-text {
+      font-weight: 700;
+      font-size: 12pt;
+      color: #486948;
+    }
+
+    .page-break {
+      page-break-before: always;
+      break-before: page;
+      padding-top: 10px;
+    }
+  </style>
+</head>
+</head>
+<body>
+
+<div class="resume-header">
+  <span class="resume-name">Jane Doe</span>
+  <span class="resume-contact">
+    <a href="mailto:jane.doe@example.com">jane.doe@example.com</a>
+    <span class="spacer">|</span>
+    555-123-4567
+    <span class="spacer">|</span>
+    City, ST
+  </span>
+</div>
+
+<h2>Summary</h2>
+
+<p>One- to three-sentence professional summary describing the candidate's background, focus areas, and the kind of role they are targeting. The pipeline rewrites this per-job in the tailoring subgraph.</p>
+
+<h2>Experience</h2>
+
+<table class="full-page-table">
+  <tbody>
+    <tr>
+      <td class="left-align bold-text">Role Title</td>
+      <td class="right-align">YYYY-MM - YYYY-MM</td>
+    </tr>
+    <tr>
+      <td class="left-align bold-text">Company Name</td>
+      <td class="right-align">City, ST</td>
+    </tr>
+  </tbody>
+</table>
+
+<ul>
+  <li><strong>Bullet Category:</strong> One quantified accomplishment per bullet — what the candidate did, the scope, and the measurable impact.</li>
+  <li><strong>Bullet Category:</strong> Add or remove bullets per role to match the source candidate profile. Keep the <code>&lt;strong&gt;Category:&lt;/strong&gt;</code> prefix pattern.</li>
+</ul>
+
+<table class="full-page-table">
+  <tbody>
+    <tr>
+      <td class="left-align bold-text">Earlier Role Title</td>
+      <td class="right-align">YYYY-MM - YYYY-MM</td>
+    </tr>
+    <tr>
+      <td class="left-align bold-text">Earlier Company</td>
+      <td class="right-align">City, ST</td>
+    </tr>
+  </tbody>
+</table>
+
+<ul>
+  <li><strong>Bullet Category:</strong> Repeat one <code>&lt;table class="full-page-table"&gt;</code> + <code>&lt;ul&gt;</code> block per role.</li>
+</ul>
+
+<h2>Independent Projects</h2>
+
+<table class="full-page-table">
+  <tbody>
+    <tr>
+      <td class="left-align bold-text">Project Role</td>
+      <td class="right-align">YYYY-MM - YYYY-MM</td>
+    </tr>
+    <tr>
+      <td class="left-align bold-text">Project Name</td>
+      <td class="right-align">Public link or "self-hosted"</td>
+    </tr>
+  </tbody>
+</table>
+
+<ul>
+  <li><strong>Bullet Category:</strong> One quantified accomplishment per bullet — what was built, who uses it, and the measurable impact (stars, downloads, users, performance gains).</li>
+  <li><strong>Bullet Category:</strong> Repeat one <code>&lt;table class="full-page-table"&gt;</code> + <code>&lt;ul&gt;</code> block per project. Render this whole section only when the candidate profile's <code>projects</code> array is non-empty; otherwise omit it entirely.</li>
+</ul>
+
+<h2>Education</h2>
+
+<table class="full-page-table">
+  <tbody>
+    <tr>
+      <td class="left-align bold-text">Degree | Field of Study</td>
+      <td class="right-align">YYYY</td>
+    </tr>
+    <tr>
+      <td class="left-align bold-text">School Name</td>
+      <td class="right-align">City, ST</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="page-break">
+
+<h2>Skills</h2>
+
+<p><strong>Programming Languages:</strong> Language A · Language B · Language C</p>
+
+<p><strong>Frameworks & Tools:</strong> Tool A · Tool B · Tool C</p>
+
+<p><strong>Platforms & Infrastructure:</strong> Platform A · Platform B</p>
+
+<p><strong>Leadership & Process:</strong> Skill A · Skill B</p>
+
+<p><strong>Domain Expertise:</strong> Domain A · Domain B</p>
+
+</div>
+
+</body>
+</html>
