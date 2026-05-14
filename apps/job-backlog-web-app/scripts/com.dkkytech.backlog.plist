@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.dkkytech.backlog</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd ${BACKLOG_PROJECT_DIR:-$(pwd)} &amp;&amp; ./scripts/serve-backlog.sh</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>${BACKLOG_LOG_DIR:-./logs}/backlog.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>${BACKLOG_LOG_DIR:-./logs}/backlog.err.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>BACKLOG_PROJECT_DIR</key>
+        <string>/path/to/your/project</string>
+        <key>BACKLOG_LOG_DIR</key>
+        <string>/path/to/your/logs</string>
+        <key>BACKLOG_PORT</key>
+        <string>8081</string>
+        <key>BACKLOG_SERVE_BIN</key>
+        <string>/path/to/serve</string>
+        <key>BACKLOG_TAILSCALE_BIN</key>
+        <string>/usr/local/bin/tailscale</string>
+    </dict>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>
