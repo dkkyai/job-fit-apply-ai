@@ -28,6 +28,7 @@ overwritten the next time the skill executes.
 | `COVER_LETTER_MODEL`     | GenerateCoverLetterNode                                         | 0.4  | no    | no          | 300–600               |
 | `DRAFT_REPLY_MODEL`      | CreateDraftReplyNode                                            | 0.3  | no    | no          | 100–200               |
 | `RESUME_GEN_MODEL`       | GenerateResumeHtmlNode                                          | 0.0  | no    | no          | 1500–4000             |
+| `PROFILE_GEN_MODEL`      | GenerateCandidateProfileNode (defaults to RESUME_GEN_MODEL)     | 0.0  | yes   | no          | 200–800               |
 
 ### Per-node task descriptions
 
@@ -71,6 +72,12 @@ overwritten the next time the skill executes.
   output: a complete HTML document (~1500–4000 tokens). Strict structure-following
   is the key metric — the CSS block must not change. temp=0.0, jsonMode=false,
   thinking disabled. Long-context support helps (template + source can be 8k–20k tokens).
+
+- **PROFILE_GEN_MODEL**: Parses a candidate's resume (PDF, DOCX, HTML, MD) into a
+  structured `CandidateProfile` JSON. One-shot onboarding call (`--init-profile` only);
+  strict JSON at temp=0, no thinking. Strong instruction-following and JSON schema
+  adherence are the key metrics. Long-context support helps (multi-page resumes).
+  Defaults to RESUME_GEN_MODEL if not set.
 
 ### Backend routing rules (auto-updated from LlmClient.kt)
 
@@ -314,6 +321,7 @@ SKILLS_MODEL=
 COVER_LETTER_MODEL=
 DRAFT_REPLY_MODEL=
 RESUME_GEN_MODEL=
+PROFILE_GEN_MODEL=
 ```
 
 Local files also include:
