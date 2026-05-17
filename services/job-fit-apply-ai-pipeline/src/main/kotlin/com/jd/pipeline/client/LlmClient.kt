@@ -8,6 +8,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import kotlin.math.pow
 
 enum class LlmBackend { OLLAMA_LOCAL, OLLAMA_CLOUD, DEEPSEEK_CLOUD, MINIMAX_CLOUD }
 
@@ -151,24 +152,43 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
         timeoutSeconds: Long = config.timeoutSeconds
     ): String {
         val bodyStr = mapper.writeValueAsString(bodyMap)
-        val requestBuilder = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .header("Content-Type", "application/json")
-            .timeout(Duration.ofSeconds(timeoutSeconds))
-            .POST(HttpRequest.BodyPublishers.ofString(bodyStr))
 
-        headers.forEach { (k, v) -> requestBuilder.header(k, v) }
+        var lastException: RuntimeException? = null
+        for (attempt in 0..MAX_RETRIES) {
+            val requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .timeout(Duration.ofSeconds(timeoutSeconds))
+                .POST(HttpRequest.BodyPublishers.ofString(bodyStr))
 
-        val response = http.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString())
-        if (response.statusCode() >= 400) {
-            throw RuntimeException("LLM HTTP ${response.statusCode()} from $url: ${response.body().take(300)}")
+            headers.forEach { (k, v) -> requestBuilder.header(k, v) }
+
+            val response = http.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString())
+            if (response.statusCode() < 400) {
+                return response.body()
+            }
+            if (response.statusCode() == 429 && attempt < MAX_RETRIES) {
+                val retryAfter = response.headers().firstValue("Retry-After").orElse(null)?.toLongOrNull()
+                val delayMs = if (retryAfter != null && retryAfter > 0) {
+                    retryAfter * 1000
+                } else {
+                    (2.0.pow(attempt) * 1000).toLong()
+                }
+                System.err.println("[llm_client] HTTP 429 from $url -- retrying in ${delayMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})")
+                Thread.sleep(delayMs)
+                continue
+            }
+            lastException = RuntimeException("LLM HTTP ${response.statusCode()} from $url: ${response.body().take(300)}")
+            break
         }
-        return response.body()
+        throw lastException ?: RuntimeException("LLM HTTP request failed after retries")
     }
 
     // ── Factory helpers ───────────────────────────────────────────────────────
 
     companion object {
+        /** Maximum retry attempts on HTTP 429 rate-limit responses. */
+        private const val MAX_RETRIES = 3
 
         /**
          * Orchestration executor: deterministic extraction/analysis nodes (temp=0, thinking disabled).

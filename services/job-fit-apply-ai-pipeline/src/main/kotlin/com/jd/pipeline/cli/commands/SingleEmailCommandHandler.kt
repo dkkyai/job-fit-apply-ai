@@ -25,7 +25,12 @@ object SingleEmailCommandHandler {
             }
 
             val pipeline = JDPipeline()
-            val result = pipeline.invoke(emailState)
+            val result = try {
+                pipeline.invoke(emailState)
+            } catch (e: Exception) {
+                System.err.println("[pipeline] Unhandled exception: ${e.message}")
+                emailState.copy(error = e.message ?: "Pipeline invocation failed")
+            }
 
             CliOutput.printResult(result)
 

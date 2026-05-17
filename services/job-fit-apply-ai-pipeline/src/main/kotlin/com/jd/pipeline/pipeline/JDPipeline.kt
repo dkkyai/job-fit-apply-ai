@@ -94,6 +94,18 @@ class JDPipeline {
      * Run the pipeline on an input state.
      */
     fun invoke(input: JDState): JDState {
+        return try {
+            invokeInternal(input)
+        } catch (e: Exception) {
+            System.err.println("[pipeline] ERROR: ${e.message}")
+            input.copy(error = e.message ?: "Pipeline node failed")
+        }
+    }
+
+    /**
+     * Internal pipeline execution without top-level error handling.
+     */
+    private fun invokeInternal(input: JDState): JDState {
         // JSearch-sourced states already have full JD text — skip scan, scrape, and save.
         if (input.intake !is IntakeContext.Email) {
             return scoreAndRoute(input)
@@ -107,22 +119,14 @@ class JDPipeline {
             val digestJobs = current.digestJobs
             if (digestJobs.isNotEmpty()) {
                 var processed = 0
-                var failed = 0
                 val processedDigestJobs = mutableListOf<JDState>()
                 for (digestJob in digestJobs) {
                     if (!digestJob.isJobPosting) continue
-                    try {
-                        val result = processDigestJob(digestJob)
-                        processedDigestJobs.add(result)
-                        processed++
-                    } catch (e: Exception) {
-                        failed++
-                        val role = digestJob.roleTitle.ifBlank { "unknown" }
-                        val co = digestJob.company.ifBlank { "unknown" }
-                        System.err.println("[pipeline] ERROR processing digest job $role @ $co: ${e.message}")
-                    }
+                    val result = processDigestJob(digestJob)
+                    processedDigestJobs.add(result)
+                    processed++
                 }
-                println("[pipeline] Digest complete — $processed processed, $failed failed")
+                println("[pipeline] Digest complete — $processed processed")
                 return current.copy(digestJobs = processedDigestJobs)
             }
             return current

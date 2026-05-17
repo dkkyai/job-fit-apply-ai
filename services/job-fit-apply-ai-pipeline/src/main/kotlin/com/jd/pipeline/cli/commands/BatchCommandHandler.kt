@@ -40,7 +40,12 @@ object BatchCommandHandler {
                 processed++
                 println("\n[Processing $processed/${emails.size}] ${email.emailIntake?.subject?.take(60) ?: ""}")
 
-                val result = pipeline.invoke(email)
+                val result = try {
+                    pipeline.invoke(email)
+                } catch (e: Exception) {
+                    System.err.println("[pipeline] Unhandled exception for email ${email.emailIntake?.subject?.take(60) ?: ""}: ${e.message}")
+                    email.copy(error = e.message ?: "Pipeline invocation failed")
+                }
 
                 if (result.isJobPosting) {
                     if (result.isDigest || result.isInlineDigest) {
