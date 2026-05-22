@@ -13,7 +13,8 @@
   ],
 
   "host_permissions": [
-    "http://richards-macbook-m1-max.tail02d0e.ts.net:8765/*",
+    "http://*.ts.net:8765/*",
+    "http://localhost:8765/*",
     "<all_urls>"
   ],
 

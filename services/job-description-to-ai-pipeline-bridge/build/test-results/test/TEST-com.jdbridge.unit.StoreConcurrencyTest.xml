@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.jdbridge.unit.StoreConcurrencyTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-05-10T04:33:39" hostname="Richards-MacBook-M3-Max.local" time="0.147">
-  <properties/>
-  <testcase name="50 concurrent createJob calls all succeed()" classname="com.jdbridge.unit.StoreConcurrencyTest" time="0.147"/>
-  <system-out><![CDATA[2026-05-09 21:33:39 [INFO] com.jdbridge.Store: Store initialised at /var/folders/0r/rr97q87j4pn7ppz6_bq78s2c0000gn/T/jd-bridge-test-17668202762118054530/jobs.db
-]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

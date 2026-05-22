@@ -9,7 +9,7 @@
 set -e
 
 # Configuration
-BRIDGE_API_URL="${BRIDGE_API_URL:-http://richards-macbook-m1-max.tail02d0e.ts.net:8765}"
+BRIDGE_API_URL="${BRIDGE_API_URL:-http://localhost:8765}"
 API_ENDPOINT="${BRIDGE_API_URL}/api/jobs"
 POLL_ENDPOINT="${BRIDGE_API_URL}/api/jobs"
 

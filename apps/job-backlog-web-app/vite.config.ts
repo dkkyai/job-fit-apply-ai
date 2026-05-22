@@ -5,9 +5,9 @@ import path from "path";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
-    host: "100.111.66.8",
+    host: process.env.VITE_DEV_HOST ?? "localhost",
     port: 3001,
-    allowedHosts: [".tail02d0e.ts.net"],
+    allowedHosts: process.env.VITE_DEV_HOST ? [".ts.net"] : undefined,
     hmr: {
       overlay: false,
     },

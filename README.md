@@ -200,7 +200,7 @@ launchctl load ~/Library/LaunchAgents/ai.openclaw.jd-bridge.plist
 3. Set your bridge address in `config.js`:
 
 ```js
-export const BRIDGE_API_URL = 'http://your-machine.tail02d0e.ts.net:8765';
+export const BRIDGE_API_URL = 'http://your-machine.ts.net:8765'; // or http://localhost:8765
 ```
 
 ---

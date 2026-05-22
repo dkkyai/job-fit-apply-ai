@@ -1,2 +1,35 @@
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE
 /.idea
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment files (defense-in-depth — subprojects have their own rules too)
+.env
+.env.*
+!.env.example
+!.env.ci.example
+
+# Logs
+*.log
+logs/
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+build/
+
+# Coverage
+coverage/
+
+# Lockfiles (pick one per project)
+bun.lockb
