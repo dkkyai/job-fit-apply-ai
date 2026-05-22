@@ -1,0 +1,81 @@
+package com.jd.pipeline.nodes.tailor
+
+import com.jd.pipeline.models.CandidateProfile
+import com.jd.pipeline.models.CareerEntry
+
+/**
+ * Structured output of [ResumeTailoringSubgraph]. Wraps the original
+ * [CandidateProfile] (unchanged) plus the JD-aligned rewrites produced
+ * by the subgraph nodes.
+ *
+ * [GenerateResumeHtmlNode.renderFromProfile] consumes this as the
+ * authoritative source when generating `tailored_resume.html`.
+ *
+ * The five tailored fields take precedence over the corresponding fields
+ * in [base] at render time:
+ *   - [summary] overrides `base.background.summary`
+ *   - [careerHistory] overrides `base.background.careerHistory`
+ *   - [projects] overrides `base.projects`
+ *   - [skillGroups] overrides the six fixed `base.skills.*` buckets
+ *   - [jdMatchedSkills] is used to lead each skill group with the
+ *     JD-aligned items first
+ */
+data class TailoredProfile(
+    /** Original profile — used for identity, education, languages, etc. */
+    val base: CandidateProfile,
+
+    /** Rewritten background.summary, JD-aligned. */
+    val summary: String,
+
+    /**
+     * Career history with rewritten bullets per role. Same length and order
+     * as `base.background.careerHistory`; non-bullet fields (role, company,
+     * location, dates) are copied through unchanged.
+     */
+    val careerHistory: List<CareerEntry>,
+
+    /**
+     * Projects with rewritten bullets. Same length and order as `base.projects`.
+     * Empty when the candidate has no projects section.
+     */
+    val projects: List<CareerEntry>,
+
+    /**
+     * Skills grouped by JD-aligned category names (e.g. "Cloud",
+     * "Testing Frameworks", "Languages"). Replaces the six fixed
+     * `CandidateSkills` buckets at render time so the rendered resume's
+     * Skills section matches the role's terminology.
+     */
+    val skillGroups: Map<String, List<String>>,
+
+    /** Skills present on both the resume and the JD — rendered first within each group. */
+    val jdMatchedSkills: List<String> = emptyList()
+) {
+    companion object {
+        /**
+         * Convenience factory for the sparse-JD fallback: produces a
+         * [TailoredProfile] that mirrors [profile] verbatim, with no
+         * JD-driven rewrites. The six fixed skill buckets are mapped
+         * into a small canonical-named skill-groups map so the renderer
+         * still has structured input.
+         */
+        fun untailored(profile: CandidateProfile): TailoredProfile {
+            val sk = profile.skills
+            val groups = linkedMapOf<String, List<String>>().apply {
+                if (sk.primaryStack.isNotEmpty()) put("Primary Stack", sk.primaryStack)
+                if (sk.mobileAutomation.isNotEmpty()) put("Mobile Automation", sk.mobileAutomation)
+                if (sk.ciCdPlatforms.isNotEmpty()) put("CI/CD Platforms", sk.ciCdPlatforms)
+                if (sk.webApiAutomation.isNotEmpty()) put("Web & API Automation", sk.webApiAutomation)
+                if (sk.infrastructureObservability.isNotEmpty()) put("Infrastructure & Observability", sk.infrastructureObservability)
+                if (sk.leadershipAbilities.isNotEmpty()) put("Leadership", sk.leadershipAbilities)
+            }
+            return TailoredProfile(
+                base = profile,
+                summary = profile.background.summary,
+                careerHistory = profile.background.careerHistory,
+                projects = profile.projects,
+                skillGroups = groups
+            )
+        }
+    }
+}

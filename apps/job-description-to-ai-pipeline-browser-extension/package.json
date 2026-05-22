@@ -1,0 +1,35 @@
+{
+  "name": "jd-extension-page-to-pipeline",
+  "version": "1.0.0",
+  "description": "Chrome extension that extracts job descriptions and sends them to jd-bridge",
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "eslint": "^8.57.0",
+    "@eslint/js": "^9.0.0"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"],
+    "testMatch": ["**/tests/**/*.test.js"],
+    "collectCoverageFrom": [
+      "extractors/*.js",
+      "content_script.js",
+      "background.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 70,
+        "functions": 70,
+        "lines": 70,
+        "statements": 70
+      }
+    }
+  }
+}

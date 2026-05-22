@@ -1,0 +1,74 @@
+{
+  "identity": {
+    "name": "Jane Doe",
+    "first_name": "Jane",
+    "last_name": "Doe",
+    "email": "jane.doe@example.com",
+    "phone": "555-123-4567",
+    "location": "City, ST",
+    "linkedin_url": null,
+    "github_url": null,
+    "portfolio_url": null,
+    "website_url": null
+  },
+  "background": {
+    "target_title": "__TODO__: target role title (e.g. 'Staff SDET')",
+    "years_experience": 0,
+    "summary": "Two- or three-sentence professional summary written in the first person voice the candidate prefers; rewritten per-job by the tailoring subgraph.",
+    "education": [
+      {
+        "degree": "B.S. Field of Study",
+        "school": "School Name",
+        "location": "City, ST",
+        "start_date": "YYYY-MM",
+        "end_date": "YYYY-MM"
+      }
+    ],
+    "career_history": [
+      {
+        "role": "Role Title",
+        "company": "Company Name",
+        "location": "City, ST",
+        "start_date": "YYYY-MM",
+        "end_date": null,
+        "bullets": [
+          "Quantified accomplishment with scope and measurable impact.",
+          "Add or remove bullets per role to match the candidate's actual history."
+        ]
+      }
+    ],
+    "core_strengths": [
+      "Top differentiator 1",
+      "Top differentiator 2"
+    ],
+    "languages": ["Language A", "Language B"],
+    "domain_expertise": ["Domain A", "Domain B"]
+  },
+  "skills": {
+    "primary_stack": ["Language A", "Language B"],
+    "mobile_automation": [],
+    "ci_cd_platforms": [],
+    "web_api_automation": [],
+    "infrastructure_observability": [],
+    "leadership_abilities": []
+  },
+  "preferences": {
+    "willing_to_relocate": false,
+    "relocation_notes": "__TODO__: free text about relocation/work-arrangement preferences",
+    "visa_status": "__TODO__: e.g. 'US Citizen', 'H1B', 'GC'",
+    "visa_sponsorship_required": false,
+    "available_to_start_date": "__TODO__: e.g. 'Immediately' or 'YYYY-MM-DD'",
+    "notice_period_days": null,
+    "preferred_work_arrangement": "__TODO__: e.g. 'Remote', 'Hybrid Seattle', 'Onsite NYC only'",
+    "current_base_salary": null,
+    "target_total_compensation": "__TODO__: target TC (USD, integer-ish, e.g. 180000)",
+    "compensation_notes": "__TODO__: any context on comp expectations",
+    "open_to_equity_only_roles": false,
+    "willing_to_travel": false,
+    "travel_percentage": "__TODO__: e.g. '<= 10%'",
+    "open_to_contract_roles": false,
+    "contract_rate": "__TODO__: target contract rate (USD/hr) if open to contract",
+    "additional_notes": null
+  },
+  "projects": []
+}

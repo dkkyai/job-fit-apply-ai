@@ -1,0 +1,38 @@
+Email subject: "There are 5 new jobs matching your saved search for April 8: Lead QA Engineer USA"
+
+<format>
+Company Name
+Job Title
+Location
+Salary
+</format>
+
+
+Zoom
+Senior Software Engineer: AI-Driven QA & Automation Remote
+Seattle, WA | Hybrid
+USD 98,000 - 229,000 | Full-time
+
+
+Evotec WD
+Senior QA Disposition Manager — Redmond/Seattle (Flexible)
+Redmond, WA | Hybrid
+USD 112,000 - 155,000 | Full-time
+
+
+GovCIO
+Remote Lead UI/UX Design & Research Engineer
+Olympia, WA | Remote
+USD 170,000 - 190,000 | Full-time
+
+
+IonQ
+Senior Quantum Sales Architect – US Enterprise AI/HPC
+Bothell, WA | Hybrid
+USD 169,000 - 243,000 | Full-time
+
+
+Google
+Staff Software Engineer, Full Stack, Google Cloud
+Kirkland, WA | Hybrid
+USD 207,000 - 300,000 | Full-time

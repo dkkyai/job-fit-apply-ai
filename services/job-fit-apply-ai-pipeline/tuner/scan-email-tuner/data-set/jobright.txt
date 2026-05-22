@@ -1,0 +1,38 @@
+Email subject: "Elekta just posted a 84% match Senior Software Development Engineer role 43 minutes ago"
+
+<format>
+Company Name
+Job Title
+Location
+Salary
+</format>
+
+Elekta
+Senior Software Development Engineer
+$115K/yr - $130K/yr
+Remote
+
+AssistRx
+Senior Software Developer / Software Developer ( Full Stack, .NET Core )
+[no salary]
+Remote
+
+NVIDIA
+Senior Software Engineer, DL Compilers
+$184K/yr - $288K/yr
+Remote
+
+Axon
+Software Engineer II, Test Automation
+$141K/yr - $226K/yr
+Seattle, Washington, United States
+
+SAIC
+Senior Software Test Engineer
+$80K/yr - $120K/yr
+Remote
+
+Onebrief
+Software Development Engineer in Test
+$130K/yr - $190K/yr
+Remote

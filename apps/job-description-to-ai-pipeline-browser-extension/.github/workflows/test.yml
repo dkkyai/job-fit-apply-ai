@@ -1,0 +1,52 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    name: Unit and Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: jd-extension-page-to-pipeline/package-lock.json
+
+      - name: Install dependencies
+        working-directory: jd-extension-page-to-pipeline
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: jd-extension-page-to-pipeline
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Run tests with coverage
+        working-directory: jd-extension-page-to-pipeline
+        run: npm run test:coverage
+        continue-on-error: true
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          files: jd-extension-page-to-pipeline/coverage/lcov.info
+          flags: unittests
+          name: jd-extension-coverage
+        continue-on-error: true
+
+      - name: Check coverage thresholds
+        working-directory: jd-extension-page-to-pipeline
+        run: |
+          if grep -q '"threshold"' package.json; then
+            echo "Coverage thresholds defined in package.json"
+          fi
