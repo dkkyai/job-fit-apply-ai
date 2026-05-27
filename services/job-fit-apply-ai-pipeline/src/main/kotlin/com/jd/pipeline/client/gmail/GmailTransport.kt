@@ -45,6 +45,7 @@ class GmailTransport {
 
     fun fetchJdEmails(maxResults: Int, debug: Boolean): List<JDState> {
         val emails = mutableListOf<JDState>()
+        val processedLabelIds = getJdProcessedLabelIds()
 
         val result = service.users().messages()
             .list("me")
@@ -66,6 +67,13 @@ class GmailTransport {
             val headers = extractHeaders(msg.payload)
             val subject = headers["Subject"] ?: "(no subject)"
             val from = headers["From"] ?: ""
+
+            if (headers["In-Reply-To"] != null && msg.threadId != null) {
+                if (isThreadAlreadyProcessed(msg.threadId, processedLabelIds)) {
+                    println("[fetch] Skipping reply in already-processed thread: $subject")
+                    continue
+                }
+            }
 
             val parsed = parser.parse(msg)
             val body = parsed.plainText
@@ -93,6 +101,37 @@ class GmailTransport {
         }
 
         return emails
+    }
+
+    private fun getJdProcessedLabelIds(): Set<String> {
+        val processedLabelNames = setOf(
+            "JD_Processed",
+            "JD_Processed_Digest",
+            "JD_Not_Found",
+            "Recruiter_Response_Required"
+        )
+        val labelsResponse = service.users().labels().list("me").execute()
+        return labelsResponse.labels
+            ?.filter { it.name in processedLabelNames }
+            ?.map { it.id }
+            ?.toSet()
+            ?: emptySet()
+    }
+
+    private fun isThreadAlreadyProcessed(threadId: String, processedLabelIds: Set<String>): Boolean {
+        if (processedLabelIds.isEmpty()) return false
+        val thread = service.users().threads()
+            .get("me", threadId)
+            .setFormat("metadata")
+            .execute()
+        return thread.messages?.any { msg ->
+            msg.labelIds?.any { it in processedLabelIds } == true
+        } ?: false
+    }
+
+    fun findLabelId(name: String): String? {
+        val labelsResponse = service.users().labels().list("me").execute()
+        return labelsResponse.labels?.find { it.name == name }?.id
     }
 
     fun fetchEmailBySubject(subject: String, debug: Boolean): JDState? {

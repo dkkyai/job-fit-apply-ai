@@ -23,4 +23,5 @@ sealed class Command {
     object SignedIn : Command()
     object JSearch : Command()
     data class Batch(val maxEmails: Int, val debug: Boolean) : Command()
+    data class TokenFromUrl(val redirectUrl: String) : Command()
 }

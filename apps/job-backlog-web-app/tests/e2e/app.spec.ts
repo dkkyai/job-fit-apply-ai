@@ -13,8 +13,8 @@ test.describe("Job Tracker App", () => {
     // Wait for the page to load
     await page.waitForSelector("main");
     
-    // Check for some status chips
-    const statusChips = await page.locator("badge").count();
+    // Check for some status chips (Badge renders as div with rounded-full class)
+    const statusChips = await page.locator(".rounded-full").count();
     expect(statusChips).toBeGreaterThan(0);
   });
 
@@ -32,7 +32,7 @@ test.describe("Job Tracker App", () => {
     // Check for table headers
     const headers = ["ID", "Company", "Role", "Location", "Fit", "Status", "Date", "Job", "Artifact"];
     for (const header of headers) {
-      await expect(page.getByText(header)).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: header })).toBeVisible();
     }
   });
 

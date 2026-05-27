@@ -34,15 +34,14 @@ class LlmClientRetryTest {
             on { headers() } doReturn HttpResponse.BodyHandlers.ofString().javaClass.let {
                 // Minimal headers stub; Retry-After not present
                 java.net.http.HttpHeaders.of(
-                    emptyMap(),
-                    java.net.http.HttpHeaders::accept
-                )
+                    emptyMap()
+                ) { _, _ -> true }
             }
         }
         val response200 = mock<HttpResponse<String>> {
             on { statusCode() } doReturn 200
             on { body() } doReturn "{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}"
-            on { headers() } doReturn java.net.http.HttpHeaders.of(emptyMap(), java.net.http.HttpHeaders::accept)
+            on { headers() } doReturn java.net.http.HttpHeaders.of(emptyMap()) { _, _ -> true }
         }
 
         whenever(mockHttp.send(any<HttpRequest>(), any<HttpResponse.BodyHandler<String>>()))
@@ -90,7 +89,7 @@ class LlmClientRetryTest {
         val response429 = mock<HttpResponse<String>> {
             on { statusCode() } doReturn 429
             on { body() } doReturn "rate limited"
-            on { headers() } doReturn java.net.http.HttpHeaders.of(emptyMap(), java.net.http.HttpHeaders::accept)
+            on { headers() } doReturn java.net.http.HttpHeaders.of(emptyMap()) { _, _ -> true }
         }
 
         whenever(mockHttp.send(any<HttpRequest>(), any<HttpResponse.BodyHandler<String>>()))
@@ -144,14 +143,13 @@ class LlmClientRetryTest {
             on { statusCode() } doReturn 429
             on { body() } doReturn "rate limited"
             on { headers() } doReturn java.net.http.HttpHeaders.of(
-                mapOf("Retry-After" to listOf("2")),
-                java.net.http.HttpHeaders::accept
-            )
+                mapOf("Retry-After" to listOf("2"))
+            ) { _, _ -> true }
         }
         val response200 = mock<HttpResponse<String>> {
             on { statusCode() } doReturn 200
             on { body() } doReturn "{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}"
-            on { headers() } doReturn java.net.http.HttpHeaders.of(emptyMap(), java.net.http.HttpHeaders::accept)
+            on { headers() } doReturn java.net.http.HttpHeaders.of(emptyMap()) { _, _ -> true }
         }
 
         whenever(mockHttp.send(any<HttpRequest>(), any<HttpResponse.BodyHandler<String>>()))

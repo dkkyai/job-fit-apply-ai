@@ -12,6 +12,10 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
   },
+  preview: {
+    host: process.env.VITE_DEV_HOST ?? "localhost",
+    port: 8080,
+  },
   plugins: [react()],
   resolve: {
     alias: {
