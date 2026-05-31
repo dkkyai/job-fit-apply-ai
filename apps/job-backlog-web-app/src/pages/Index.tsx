@@ -353,7 +353,7 @@ const Index = () => {
                         </TableCell>
                         <TableCell>
                           {track.artifact_url && (
-                            <a href={`${track.artifact_url}metadata.md`} target="_blank" rel="noopener noreferrer"
+                            <a href={`${track.artifact_url}report.md`} target="_blank" rel="noopener noreferrer"
                               className="text-muted-foreground hover:text-foreground transition-colors">
                               <ExternalLink className="h-4 w-4" />
                             </a>

@@ -31,7 +31,7 @@ object MetadataUtils {
 
         val generatedAt = isoFormatter.format(Instant.now())
         val artifactBase = state.artifactUrl.trimEnd('/')
-        val metadataUrl = if (artifactBase.isNotEmpty()) "$artifactBase/metadata.md" else ""
+        val metadataUrl = if (artifactBase.isNotEmpty()) "$artifactBase/report.md" else ""
 
         val outputDirUrl = if (artifactBase.isNotEmpty()) "$artifactBase/" else null
 
@@ -235,8 +235,8 @@ object MetadataUtils {
             append("_Processed: $generatedAt · Pipeline action: ${state.pipelineAction}_")
         }
 
-        Files.writeString(outputDir.resolve("metadata.md"), md)
-        println("[metadata] Wrote metadata.md to $outputDir")
+        Files.writeString(outputDir.resolve("report.md"), md)
+        println("[metadata] Wrote report.md to $outputDir")
     }
 
     private fun linkOrNA(url: String?, label: String = "URL"): String {
