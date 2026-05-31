@@ -88,7 +88,7 @@ class MetadataUtilsTest {
     }
 
     @Test
-    @DisplayName("writeMetadata should create metadata.md with all sections")
+    @DisplayName("writeMetadata should create report.md with all sections")
     fun testWriteMetadataCreatesMarkdownFile(@TempDir tempDir: Path) {
         // Given
         val state = TestJDStateFactory.createHighScoredState().copy(
@@ -110,8 +110,8 @@ class MetadataUtilsTest {
         MetadataUtils.writeMetadata(state)
 
         // Then
-        val mdFile = tempDir.resolve("metadata.md")
-        assertTrue(Files.exists(mdFile), "metadata.md should exist")
+        val mdFile = tempDir.resolve("report.md")
+        assertTrue(Files.exists(mdFile), "report.md should exist")
         val content = Files.readString(mdFile)
         assertTrue(content.contains("# QA Engineer — MarkdownTest Co"))
         assertTrue(content.contains("## Job Details"))
@@ -159,7 +159,7 @@ class MetadataUtilsTest {
         MetadataUtils.writeMetadata(state)
 
         // Then
-        val mdFile = tempDir.resolve("metadata.md")
+        val mdFile = tempDir.resolve("report.md")
         val content = Files.readString(mdFile)
         assertTrue(content.contains("## Error"))
         assertTrue(content.contains("Test error message"))
@@ -190,7 +190,7 @@ class MetadataUtilsTest {
         MetadataUtils.writeMetadata(state)
 
         // Then
-        val mdFile = tempDir.resolve("metadata.md")
+        val mdFile = tempDir.resolve("report.md")
         val content = Files.readString(mdFile)
         assertTrue(content.contains("## Email Context"))
         assertTrue(content.contains("recruiter@emailco.com"))
@@ -213,7 +213,7 @@ class MetadataUtilsTest {
 
         // Then: files should be created without errors
         assertTrue(Files.exists(tempDir.resolve("metadata.json")))
-        assertTrue(Files.exists(tempDir.resolve("metadata.md")))
+        assertTrue(Files.exists(tempDir.resolve("report.md")))
     }
 
     @Test
@@ -255,7 +255,7 @@ class MetadataUtilsTest {
         MetadataUtils.writeMetadata(state)
 
         // Then
-        val mdFile = tempDir.resolve("metadata.md")
+        val mdFile = tempDir.resolve("report.md")
         val content = Files.readString(mdFile)
         assertTrue(content.contains("## Tech Stack"))
         assertTrue(content.contains("`Kotlin`"))
@@ -281,7 +281,7 @@ class MetadataUtilsTest {
         MetadataUtils.writeMetadata(state)
 
         // Then
-        val mdFile = tempDir.resolve("metadata.md")
+        val mdFile = tempDir.resolve("report.md")
         val content = Files.readString(mdFile)
         // "unknown" should be displayed as "—" (dash)
         assertTrue(content.contains("—"))

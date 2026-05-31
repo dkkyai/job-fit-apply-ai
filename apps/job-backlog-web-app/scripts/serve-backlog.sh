@@ -69,4 +69,4 @@ log "Build completed successfully"
 log "Starting serve on $TAILSCALE_IP:$PORT..."
 
 # Use exec to replace the shell process
-exec "$SERVE_BIN" -s dist -l "${TAILSCALE_IP}:${PORT}" >> "$OUT_LOG" 2>> "$ERR_LOG"
+exec "$SERVE_BIN" -s dist -l "tcp:${TAILSCALE_IP}:${PORT}" >> "$OUT_LOG" 2>> "$ERR_LOG"
