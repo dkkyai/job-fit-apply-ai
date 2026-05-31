@@ -109,6 +109,22 @@ object SupabaseClient {
         return if (node.isArray) node.toList() else emptyList()
     }
 
+    /**
+     * DELETE /rest/v1/{table}?{filterCol}=eq.{filterVal} — delete matching rows.
+     */
+    fun delete(table: String, filterCol: String, filterVal: String) {
+        val encoded = URLEncoder.encode(filterVal, "UTF-8")
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create("${Config.SUPABASE_PROJECT_URL}/rest/v1/$table?$filterCol=eq.$encoded"))
+            .headers(*authHeaders())
+            .header("Prefer", "return=minimal")
+            .DELETE()
+            .build()
+
+        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
+        checkStatus(response, "DELETE $table")
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun authHeaders(): Array<String> = arrayOf(

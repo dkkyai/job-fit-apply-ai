@@ -65,5 +65,6 @@ object TestCommandHandler {
         val skipped = if (!result.isDuplicate && result.pipelineAction != PipelineAction.TAILOR) 1 else 0
         CliOutput.printBatchSummary(1, if (result.isJobPosting) 1 else 0, tailored, skipped, duplicate, batchStartTime, scoredJobs)
         CliOutput.printScrapeBatchWarnings(pipeline)
+        TestCleanup.removeTestRecord("test-001")
     }
 }
