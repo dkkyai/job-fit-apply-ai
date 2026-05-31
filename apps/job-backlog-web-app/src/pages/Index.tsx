@@ -251,7 +251,7 @@ const Index = () => {
                       <span className="flex items-center">Date<SortIcon col="created_at" /></span>
                     </TableHead>
                     <TableHead className="w-[50px]">Job</TableHead>
-                    <TableHead className="w-[50px]">Artifact</TableHead>
+                    <TableHead className="w-[50px]">Report</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
