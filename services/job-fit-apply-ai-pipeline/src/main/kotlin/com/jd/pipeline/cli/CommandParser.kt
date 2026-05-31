@@ -28,6 +28,7 @@ object CommandParser {
         var resumeGenPath: String? = null
         var initProfilePath: String? = null
         var jsearch = false
+        var tokenFromUrl: String? = null
 
         var i = 0
         while (i < args.size) {
@@ -120,11 +121,18 @@ object CommandParser {
                     }
                 }
                 "--jsearch" -> jsearch = true
+                "--token-from-url" -> {
+                    if (i + 1 < args.size) {
+                        tokenFromUrl = args[i + 1]
+                        i++
+                    }
+                }
             }
             i++
         }
 
         return when {
+            tokenFromUrl != null -> Command.TokenFromUrl(tokenFromUrl)
             test -> Command.Test
             testResume -> Command.TestResume
             testCoverLetter -> Command.TestCoverLetter

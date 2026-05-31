@@ -67,14 +67,15 @@ object GmailAuth {
             println("[GmailAuth] Launching browser for OAuth — complete the consent screen...")
             var capturedCode: String? = null
 
+            val tempDir = Files.createTempDirectory("gmail-oauth-")
+
             Playwright.create().use { playwright ->
                 val launchOptions = BrowserType.LaunchPersistentContextOptions()
                     .setExecutablePath(Paths.get(Config.CHROME_EXECUTABLE_PATH))
                     .setHeadless(false)
-                    .setArgs(listOf("--profile-directory=${Config.CHROME_PROFILE_DIRECTORY}"))
 
                 playwright.chromium().launchPersistentContext(
-                    Paths.get(Config.CHROME_USER_DATA_DIR), launchOptions
+                    tempDir, launchOptions
                 ).use { context ->
                     context.route("http://localhost/**") { route ->
                         val url = route.request().url()

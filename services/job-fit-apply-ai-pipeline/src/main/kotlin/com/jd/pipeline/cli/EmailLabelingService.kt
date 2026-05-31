@@ -53,6 +53,7 @@ class EmailLabelingServiceImpl : EmailLabelingService {
                 client.labelEmail(emailId, labelId)
                 client.starEmail(emailId)
                 client.markUnread(emailId)
+                clearErrorLabel(emailId, client)
                 LabelingResult(
                     labelApplied = "Recruiter_Response_Required",
                     wasArchived = false,
@@ -65,6 +66,7 @@ class EmailLabelingServiceImpl : EmailLabelingService {
                 val labelId = client.getOrCreateLabel("JD_Not_Found")
                 client.labelEmail(emailId, labelId)
                 client.markUnread(emailId)
+                clearErrorLabel(emailId, client)
                 LabelingResult(
                     labelApplied = "JD_Not_Found",
                     wasArchived = false,
@@ -77,6 +79,7 @@ class EmailLabelingServiceImpl : EmailLabelingService {
                 val labelId = client.getOrCreateLabel("JD_Processed_Digest")
                 client.labelEmail(emailId, labelId)
                 client.archiveEmail(emailId)
+                clearErrorLabel(emailId, client)
                 LabelingResult(
                     labelApplied = "JD_Processed_Digest",
                     wasArchived = true,
@@ -89,6 +92,7 @@ class EmailLabelingServiceImpl : EmailLabelingService {
                 val labelId = client.getOrCreateLabel("JD_Processed")
                 client.labelEmail(emailId, labelId)
                 client.archiveEmail(emailId)
+                clearErrorLabel(emailId, client)
                 LabelingResult(
                     labelApplied = "JD_Processed",
                     wasArchived = true,
@@ -98,5 +102,10 @@ class EmailLabelingServiceImpl : EmailLabelingService {
                 )
             }
         }
+    }
+
+    private fun clearErrorLabel(emailId: String, client: GmailTransport) {
+        val errorLabelId = client.findLabelId("JD_Error") ?: return
+        client.applyLabels(emailId, addLabels = emptyList(), removeLabels = listOf(errorLabelId))
     }
 }
