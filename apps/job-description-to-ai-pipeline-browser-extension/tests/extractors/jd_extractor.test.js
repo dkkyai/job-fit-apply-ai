@@ -278,19 +278,314 @@ describe('JD Extractor', () => {
     });
   });
 
+  // ── Additional site extractors ──────────────────────────────────────────────
+
+  describe('Workday extractor', () => {
+    const extractor = EXTRACTORS.workday;
+
+    it('extracts title, company, location and body via automation-id selectors', () => {
+      const doc = createDoc(`
+        <div>
+          <h2 data-automation-id="jobPostingHeader">Senior QA Engineer</h2>
+          <span data-automation-id="company-name">WorkdayCo</span>
+          <span data-automation-id="locations">Remote</span>
+          <div data-automation-id="job-posting-details">
+            We are looking for a Senior QA Engineer to join our growing team and help
+            us build world-class automated testing frameworks. You will design test
+            strategies and mentor junior engineers across the organisation.
+          </div>
+        </div>
+      `);
+      const result = extractor(doc);
+      expect(result.title).toBe('Senior QA Engineer');
+      expect(result.company).toBe('WorkdayCo');
+      expect(result.location).toBe('Remote');
+      expect(result.body).toContain('QA Engineer');
+    });
+
+    it('returns nulls when selectors find nothing', () => {
+      const doc = createDoc('<div></div>');
+      const result = extractor(doc);
+      expect(result.title).toBeNull();
+      expect(result.body).toBeNull();
+    });
+  });
+
+  describe('Glassdoor extractor', () => {
+    const extractor = EXTRACTORS.glassdoor;
+
+    it('extracts fields via data-test attributes', () => {
+      const doc = createDoc(`
+        <div>
+          <h1 data-test="job-title">Principal Engineer</h1>
+          <span data-test="employer-name">GlassCo</span>
+          <span data-test="location">Austin, TX</span>
+          <div data-test="description">
+            We are hiring a Principal Engineer who will drive architectural decisions
+            and lead teams in building scalable, reliable backend systems. You will
+            collaborate with product and design to ship high-quality features.
+          </div>
+        </div>
+      `);
+      const result = extractor(doc);
+      expect(result.title).toBe('Principal Engineer');
+      expect(result.company).toBe('GlassCo');
+      expect(result.location).toBe('Austin, TX');
+      expect(result.body).toContain('Principal Engineer');
+    });
+  });
+
+  describe('Ashby extractor', () => {
+    const extractor = EXTRACTORS.ashby;
+
+    it('extracts fields from Ashby job pages', () => {
+      const doc = createDoc(`
+        <div>
+          <h1 class="ashby-job-posting-heading">Staff Engineer</h1>
+          <span class="ashby-job-posting-company-name">Ashby Inc</span>
+          <div class="ashby-job-posting-description">
+            Join our engineering team as a Staff Engineer and take ownership of
+            critical infrastructure components. You will mentor senior engineers
+            and drive cross-team technical initiatives that impact the entire platform.
+          </div>
+        </div>
+      `);
+      const result = extractor(doc);
+      expect(result.title).toBe('Staff Engineer');
+      expect(result.company).toBe('Ashby Inc');
+      expect(result.body).toContain('Staff Engineer');
+    });
+  });
+
+  describe('Workable extractor', () => {
+    const extractor = EXTRACTORS.workable;
+
+    it('extracts fields from Workable job pages', () => {
+      const doc = createDoc(`
+        <div>
+          <h1 data-ui="job-title">QA Automation Lead</h1>
+          <span data-ui="company-name">WorkableCo</span>
+          <span data-ui="job-location">New York, NY</span>
+          <div data-ui="job-description">
+            We are looking for an experienced QA Automation Lead to guide our testing
+            strategy. You will build frameworks, mentor engineers, and drive quality
+            across multiple product lines in an agile environment.
+          </div>
+        </div>
+      `);
+      const result = extractor(doc);
+      expect(result.title).toBe('QA Automation Lead');
+      expect(result.company).toBe('WorkableCo');
+      expect(result.location).toBe('New York, NY');
+      expect(result.body).toContain('QA Automation Lead');
+    });
+  });
+
+  describe('SmartRecruiters extractor', () => {
+    const extractor = EXTRACTORS.smartrecruiters;
+
+    it('extracts fields from SmartRecruiters job pages', () => {
+      const doc = createDoc(`
+        <div>
+          <h1 data-ui="job-title">Test Architect</h1>
+          <span data-ui="company-name">SmartCo</span>
+          <span data-ui="job-location">Chicago, IL</span>
+          <div data-ui="job-description">
+            As a Test Architect you will define the testing vision for our platform,
+            design automation frameworks, and ensure test quality standards are met
+            across all engineering teams in our distributed organisation.
+          </div>
+        </div>
+      `);
+      const result = extractor(doc);
+      expect(result.title).toBe('Test Architect');
+      expect(result.company).toBe('SmartCo');
+      expect(result.body).toContain('Test Architect');
+    });
+  });
+
+  describe('iCIMS extractor', () => {
+    const extractor = EXTRACTORS.icims;
+
+    it('extracts fields from iCIMS job pages (company is always null)', () => {
+      const doc = createDoc(`
+        <div class="iCIMS_InfoMsg_Job">
+          <h1 class="iCIMS_Header">SDET II</h1>
+          <span class="field-location">Denver, CO</span>
+        </div>
+        <div class="iCIMS_JobContent">
+          This position is for an SDET II who will design and implement automated
+          test suites for our mobile and web applications, collaborate closely with
+          developers, and champion quality practices throughout the engineering org.
+        </div>
+      `);
+      const result = extractor(doc);
+      expect(result.title).toBe('SDET II');
+      expect(result.company).toBeNull();
+      expect(result.location).toBe('Denver, CO');
+      expect(result.body).toContain('SDET II');
+    });
+  });
+
+  describe('BambooHR extractor', () => {
+    const extractor = EXTRACTORS.bamboohr;
+
+    it('extracts fields from BambooHR job pages (company is always null)', () => {
+      const doc = createDoc(`
+        <div>
+          <h1 class="BambooHR-ATS-Title">Mobile QA Engineer</h1>
+          <span class="BambooHR-ATS-Location">Portland, OR</span>
+          <div id="BambooHR-ATS">
+            We are hiring a Mobile QA Engineer to join our growing team. You will
+            test iOS and Android applications, build automation frameworks using
+            Appium, and collaborate with product teams to deliver high-quality apps.
+          </div>
+        </div>
+      `);
+      const result = extractor(doc);
+      expect(result.title).toBe('Mobile QA Engineer');
+      expect(result.company).toBeNull();
+      expect(result.location).toBe('Portland, OR');
+      expect(result.body).toContain('Mobile QA Engineer');
+    });
+  });
+
+  describe('JazzHR extractor', () => {
+    const extractor = EXTRACTORS.jazzhr;
+
+    it('extracts fields from JazzHR job pages', () => {
+      const doc = createDoc(`
+        <div>
+          <h1 class="position-title">QA Engineer II</h1>
+          <span class="company-name">JazzCo</span>
+          <span class="location">Remote</span>
+          <div class="position-description">
+            We are looking for a QA Engineer II to join our product team. You will
+            own end-to-end testing for multiple services, write automation tests,
+            and participate in code reviews to ensure maintainable quality code.
+          </div>
+        </div>
+      `);
+      const result = extractor(doc);
+      expect(result.title).toBe('QA Engineer II');
+      expect(result.company).toBe('JazzCo');
+      expect(result.location).toBe('Remote');
+      expect(result.body).toContain('QA Engineer II');
+    });
+  });
+
+  describe('Generic extractor — candidate sorting', () => {
+    it('picks the longest candidate element when multiple qualify', () => {
+      const shortText = 'A'.repeat(260); // > 250 chars, but shorter
+      const longText  = 'B'.repeat(500); // longest
+      const doc = createDoc(`
+        <main>
+          <article id="short">${shortText}</article>
+          <article id="long">${longText}</article>
+        </main>
+      `);
+      const result = EXTRACTORS.generic(doc);
+      // body should come from the longest qualifying element
+      expect(result.body).toContain('B');
+      expect(result.body.length).toBeGreaterThanOrEqual(500);
+    });
+  });
+
+  // ── window.__ocExtractJD ──────────────────────────────────────────────────────
+  // These tests mutate document.body.innerHTML (same jsdom instance as the test
+  // environment) so that innerText is patched via the global Element.prototype
+  // at the top of this file, keeping DOM queries working correctly.
+
   describe('__ocExtractJD integration', () => {
+    let savedBodyHTML;
+    let savedTitle;
+
     beforeEach(() => {
-      // Set up window environment for extractor
-      global.window = {
-        location: { href: 'https://www.linkedin.com/jobs/view/123', hostname: 'www.linkedin.com' },
-        document: createDoc('<html><body></body></html>'),
-      };
+      require(extractorPath); // ensure function is registered
+      savedBodyHTML = document.body.innerHTML;
+      savedTitle = document.title;
+    });
+
+    afterEach(() => {
+      document.body.innerHTML = savedBodyHTML;
+      document.title = savedTitle;
     });
 
     it('exposes __ocExtractJD as a global function', () => {
-      // Load the extractor which should define window.__ocExtractJD
-      require(extractorPath);
       expect(typeof window.__ocExtractJD).toBe('function');
+    });
+
+    it('returns structured JD payload for a recognised site (greenhouse)', () => {
+      // location is already https://www.linkedin.com/... from setup.js;
+      // Override to greenhouse so pickExtractor selects the right extractor.
+      delete global.location;
+      global.location = new URL('https://boards.greenhouse.io/acme/jobs/123');
+
+      document.body.innerHTML = `
+        <div id="app_body">
+          <h1 class="app-title h1">Senior Test Engineer</h1>
+          <span class="company-name">GreenhouseCo</span>
+          <span class="location">Seattle, WA</span>
+          <div id="content">
+            We are hiring a Senior Test Engineer who will lead quality efforts across
+            three product teams. You will design test strategies, build automation
+            frameworks using Playwright and Cypress, mentor junior engineers, and
+            champion a culture of quality throughout the engineering organisation.
+          </div>
+        </div>
+      `;
+
+      const result = window.__ocExtractJD();
+
+      expect(result.extractorUsed).toBe('greenhouse');
+      expect(result.title).toBe('Senior Test Engineer');
+      expect(result.company).toBe('GreenhouseCo');
+      expect(result.location).toBe('Seattle, WA');
+      expect(result.body).toContain('Senior Test Engineer');
+      expect(typeof result.wordCount).toBe('number');
+      expect(result.wordCount).toBeGreaterThan(0);
+      expect(result.url).toContain('greenhouse.io');
+      expect(result.site).toBe('boards.greenhouse.io');
+      expect(result.extractedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+      // Restore location
+      delete global.location;
+      global.location = new URL('https://www.linkedin.com/jobs/view/123');
+    });
+
+    it('falls back to document.title when extractor returns no title', () => {
+      delete global.location;
+      global.location = new URL('https://example.com/job/42');
+      document.title = 'Fallback Title From Document';
+
+      document.body.innerHTML = `
+        <main>
+          ${'This is a generic job description with enough text to pass minimum. '.repeat(6)}
+        </main>
+      `;
+
+      const result = window.__ocExtractJD();
+      expect(result.title).toBe('Fallback Title From Document');
+
+      delete global.location;
+      global.location = new URL('https://www.linkedin.com/jobs/view/123');
+    });
+
+    it('throws when extracted body is shorter than 150 chars', () => {
+      delete global.location;
+      global.location = new URL('https://boards.greenhouse.io/acme/jobs/99');
+
+      document.body.innerHTML = `
+        <div id="app_body">
+          <h1>Short Role</h1>
+          <div id="content">Too short</div>
+        </div>
+      `;
+
+      expect(() => window.__ocExtractJD()).toThrow(/too little text/i);
+
+      delete global.location;
+      global.location = new URL('https://www.linkedin.com/jobs/view/123');
     });
   });
 });
