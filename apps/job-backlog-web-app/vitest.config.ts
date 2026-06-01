@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import AllureReporter from "allure-vitest/reporter";
 
 export default defineConfig({
   plugins: [react()],
@@ -9,6 +10,10 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    reporters: [
+      "default",
+      new AllureReporter({ resultsDir: "allure-results" }),
+    ],
     coverage: {
       provider: "v8",
       reporter: ["lcov", "text", "html"],

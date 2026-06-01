@@ -5,6 +5,7 @@ plugins {
     kotlin("plugin.serialization") version "1.9.25"
     application
     id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("io.qameta.allure") version "2.11.2"
 }
 
 group = "com.jdbridge"
@@ -41,6 +42,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:1.9.25")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
+    testImplementation("io.qameta.allure:allure-junit5:2.27.0")
 }
 
 application {
@@ -49,6 +51,11 @@ application {
 
 kotlin {
     jvmToolchain(21)
+}
+
+allure {
+    version.set("2.27.0")
+    useJUnit5 { adapterVersion.set("2.27.0") }
 }
 
 tasks.test {
