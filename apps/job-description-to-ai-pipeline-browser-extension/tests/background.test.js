@@ -385,6 +385,18 @@ describe('triggerExtraction — bridge submission', () => {
 
 // ── pollForCompletion ──────────────────────────────────────────────────────────
 
+// Helper: flush all pending microtasks and advance fake timers past one poll tick.
+// jest.advanceTimersByTimeAsync (Jest 29+) interleaves microtask flushing with
+// timer advancement, so we don't need manual Promise.resolve() juggling.
+async function driveOnePollTick() {
+  // Flush the async await chain inside triggerExtraction
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  // Advance past POLL_INTERVAL_MS (5 000 ms) so the tick callback fires
+  await jest.advanceTimersByTimeAsync(5100);
+  // Flush fetch promise and storage callbacks
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+}
+
 describe('pollForCompletion', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -426,21 +438,14 @@ describe('pollForCompletion', () => {
       });
 
     listener({ type: 'POPUP_TRIGGER' }, {}, jest.fn());
-
-    // Let microtasks settle, then advance timers for the poll tick
-    await Promise.resolve();
-    jest.runAllTimers();
-    await Promise.resolve();
-    jest.runAllTimers();
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await driveOnePollTick();
 
     const setCalls = chrome.storage.local.set.mock.calls.map(c => c[0]);
     const completedCall = setCalls.find(c => c[stateKey(8)]?.status === 'complete');
-    if (completedCall) {
-      expect(completedCall[stateKey(8)].artifacts).toEqual({ resume_pdf: 'https://cdn/resume.pdf' });
-      expect(chrome.notifications.create).toHaveBeenCalled();
-    }
-  });
+    expect(completedCall).toBeDefined();
+    expect(completedCall[stateKey(8)].artifacts).toEqual({ resume_pdf: 'https://cdn/resume.pdf' });
+    expect(chrome.notifications.create).toHaveBeenCalled();
+  }, 15_000);
 
   it('sets ERROR state when bridge returns error status', async () => {
     loadBackground();
@@ -462,17 +467,11 @@ describe('pollForCompletion', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 'error', error: 'Pipeline failed' }) });
 
     listener({ type: 'POPUP_TRIGGER' }, {}, jest.fn());
-
-    await Promise.resolve();
-    jest.runAllTimers();
-    await Promise.resolve();
-    jest.runAllTimers();
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await driveOnePollTick();
 
     const setCalls = chrome.storage.local.set.mock.calls.map(c => c[0]);
     const errorCall = setCalls.find(c => c[stateKey(9)]?.status === 'error');
-    if (errorCall) {
-      expect(errorCall[stateKey(9)].error).toBe('Pipeline failed');
-    }
-  });
+    expect(errorCall).toBeDefined();
+    expect(errorCall[stateKey(9)].error).toBe('Pipeline failed');
+  }, 15_000);
 });
