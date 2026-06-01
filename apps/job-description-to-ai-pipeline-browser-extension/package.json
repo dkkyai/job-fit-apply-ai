@@ -12,12 +12,17 @@
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "eslint": "^8.57.0",
-    "@eslint/js": "^9.0.0"
+    "@eslint/js": "^9.0.0",
+    "allure-jest": "^3.0.0"
   },
   "jest": {
     "testEnvironment": "jsdom",
     "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"],
     "testMatch": ["**/tests/**/*.test.js"],
+    "reporters": [
+      "default",
+      ["allure-jest", { "resultsDir": "allure-results" }]
+    ],
     "collectCoverageFrom": [
       "extractors/*.js",
       "content_script.js",
