@@ -1,31 +1,33 @@
 package com.jdbridge.unit
 
-import com.jdbridge.resolveHost
+import com.jdbridge.resolveTailscaleHost
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TailscaleIpResolutionTest {
 
     @Test
-    fun `resolveHost returns same IP when not tailscale sentinel`() {
-        assertEquals("192.168.1.1", resolveHost("192.168.1.1"))
-        assertEquals("0.0.0.0", resolveHost("0.0.0.0"))
-        assertEquals("localhost", resolveHost("localhost"))
+    fun `resolveTailscaleHost returns same value when not tailscale sentinel`() {
+        assertEquals("192.168.1.1", resolveTailscaleHost("192.168.1.1"))
+        assertEquals("127.0.0.1",   resolveTailscaleHost("127.0.0.1"))
+        assertEquals("localhost",    resolveTailscaleHost("localhost"))
     }
 
     @Test
-    fun `resolveHost returns valid IP when tailscale is available`() {
-        // When tailscale is installed and running, it returns a valid 100.x.x.x IP
-        val result = resolveHost("__tailscale__")
-        assertTrue(result == "127.0.0.1" || result.matches(Regex("""100\.\d+\.\d+\.\d+""")),
-            "Expected either 127.0.0.1 fallback or valid Tailscale IP, got: $result")
+    fun `resolveTailscaleHost returns null for blank override`() {
+        assertNull(resolveTailscaleHost(""))
     }
 
     @Test
-    fun `resolveHost returns 127_0_0_1 when __tailscale__ sentinel used and tailscale not available`() {
-        // This tests the fallback behavior - we just verify it returns something sensible
-        val result = resolveHost("__tailscale__")
-        assertTrue(result.isNotBlank(), "resolveHost should always return a non-blank value")
+    fun `resolveTailscaleHost returns valid Tailscale IP or null when sentinel used`() {
+        val result = resolveTailscaleHost("__tailscale__")
+        if (result != null) {
+            assertTrue(result.matches(Regex("""100\.\d+\.\d+\.\d+""")),
+                "Expected a valid Tailscale IP (100.x.x.x), got: $result")
+        }
+        // null means Tailscale is unavailable — loopback-only mode, which is correct
     }
 }
