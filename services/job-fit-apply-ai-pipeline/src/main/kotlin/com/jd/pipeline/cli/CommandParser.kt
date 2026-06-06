@@ -1,8 +1,6 @@
 package com.jd.pipeline.cli
 
 import com.jd.pipeline.config.Config
-import java.nio.file.Files
-import java.nio.file.Path
 
 object CommandParser {
     fun parse(args: Array<String>): Command {
@@ -24,10 +22,10 @@ object CommandParser {
         var maxEmails = Config.GMAIL_MAX_EMAILS
         var signedIn = false
         var debug = false
-        var jdJson: String? = null
         var resumeGenPath: String? = null
         var initProfilePath: String? = null
         var jsearch = false
+        var worker = false
         var tokenFromUrl: String? = null
 
         var i = 0
@@ -86,12 +84,6 @@ object CommandParser {
                         i++
                     }
                 }
-                "--jd-json" -> {
-                    if (i + 1 < args.size) {
-                        jdJson = args[i + 1]
-                        i++
-                    }
-                }
                 "--resume-gen" -> {
                     if (i + 1 < args.size) {
                         resumeGenPath = args[i + 1]
@@ -104,23 +96,8 @@ object CommandParser {
                         i++
                     }
                 }
-                "--jd-json-file" -> {
-                    if (i + 1 < args.size) {
-                        val rawPath = args[i + 1]
-                        val normalized = Path.of(rawPath).normalize()
-                        val projectDir = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
-                        val resolved = normalized.toAbsolutePath().normalize()
-                        if (!resolved.startsWith(projectDir) && !resolved.startsWith(Path.of(System.getProperty("java.io.tmpdir")))) {
-                            println("[ERROR] --jd-json-file: path escapes allowed directories: $rawPath")
-                        } else if (!Files.exists(normalized)) {
-                            println("[ERROR] --jd-json-file: file not found: $rawPath")
-                        } else {
-                            jdJson = Files.readString(normalized)
-                        }
-                        i++
-                    }
-                }
                 "--jsearch" -> jsearch = true
+                "--worker" -> worker = true
                 "--token-from-url" -> {
                     if (i + 1 < args.size) {
                         tokenFromUrl = args[i + 1]
@@ -144,10 +121,10 @@ object CommandParser {
             scrapeJdTuner -> Command.ScrapeJdTuner(scrapeJdTunerFile, maxIterations)
             resumeGenPath != null -> Command.ResumeGen(resumeGenPath)
             initProfilePath != null -> Command.InitProfile(initProfilePath)
-            jdJson != null -> Command.JdJson(jdJson)
             email != null -> Command.SingleEmail(email, expectedData, expectedDataFile, maxIterations, debug)
             signedIn -> Command.SignedIn
             jsearch -> Command.JSearch
+            worker -> Command.Worker
             else -> Command.Batch(maxEmails, debug)
         }
     }

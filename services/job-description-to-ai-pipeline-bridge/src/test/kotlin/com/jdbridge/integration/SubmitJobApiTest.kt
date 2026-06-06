@@ -22,7 +22,7 @@ class SubmitJobValidationTest {
 
     @Test
     fun `submit with valid body returns 202 and UUID job_id`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val response = client.post("/api/jobs") {
             contentType(ContentType.Application.Json)
             setBody("""{"jd_text":"${"x".repeat(200)}"}""")
@@ -35,7 +35,7 @@ class SubmitJobValidationTest {
 
     @Test
     fun `submit with minimal payload returns 202`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val response = client.post("/api/jobs") {
             contentType(ContentType.Application.Json)
             setBody("""{"jd_text":"${"x".repeat(150)}"}""")
@@ -44,15 +44,16 @@ class SubmitJobValidationTest {
     }
 
     @Test
-    fun `submit with all optional fields returns 202 and stores them`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+    fun `submit with all optional fields returns 202`() = testApplication {
+        application { configureApplication() }
         val req = SubmitJobRequest(
-            jd_text    = "x".repeat(200),
-            role_title = "Staff SDET",
-            company    = "Acme Corp",
-            location   = "Seattle, WA",
-            job_url    = "https://example.com/job/1",
-            site       = "greenhouse",
+            jd_text         = "x".repeat(200),
+            role_title      = "Staff SDET",
+            company         = "Acme Corp",
+            location        = "Seattle, WA",
+            job_url         = "https://example.com/job/1",
+            source          = "JSEARCH",
+            idempotency_key = "key-abc",
         )
         val response = client.post("/api/jobs") {
             contentType(ContentType.Application.Json)
@@ -60,14 +61,15 @@ class SubmitJobValidationTest {
         }
         assertEquals(HttpStatusCode.Accepted, response.status)
         val jobId = Json.parseToJsonElement(response.bodyAsText()).jsonObject["job_id"]!!.jsonPrimitive.content
+        // Verify the job is in the queue
         val row = getJob(jobId)!!
-        assertEquals("Staff SDET", row.title)
-        assertEquals("Acme Corp",  row.company)
+        assertEquals(JobStatus.PENDING.value, row.status)
+        assertEquals("https://example.com/job/1", row.jobUrl)
     }
 
     @Test
     fun `submit with exactly 149 char jd_text returns 422`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val response = client.post("/api/jobs") {
             contentType(ContentType.Application.Json)
             setBody("""{"jd_text":"${"x".repeat(149)}"}""")
@@ -79,7 +81,7 @@ class SubmitJobValidationTest {
 
     @Test
     fun `submit with exactly 150 char jd_text returns 202`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val response = client.post("/api/jobs") {
             contentType(ContentType.Application.Json)
             setBody("""{"jd_text":"${"x".repeat(150)}"}""")
@@ -89,7 +91,7 @@ class SubmitJobValidationTest {
 
     @Test
     fun `submit with empty jd_text returns 422`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val response = client.post("/api/jobs") {
             contentType(ContentType.Application.Json)
             setBody("""{"jd_text":""}""")
@@ -99,7 +101,7 @@ class SubmitJobValidationTest {
 
     @Test
     fun `submit missing jd_text returns 400`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val response = client.post("/api/jobs") {
             contentType(ContentType.Application.Json)
             setBody("""{"company":"Acme"}""")
@@ -113,7 +115,7 @@ class SubmitJobValidationTest {
 
     @Test
     fun `three sequential submits produce distinct job_ids`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val ids = (1..3).map {
             val r = client.post("/api/jobs") {
                 contentType(ContentType.Application.Json)
@@ -126,7 +128,7 @@ class SubmitJobValidationTest {
 
     @Test
     fun `success response Content-Type is application json`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val response = client.post("/api/jobs") {
             contentType(ContentType.Application.Json)
             setBody("""{"jd_text":"${"x".repeat(200)}"}""")
@@ -136,7 +138,7 @@ class SubmitJobValidationTest {
 
     @Test
     fun `submit with malformed JSON returns 400`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val response = client.post("/api/jobs") {
             contentType(ContentType.Application.Json)
             setBody("""{"jd_text":"${"x".repeat(200)}", invalid field}""")
@@ -150,7 +152,7 @@ class SubmitJobValidationTest {
 
     @Test
     fun `submit with very long jd_text returns 202`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val veryLongText = "x".repeat(15_000)
         val response = client.post("/api/jobs") {
             contentType(ContentType.Application.Json)
@@ -163,17 +165,14 @@ class SubmitJobValidationTest {
     }
 
     @Test
-    fun `submit with unknown JSON fields returns 400 with strict parsing`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
-        val response = client.post("/api/jobs") {
-            contentType(ContentType.Application.Json)
-            setBody("""{"jd_text":"${"x".repeat(200)}","role_title":"SDET","unknown_field":"should_be_rejected"}""")
-        }
-        // Ktor kotlinx.serialization is strict by default and rejects unknown keys
-        assertTrue(
-            response.status == HttpStatusCode.BadRequest ||
-            response.status == HttpStatusCode.UnprocessableEntity,
-            "Expected 400 or 422 for unknown JSON fields with strict parsing, got ${response.status}"
-        )
+    fun `duplicate job_url returns same job_id with deduped true`() = testApplication {
+        application { configureApplication() }
+        val body = """{"jd_text":"${"x".repeat(200)}","job_url":"https://example.com/job/1"}"""
+        val first  = client.post("/api/jobs") { contentType(ContentType.Application.Json); setBody(body) }
+        val second = client.post("/api/jobs") { contentType(ContentType.Application.Json); setBody(body) }
+        val firstId   = Json.parseToJsonElement(first.bodyAsText()).jsonObject["job_id"]!!.jsonPrimitive.content
+        val secondObj = Json.parseToJsonElement(second.bodyAsText()).jsonObject
+        assertEquals(firstId, secondObj["job_id"]!!.jsonPrimitive.content)
+        assertTrue(secondObj["deduped"]!!.jsonPrimitive.boolean)
     }
 }

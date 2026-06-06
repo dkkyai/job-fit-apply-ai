@@ -12,7 +12,6 @@ import io.ktor.server.routing.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
-import java.io.File
 import java.nio.file.Path
 
 private val log = LoggerFactory.getLogger("com.jdbridge.Application")
@@ -31,7 +30,7 @@ fun main() {
 
 // ── Application configuration (injectable for tests) ─────────────────────────
 
-fun Application.configureApplication(runner: PipelineRunner = GradlePipelineRunner()) {
+fun Application.configureApplication() {
     val jobsDir = STORE_DIR.resolve("jobs").toFile().also { it.mkdirs() }
 
     install(ContentNegotiation) {
@@ -51,7 +50,7 @@ fun Application.configureApplication(runner: PipelineRunner = GradlePipelineRunn
 
     routing {
         staticFiles("/api/jobs-static", jobsDir)
-        configureRoutes(runner)
+        configureRoutes()
     }
 
     environment.monitor.subscribe(ApplicationStarted) { app ->
@@ -70,8 +69,7 @@ fun getEnv(key: String, default: String = ""): String =
 
 /**
  * Resolve the __tailscale__ sentinel to the node's Tailscale IPv4 address.
- * Binding to the Tailscale IP restricts the port to the WireGuard tunnel —
- * invisible to the LAN and the open internet. Falls back to 127.0.0.1.
+ * Falls back to 127.0.0.1.
  */
 fun resolveHost(host: String): String {
     if (host != "__tailscale__") return host

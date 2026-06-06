@@ -12,7 +12,6 @@ sealed class Command {
     data class ScrapeJdTuner(val file: String?, val maxIterations: Int) : Command()
     data class ResumeGen(val path: String) : Command()
     data class InitProfile(val path: String) : Command()
-    data class JdJson(val json: String) : Command()
     data class SingleEmail(
         val subject: String,
         val expectedData: String?,
@@ -24,4 +23,5 @@ sealed class Command {
     object JSearch : Command()
     data class Batch(val maxEmails: Int, val debug: Boolean) : Command()
     data class TokenFromUrl(val redirectUrl: String) : Command()
+    object Worker : Command()
 }

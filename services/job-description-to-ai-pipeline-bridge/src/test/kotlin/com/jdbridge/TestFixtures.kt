@@ -1,6 +1,8 @@
 package com.jdbridge
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -32,74 +34,51 @@ fun sampleJdText(): String =
 
 fun minimalJdText(): String = "x".repeat(150)
 
-// ── Fake pipeline runner ──────────────────────────────────────────────────────
+fun defaultJdJson(
+    jdText: String = minimalJdText(),
+    roleTitle: String? = "Staff SDET",
+    company: String? = "Acme Corp",
+    location: String? = "Seattle, WA",
+    jobUrl: String? = null,
+): String = Json.encodeToString(SubmitJobRequest(
+    jd_text    = jdText,
+    role_title = roleTitle,
+    company    = company,
+    location   = location,
+    job_url    = jobUrl,
+))
+
+// ── Queue manipulation helpers ────────────────────────────────────────────────
 
 /**
- * Writes real artifacts to the job directory and transitions the job through
- * SCORING → TAILORING → COMPLETE, mirroring GradlePipelineRunner exactly.
+ * Enqueue a job, claim it, then immediately record a result — simulates a worker
+ * completing a job synchronously for test purposes.
  */
-class FakePipelineRunner(
-    private val fitScore: Int = 82,
-    private val includeCoverLetter: Boolean = true,
-) : PipelineRunner {
-    override suspend fun run(jobId: String, payload: SubmitJobRequest) {
+suspend fun enqueueAndComplete(
+    jdJson: String = defaultJdJson(),
+    fitScore: Int = 82,
+    pipelineAction: String = "TAILOR",
+    includeCoverLetter: Boolean = true,
+    error: String? = null,
+): String {
+    val jobId = enqueue(jdJson, null, null)
+    claimNext() // claim the job we just enqueued
+    val result = ResultRequest(
+        pipeline_action = pipelineAction,
+        fit_score       = fitScore,
+        error           = error,
+    )
+    recordResult(jobId, result)
+    if (error == null) {
         val dir = jobDir(jobId)
-
-        updateJob(jobId, JobUpdate(
-            status          = JobStatus.SCORING,
-            progressMessage = "Running jd-pipeline-kotlin (scoring + tailoring)…",
-        ))
-
-        updateJob(jobId, JobUpdate(
-            status          = JobStatus.TAILORING,
-            fitScore        = fitScore,
-            progressMessage = "Score $fitScore/100 — copying artifacts…",
-        ))
-
         dir.resolve("resume.pdf").toFile().writeBytes(fakePdf())
-
-        val artifacts = if (includeCoverLetter) {
-            dir.resolve("cover_letter.txt").toFile().writeText(fakeCoverLetter())
-            ArtifactUrls(
-                resume_pdf       = "/api/jobs/$jobId/resume.pdf",
-                cover_letter_txt = "/api/jobs/$jobId/cover_letter.txt",
-            )
-        } else {
-            ArtifactUrls(
-                resume_pdf       = "/api/jobs/$jobId/resume.pdf",
-                cover_letter_txt = "",
-            )
-        }
-
-        updateJob(jobId, JobUpdate(
-            status          = JobStatus.COMPLETE,
-            progressMessage = "Done.",
-            artifacts       = artifacts,
+        if (includeCoverLetter) dir.resolve("cover_letter.txt").toFile().writeText(fakeCoverLetter())
+        setArtifacts(jobId, ArtifactUrls(
+            resume_pdf       = "/api/jobs/$jobId/resume.pdf",
+            cover_letter_txt = if (includeCoverLetter) "/api/jobs/$jobId/cover_letter.txt" else "",
         ))
     }
-}
-
-/** Runner that transitions the job to ERROR (score too low). */
-class SkipPipelineRunner(private val fitScore: Int = 40) : PipelineRunner {
-    override suspend fun run(jobId: String, payload: SubmitJobRequest) {
-        updateJob(jobId, JobUpdate(
-            status          = JobStatus.ERROR,
-            fitScore        = fitScore,
-            error           = "Score too low ($fitScore) — JD not tailored.",
-            progressMessage = "Score $fitScore/100 — below threshold, skipped.",
-        ))
-    }
-}
-
-/** Runner that transitions the job to ERROR (pipeline crash). */
-class CrashPipelineRunner : PipelineRunner {
-    override suspend fun run(jobId: String, payload: SubmitJobRequest) {
-        updateJob(jobId, JobUpdate(
-            status          = JobStatus.ERROR,
-            error           = "Kotlin NullPointerException at line 42",
-            progressMessage = "Pipeline failed — check server logs.",
-        ))
-    }
+    return jobId
 }
 
 // ── DB init helper ────────────────────────────────────────────────────────────

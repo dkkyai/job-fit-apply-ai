@@ -1,10 +1,10 @@
 package com.jd.pipeline.cli.commands
 
 import com.jd.pipeline.cli.CliOutput
-import com.jd.pipeline.pipeline.JDPipeline
+import com.jd.pipeline.pipeline.IngestionPipeline
+import com.jd.pipeline.pipeline.ProcessingPipeline
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.state.JDState
-import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.utils.NodeTimer
 import java.time.Instant
 
@@ -55,15 +55,28 @@ object TestCommandHandler {
 
         NodeTimer.reset()
         val batchStartTime = Instant.now()
-        val pipeline = JDPipeline()
-        val result = pipeline.invoke(input)
 
-        CliOutput.printResult(result)
-        val scoredJobs = if (result.fitScore != null) listOf(result) else emptyList()
-        val tailored = if (result.pipelineAction == PipelineAction.TAILOR && !result.isDuplicate) 1 else 0
+        val ingestion = IngestionPipeline()
+        val processing = ProcessingPipeline()
+
+        val ingested = ingestion.invoke(input)
+
+        if (!ingested.isJobPosting) {
+            println("  ↳ Not a job posting — skipped")
+            return
+        }
+
+        val record = ingestion.toJdRecord(ingested)
+        val result = processing.invoke(record)
+
+        println("  → action: ${result.pipelineAction}, score: ${result.fitScore}")
+        result.outputPath?.let { println("  → output: $it") }
+        result.error?.let { println("  → error: $it") }
+
+        val tailored  = if (result.pipelineAction == "TAILOR" && !result.isDuplicate) 1 else 0
         val duplicate = if (result.isDuplicate) 1 else 0
-        val skipped = if (!result.isDuplicate && result.pipelineAction != PipelineAction.TAILOR) 1 else 0
-        CliOutput.printBatchSummary(1, if (result.isJobPosting) 1 else 0, tailored, skipped, duplicate, batchStartTime, scoredJobs)
-        CliOutput.printScrapeBatchWarnings(pipeline)
+        val skipped   = if (!result.isDuplicate && result.pipelineAction != "TAILOR") 1 else 0
+        CliOutput.printBatchSummary(1, 1, tailored, skipped, duplicate, batchStartTime, emptyList())
+        CliOutput.printScrapeBatchWarnings(ingestion)
     }
 }

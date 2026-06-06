@@ -7,6 +7,7 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonElement
 
 // ── Job status enum ───────────────────────────────────────────────────────────
 
@@ -23,12 +24,9 @@ object JobStatusSerializer : KSerializer<JobStatus> {
 
 @Serializable(with = JobStatusSerializer::class)
 enum class JobStatus(val value: String) {
-    QUEUED("queued"),
-    SCORING("scoring"),
-    TAILORING("tailoring"),
-    WRITING_CL("writing_cover_letter"),
-    CONVERTING("converting_pdf"),
-    COMPLETE("complete"),
+    PENDING("pending"),
+    CLAIMED("claimed"),
+    DONE("done"),
     ERROR("error");
 
     companion object {
@@ -48,17 +46,40 @@ data class ErrorResponse(val detail: String)
 @Serializable
 data class SubmitJobRequest(
     val jd_text: String,
-    val role_title: String? = null,
-    val company: String? = null,
-    val location: String? = null,
-    val job_url: String? = null,
-    val site: String? = null,
+    val role_title: String?      = null,
+    val company: String?         = null,
+    val location: String?        = null,
+    val job_url: String?         = null,
+    val source: String?          = null,          // "EMAIL" | "JSEARCH" | "MANUAL"
+    val idempotency_key: String? = null,
+    val intake_meta: JsonElement? = null,          // opaque — stored verbatim
+)
+
+@Serializable
+data class ResultRequest(
+    val pipeline_action: String,
+    val fit_score: Int,
+    val strengths: List<String>   = emptyList(),
+    val is_duplicate: Boolean     = false,
+    val output_path: String?      = null,
+    val has_cover_letter: Boolean = false,
+    val error: String?            = null,
 )
 
 // ── Outbound ──────────────────────────────────────────────────────────────────
 
 @Serializable
-data class SubmitJobResponse(val job_id: String)
+data class SubmitJobResponse(
+    val job_id: String,
+    val status: String,
+    val deduped: Boolean = false,
+)
+
+@Serializable
+data class ClaimResponse(
+    val job_id: String,
+    val jd_record: JsonElement,   // raw stored jd_json object
+)
 
 @Serializable
 data class ArtifactUrls(
@@ -70,36 +91,39 @@ data class ArtifactUrls(
 data class JobStatusResponse(
     val job_id: String,
     val status: String,
-    val title: String? = null,
-    val company: String? = null,
-    val progress_message: String? = null,
-    val fit_score: Int? = null,
-    val artifacts: ArtifactUrls? = null,
-    val error: String? = null,
+    val title: String?            = null,
+    val company: String?          = null,
+    val fit_score: Int?           = null,
+    val pipeline_action: String?  = null,
+    val artifacts: ArtifactUrls?  = null,
+    val error: String?            = null,
 )
 
 // ── Store helpers ─────────────────────────────────────────────────────────────
 
 /** Partial update — only non-null fields are written to the DB. */
 data class JobUpdate(
-    val status: JobStatus? = null,
-    val progressMessage: String? = null,
-    val fitScore: Int? = null,
-    val artifacts: ArtifactUrls? = null,
-    val error: String? = null,
+    val status: JobStatus?        = null,
+    val fitScore: Int?            = null,
+    val pipelineAction: String?   = null,
+    val artifacts: ArtifactUrls?  = null,
+    val error: String?            = null,
 )
 
 /** Row returned from the DB after deserialization. */
 data class JobRow(
     val id: String,
     val status: String,
-    val title: String?,
-    val company: String?,
     val jdJson: String?,
-    val progressMessage: String?,
+    val jobUrl: String?,
     val fitScore: Int?,
+    val pipelineAction: String?,
     val artifacts: ArtifactUrls?,
     val error: String?,
+    val claimedAt: Long?,
     val createdAt: Long,
     val updatedAt: Long,
 )
+
+/** Returned by claimNext() — enough for the worker to act on. */
+data class ClaimedJob(val id: String, val jdJson: String)

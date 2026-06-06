@@ -78,7 +78,7 @@ object Config {
     val GMAIL_CREDENTIALS_FILE: String = get("GMAIL_CREDENTIALS_FILE", "gmail_credentials.json")
     val GMAIL_TOKEN_FILE: String = get("GMAIL_TOKEN_FILE", "tokens/gmail_token.json")
     val GMAIL_MAX_EMAILS: Int = get("GMAIL_MAX_EMAILS", "3").toInt()
-    val GMAIL_SEARCH_QUERY: String = get("GMAIL_SEARCH_QUERY", "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required")
+    val GMAIL_SEARCH_QUERY: String = get("GMAIL_SEARCH_QUERY", "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:JD_Processing")
 
     // ── Skills paths ─────────────────────────────────────────────────────────
     val SKILLS_DIR: Path = PROJECT_DIR.resolve("src/main/resources/skills")

@@ -159,11 +159,11 @@ object CliOutput {
         printNodeTimingTable()
     }
 
-    fun printScrapeBatchWarnings(pipeline: com.jd.pipeline.pipeline.JDPipeline) {
-        if (pipeline.batchLinkedInSessionExpired()) {
+    fun printScrapeBatchWarnings(ingestionPipeline: com.jd.pipeline.pipeline.IngestionPipeline) {
+        if (ingestionPipeline.batchLinkedInSessionExpired()) {
             println("\n\u001B[33m[WARN] LinkedIn session expired — re-authenticate Chrome profile ${Config.CHROME_PROFILE_DIRECTORY} to enable LinkedIn job scraping\u001B[0m")
         }
-        val blocked = pipeline.batchBlockedDomains()
+        val blocked = ingestionPipeline.batchBlockedDomains()
         if (blocked.isNotEmpty()) {
             println("\u001B[33m[WARN] Sites that blocked scraping this batch (falling back to email data): ${blocked.joinToString(", ")}\u001B[0m")
         }

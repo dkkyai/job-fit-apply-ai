@@ -13,13 +13,10 @@ class JobStatusValuesTest {
 
     @Test
     fun `all status enum values are correct strings`() {
-        assertEquals("queued",               JobStatus.QUEUED.value)
-        assertEquals("scoring",              JobStatus.SCORING.value)
-        assertEquals("tailoring",            JobStatus.TAILORING.value)
-        assertEquals("writing_cover_letter", JobStatus.WRITING_CL.value)
-        assertEquals("converting_pdf",       JobStatus.CONVERTING.value)
-        assertEquals("complete",             JobStatus.COMPLETE.value)
-        assertEquals("error",                JobStatus.ERROR.value)
+        assertEquals("pending",  JobStatus.PENDING.value)
+        assertEquals("claimed",  JobStatus.CLAIMED.value)
+        assertEquals("done",     JobStatus.DONE.value)
+        assertEquals("error",    JobStatus.ERROR.value)
     }
 
     @Test
@@ -36,8 +33,8 @@ class JobStatusValuesTest {
 
     @Test
     fun `serialized status uses value string not name`() {
-        val json = Json.encodeToString(JobStatus.COMPLETE)
-        assertEquals("\"complete\"", json)
+        val json = Json.encodeToString(JobStatus.DONE)
+        assertEquals("\"done\"", json)
     }
 }
 
@@ -65,17 +62,20 @@ class SubmitJobRequestSerializationTest {
     @Test
     fun `all optional fields round-trip correctly`() {
         val req = SubmitJobRequest(
-            jd_text    = "x".repeat(200),
-            role_title = "Staff SDET",
-            company    = "Acme Corp",
-            location   = "Seattle, WA",
-            job_url    = "https://example.com/job/1",
-            site       = "greenhouse",
+            jd_text         = "x".repeat(200),
+            role_title      = "Staff SDET",
+            company         = "Acme Corp",
+            location        = "Seattle, WA",
+            job_url         = "https://example.com/job/1",
+            source          = "JSEARCH",
+            idempotency_key = "key-123",
         )
         val decoded = Json.decodeFromString<SubmitJobRequest>(json.encodeToString(req))
         assertEquals("Staff SDET",  decoded.role_title)
         assertEquals("Acme Corp",   decoded.company)
         assertEquals("Seattle, WA", decoded.location)
+        assertEquals("JSEARCH",     decoded.source)
+        assertEquals("key-123",     decoded.idempotency_key)
     }
 }
 
@@ -107,29 +107,26 @@ class JobStatusResponseSerializationTest {
 
     @Test
     fun `null optional fields are omitted from JSON`() {
-        val resp = JobStatusResponse(job_id = "abc", status = "queued")
+        val resp = JobStatusResponse(job_id = "abc", status = "pending")
         val encoded = json.encodeToString(resp)
-        assertFalse(encoded.contains("fit_score"),        "null fit_score should be omitted")
-        assertFalse(encoded.contains("\"artifacts\""),    "null artifacts should be omitted")
-        assertFalse(encoded.contains("\"error\""),        "null error should be omitted")
-        assertFalse(encoded.contains("progress_message"), "null progress_message should be omitted")
+        assertFalse(encoded.contains("fit_score"),     "null fit_score should be omitted")
+        assertFalse(encoded.contains("\"artifacts\""), "null artifacts should be omitted")
+        assertFalse(encoded.contains("\"error\""),     "null error should be omitted")
     }
 
     @Test
     fun `complete response with all fields serializes correctly`() {
         val resp = JobStatusResponse(
-            job_id           = "abc-123",
-            status           = JobStatus.COMPLETE.value,
-            title            = "Staff SDET",
-            company          = "Acme Corp",
-            progress_message = "Done.",
-            fit_score        = 82,
-            artifacts        = ArtifactUrls("/api/jobs/abc-123/resume.pdf", "/api/jobs/abc-123/cover_letter.txt"),
-            error            = null,
+            job_id          = "abc-123",
+            status          = JobStatus.DONE.value,
+            fit_score       = 82,
+            pipeline_action = "TAILOR",
+            artifacts       = ArtifactUrls("/api/jobs/abc-123/resume.pdf", "/api/jobs/abc-123/cover_letter.txt"),
+            error           = null,
         )
         val decoded = Json.decodeFromString<JobStatusResponse>(json.encodeToString(resp))
         assertEquals(82, decoded.fit_score)
-        assertEquals("complete", decoded.status)
+        assertEquals("done", decoded.status)
         assertEquals("/api/jobs/abc-123/resume.pdf", decoded.artifacts?.resume_pdf)
     }
 
@@ -142,7 +139,7 @@ class JobStatusResponseSerializationTest {
 
     @Test
     fun `SubmitJobResponse job_id survives round-trip`() {
-        val resp = SubmitJobResponse(job_id = "test-uuid-1234")
+        val resp = SubmitJobResponse(job_id = "test-uuid-1234", status = "pending")
         val decoded = Json.decodeFromString<SubmitJobResponse>(Json.encodeToString(resp))
         assertEquals("test-uuid-1234", decoded.job_id)
     }

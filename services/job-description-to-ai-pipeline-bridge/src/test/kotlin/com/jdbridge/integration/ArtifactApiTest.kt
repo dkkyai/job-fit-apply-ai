@@ -27,7 +27,7 @@ class ArtifactApiTest {
 
     @Test
     fun `GET resume_pdf when file exists returns 200 and PDF bytes`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         seedArtifacts("pdf-test-001")
         val response = client.get("/api/jobs/pdf-test-001/resume.pdf")
         assertEquals(HttpStatusCode.OK, response.status)
@@ -37,7 +37,7 @@ class ArtifactApiTest {
 
     @Test
     fun `GET resume_pdf when file missing returns 404 with detail`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val response = client.get("/api/jobs/no-pdf-job/resume.pdf")
         assertEquals(HttpStatusCode.NotFound, response.status)
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
@@ -46,7 +46,7 @@ class ArtifactApiTest {
 
     @Test
     fun `GET cover_letter when file exists returns 200 and text`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         seedArtifacts("cl-test-001")
         val response = client.get("/api/jobs/cl-test-001/cover_letter.txt")
         assertEquals(HttpStatusCode.OK, response.status)
@@ -55,7 +55,7 @@ class ArtifactApiTest {
 
     @Test
     fun `GET cover_letter when file missing returns 404 with detail`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         val response = client.get("/api/jobs/no-cl-job/cover_letter.txt")
         assertEquals(HttpStatusCode.NotFound, response.status)
         val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
@@ -64,7 +64,7 @@ class ArtifactApiTest {
 
     @Test
     fun `Content-Disposition on PDF includes filename resume_pdf`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         seedArtifacts("cd-test-001")
         val response = client.get("/api/jobs/cd-test-001/resume.pdf")
         val disposition = response.headers[HttpHeaders.ContentDisposition]
@@ -74,7 +74,7 @@ class ArtifactApiTest {
 
     @Test
     fun `Content-Disposition on cover letter includes filename`() = testApplication {
-        application { configureApplication(FakePipelineRunner()) }
+        application { configureApplication() }
         seedArtifacts("cd-test-002")
         val response = client.get("/api/jobs/cd-test-002/cover_letter.txt")
         val disposition = response.headers[HttpHeaders.ContentDisposition]

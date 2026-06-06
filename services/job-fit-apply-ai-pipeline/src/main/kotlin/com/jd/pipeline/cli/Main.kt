@@ -23,12 +23,12 @@ object Main {
             is Command.ScrapeJdTuner -> ScrapeJdTunerCommandHandler.run(command)
             is Command.ResumeGen -> ResumeGenCommandHandler.run(command)
             is Command.InitProfile -> InitProfileCommandHandler.run(command)
-            is Command.JdJson -> JdJsonCommandHandler.run(command)
             is Command.SingleEmail -> SingleEmailCommandHandler.run(command)
             Command.SignedIn -> SignedInCommandHandler.run()
             Command.JSearch -> JSearchCommandHandler.run()
             is Command.TokenFromUrl -> TokenFromUrlCommandHandler.run(command)
             is Command.Batch -> BatchCommandHandler.run(command)
+            Command.Worker -> WorkerCommandHandler.run()
         }
     }
 }
