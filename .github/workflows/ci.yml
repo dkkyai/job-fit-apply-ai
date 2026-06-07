@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: apps/job-backlog-web-app
+        working-directory: apps/job-fit-apply-ai-backlog
 
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +27,7 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: apps/job-backlog-web-app/package-lock.json
+          cache-dependency-path: apps/job-fit-apply-ai-backlog/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -42,7 +42,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: allure-results-web-app
-          path: apps/job-backlog-web-app/allure-results
+          path: apps/job-fit-apply-ai-backlog/allure-results
           if-no-files-found: warn
 
       - name: Upload coverage report
@@ -50,7 +50,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-web-app
-          path: apps/job-backlog-web-app/coverage
+          path: apps/job-fit-apply-ai-backlog/coverage
 
   # ── 2. Chrome Extension (Jest) ──────────────────────────────────────────────
   extension:
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: apps/job-description-to-ai-pipeline-browser-extension
+        working-directory: apps/job-fit-apply-ai-extension
 
     steps:
       - uses: actions/checkout@v4
@@ -67,7 +67,7 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: apps/job-description-to-ai-pipeline-browser-extension/package-lock.json
+          cache-dependency-path: apps/job-fit-apply-ai-extension/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -86,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: allure-results-extension
-          path: apps/job-description-to-ai-pipeline-browser-extension/allure-results
+          path: apps/job-fit-apply-ai-extension/allure-results
           if-no-files-found: warn
 
   # ── 3. Bridge (Kotlin / JUnit 5 + Allure) ───────────────────────────────────
@@ -95,7 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/job-description-to-ai-pipeline-bridge
+        working-directory: services/job-fit-apply-ai-bridge
 
     steps:
       - uses: actions/checkout@v4
@@ -111,7 +111,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-bridge-${{ hashFiles('services/job-description-to-ai-pipeline-bridge/**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-bridge-${{ hashFiles('services/job-fit-apply-ai-bridge/**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: ${{ runner.os }}-gradle-bridge-
 
       - name: Make gradlew executable
@@ -125,7 +125,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: allure-results-bridge
-          path: services/job-description-to-ai-pipeline-bridge/build/allure-results
+          path: services/job-fit-apply-ai-bridge/build/allure-results
           if-no-files-found: warn
 
       - name: Upload JUnit XML results
@@ -133,7 +133,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: junit-results-bridge
-          path: services/job-description-to-ai-pipeline-bridge/build/test-results/test
+          path: services/job-fit-apply-ai-bridge/build/test-results/test
 
   # ── 4. Pipeline (Kotlin / JUnit 5 + Allure) ─────────────────────────────────
   pipeline:
@@ -161,7 +161,7 @@ jobs:
           restore-keys: ${{ runner.os }}-gradle-pipeline-
 
       - name: Run unit tests
-        run: ./gradlew test --tests "com.jd.pipeline.nodes.*" --tests "com.jd.pipeline.cli.*" --tests "com.jd.pipeline.utils.*" --tests "com.jd.pipeline.fixtures.*" --tests "com.jd.pipeline.functional.*"
+        run: ./gradlew test --tests "com.jd.pipeline.nodes.*" --tests "com.jd.pipeline.cli.*" --tests "com.jd.pipeline.pipeline.*" --tests "com.jd.pipeline.utils.*" --tests "com.jd.pipeline.fixtures.*" --tests "com.jd.pipeline.functional.*" --tests "com.jd.pipeline.client.*" --tests "com.jd.pipeline.config.*" --tests "com.jd.pipeline.models.*" --tests "com.jd.pipeline.state.*"
 
       - name: Run integration tests
         run: ./gradlew test --tests "com.jd.pipeline.integration.*"
