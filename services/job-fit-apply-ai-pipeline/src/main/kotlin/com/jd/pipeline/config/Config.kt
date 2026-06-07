@@ -147,6 +147,13 @@ object Config {
     /** Rendered TAILOR_SKILL.md, gitignored — produced by `--init-profile`. */
     val TAILOR_SKILL_PATH: Path = SKILLS_DIR.resolve("TAILOR_SKILL.md")
 
+    // ── Notifications (Discord + Telegram) ───────────────────────────────────────
+    val DISCORD_BOT_TOKEN: String  = get("DISCORD_BOT_TOKEN", "")
+    val DISCORD_CHANNEL_ID: String = get("DISCORD_CHANNEL_ID", "")
+    val TELEGRAM_BOT_TOKEN: String = get("TELEGRAM_BOT_TOKEN", "")
+    val TELEGRAM_CHAT_ID: String   = get("TELEGRAM_CHAT_ID", "")
+    val NOTIFICATION_FIT_THRESHOLD: Int = get("NOTIFICATION_FIT_THRESHOLD", "50").toInt()
+
     // ── Artifacts URL (Tailscale file server) ──────────────────────────────────────
     val ARTIFACT_BASE_URL: String = get("ARTIFACT_BASE_URL", "")
     // Local directory corresponding to the server's URL root (e.g., /path/to/your/markserv/output).

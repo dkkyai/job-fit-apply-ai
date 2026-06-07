@@ -1,8 +1,10 @@
 package com.jd.pipeline.cli.commands
 
+import com.jd.pipeline.cli.BatchNotificationService
 import com.jd.pipeline.cli.Command
 import com.jd.pipeline.cli.CreateDraftReply
 import com.jd.pipeline.cli.EmailLabelingServiceImpl
+import com.jd.pipeline.cli.ScoredJob
 import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.JobStatusDto
 import com.jd.pipeline.client.gmail.GmailTransport
@@ -14,10 +16,12 @@ import com.jd.pipeline.state.isInlineDigest
 import com.jd.pipeline.state.isRecruiterEmail
 import com.jd.pipeline.utils.NodeTimer
 import java.io.File
+import java.time.Instant
 
 object BatchCommandHandler {
     fun run(cmd: Command.Batch) {
         println("[INFO] Processing batch (max ${cmd.maxEmails} emails)...")
+        val batchStartTime = Instant.now()
         NodeTimer.reset()
 
         try {
@@ -34,8 +38,14 @@ object BatchCommandHandler {
             val labelingService   = EmailLabelingServiceImpl()
 
             // ── Submit pass ───────────────────────────────────────────────────
-            // email state → list of (jobId, isRecruiter, emailIntakeId)
-            data class Submission(val jobId: String, val isRecruiterEmail: Boolean, val emailId: String)
+            // email state → list of (jobId, isRecruiter, emailIntakeId, company, roleTitle)
+            data class Submission(
+                val jobId: String,
+                val isRecruiterEmail: Boolean,
+                val emailId: String,
+                val company: String,
+                val roleTitle: String,
+            )
             val emailSubmissions = mutableMapOf<JDState, List<Submission>>()
 
             for (emailState in emails) {
@@ -60,7 +70,7 @@ object BatchCommandHandler {
                         try {
                             val record = ingestionPipeline.toJdRecord(childState)
                             val jobId  = bridge.submit(record)
-                            submissions.add(Submission(jobId, false, emailId))
+                            submissions.add(Submission(jobId, false, emailId, record.company ?: "", record.roleTitle ?: ""))
                         } catch (e: Exception) {
                             System.err.println("[submit] Failed digest child for $emailId: ${e.message}")
                         }
@@ -69,7 +79,7 @@ object BatchCommandHandler {
                     try {
                         val record = ingestionPipeline.toJdRecord(ingState, idempotencyKey = emailId)
                         val jobId  = bridge.submit(record)
-                        submissions.add(Submission(jobId, ingState.isRecruiterEmail, emailId))
+                        submissions.add(Submission(jobId, ingState.isRecruiterEmail, emailId, record.company ?: "", record.roleTitle ?: ""))
                     } catch (e: Exception) {
                         System.err.println("[submit] Failed submit for $emailId: ${e.message}")
                     }
@@ -96,6 +106,7 @@ object BatchCommandHandler {
             var tailored  = 0
             var skipped   = 0
             var duplicate = 0
+            val collectedJobs = mutableListOf<ScoredJob>()
 
             for ((emailState, submissions) in emailSubmissions) {
                 val isDigestEmail = (emailState.emailIntake?.isDigest == true) ||
@@ -123,6 +134,13 @@ object BatchCommandHandler {
                         finalStatus.pipeline_action?.uppercase() == "TAILOR" -> tailored++
                         else -> skipped++
                     }
+                    collectedJobs += ScoredJob(
+                        company        = sub.company,
+                        roleTitle      = sub.roleTitle,
+                        fitScore       = finalStatus.fit_score,
+                        pipelineAction = finalStatus.pipeline_action,
+                        error          = finalStatus.error,
+                    )
                     if (finalStatus.status == "done" && finalStatus.pipeline_action?.uppercase() == "TAILOR" &&
                         !isDigestEmail && sub.isRecruiterEmail) {
                         duplicate += if (finalStatus.pipeline_action == "skip") 0 else 0 // counted above
@@ -145,6 +163,19 @@ object BatchCommandHandler {
             }
 
             println("\n[Batch done] $jobs job(s) — $tailored tailored, $skipped skipped, $duplicate duplicate (bridge deduped separately)")
+
+            BatchNotificationService().notify(
+                BatchNotificationService.BatchSummary(
+                    emailsProcessed = emails.size,
+                    jobs            = jobs,
+                    tailored        = tailored,
+                    skipped         = skipped,
+                    duplicate       = duplicate,
+                    startTime       = batchStartTime,
+                    scoredJobs      = collectedJobs,
+                )
+            )
+
             if (ingestionPipeline.batchLinkedInSessionExpired()) {
                 println("[WARN] LinkedIn session expired — re-authenticate Chrome profile to enable LinkedIn scraping")
             }
