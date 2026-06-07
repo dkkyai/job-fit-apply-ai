@@ -12,7 +12,6 @@ import io.ktor.server.routing.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
-import java.io.File
 import java.nio.file.Path
 
 private val log = LoggerFactory.getLogger("com.jdbridge.Application")
@@ -21,17 +20,25 @@ private val log = LoggerFactory.getLogger("com.jdbridge.Application")
 
 fun main() {
     loadDotEnv()
-    val host = resolveHost(getEnv("JD_BRIDGE_HOST", "__tailscale__"))
+    val tailscaleHost = resolveTailscaleHost(getEnv("JD_BRIDGE_HOST", "__tailscale__"))
     val port = getEnv("JD_BRIDGE_PORT", "8765").toIntOrNull() ?: 8765
-    log.info("jd-bridge binding to $host:$port")
-    embeddedServer(Netty, host = host, port = port) {
-        configureApplication()
-    }.start(wait = true)
+
+    val hosts = buildList {
+        add("127.0.0.1")
+        if (tailscaleHost != null && tailscaleHost != "127.0.0.1") add(tailscaleHost)
+    }
+    log.info("jd-bridge binding to ${hosts.joinToString(", ")} on port $port")
+
+    val env = applicationEngineEnvironment {
+        for (h in hosts) connector { host = h; this.port = port }
+        module { configureApplication() }
+    }
+    embeddedServer(Netty, env).start(wait = true)
 }
 
 // ── Application configuration (injectable for tests) ─────────────────────────
 
-fun Application.configureApplication(runner: PipelineRunner = GradlePipelineRunner()) {
+fun Application.configureApplication() {
     val jobsDir = STORE_DIR.resolve("jobs").toFile().also { it.mkdirs() }
 
     install(ContentNegotiation) {
@@ -51,7 +58,7 @@ fun Application.configureApplication(runner: PipelineRunner = GradlePipelineRunn
 
     routing {
         staticFiles("/api/jobs-static", jobsDir)
-        configureRoutes(runner)
+        configureRoutes()
     }
 
     environment.monitor.subscribe(ApplicationStarted) { app ->
@@ -70,11 +77,10 @@ fun getEnv(key: String, default: String = ""): String =
 
 /**
  * Resolve the __tailscale__ sentinel to the node's Tailscale IPv4 address.
- * Binding to the Tailscale IP restricts the port to the WireGuard tunnel —
- * invisible to the LAN and the open internet. Falls back to 127.0.0.1.
+ * Returns null if Tailscale is unavailable or the host override is not the sentinel.
  */
-fun resolveHost(host: String): String {
-    if (host != "__tailscale__") return host
+fun resolveTailscaleHost(host: String): String? {
+    if (host != "__tailscale__") return host.ifBlank { null }
     return try {
         val result = ProcessBuilder("tailscale", "ip", "-4")
             .redirectErrorStream(true)
@@ -85,12 +91,12 @@ fun resolveHost(host: String): String {
             log.info("Resolved Tailscale IP: $ip")
             ip
         } else {
-            log.warn("tailscale ip -4 returned unexpected output, falling back to 127.0.0.1")
-            "127.0.0.1"
+            log.warn("tailscale ip -4 returned unexpected output — Tailscale connector skipped")
+            null
         }
     } catch (e: Exception) {
-        log.warn("Could not resolve Tailscale IP (${e.message}), falling back to 127.0.0.1")
-        "127.0.0.1"
+        log.warn("Could not resolve Tailscale IP (${e.message}) — Tailscale connector skipped")
+        null
     }
 }
 

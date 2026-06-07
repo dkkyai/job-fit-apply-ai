@@ -1,322 +1,159 @@
 package com.jdbridge.unit
 
 import com.jdbridge.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.server.testing.*
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
-import java.io.File
-import java.nio.file.Path
 import kotlin.test.*
 
 /**
- * Builds a fake CommandRunner that returns a controlled CommandResult.
- * The fake also accepts a lambda to spy on what command was invoked.
+ * Tests for the queue-backed worker protocol:
+ *   POST /api/jobs → GET /api/queue/claim → POST /api/jobs/{id}/result → GET /api/jobs/{id}
  */
-/** Create the job record then run the pipeline — mirrors what the route handler does. */
-suspend fun createAndRun(jobId: String, runner: PipelineRunner) {
-    createJob(jobId, SubmitJobRequest(jd_text = minimalJdText()))
-    runner.run(jobId, SubmitJobRequest(jd_text = minimalJdText()))
-}
-
-fun fakeRunner(
-    exitCode: Int = 0,
-    stdoutLines: List<String> = emptyList(),
-    stderr: String = "",
-    onInvoke: ((cmd: List<String>, workingDir: File) -> Unit)? = null,
-): CommandRunner = { cmd, workingDir, _ ->
-    onInvoke?.invoke(cmd, workingDir)
-    CommandResult(exitCode, stdoutLines.joinToString("\n"), stderr)
-}
-
-fun successSummary(outputPath: String, fitScore: Double = 82.0, action: String = "tailor"): String =
-    buildJsonObject {
-        put("output_path",     outputPath)
-        put("fit_score",       fitScore)
-        put("pipeline_action", action)
-        put("error",           "")
-    }.toString()
-
-class PipelineCommandTest {
-
-    @TempDir lateinit var tempDir: Path
-
-    private lateinit var pipelineDir: File
-    private lateinit var gradlew: File
+class QueueClaimTest {
 
     @BeforeEach
     fun setup() {
         useTempStoreDir()
         initTestDb()
-        pipelineDir = tempDir.resolve("pipeline").toFile().also { it.mkdirs() }
-        gradlew = pipelineDir.resolve("gradlew").also { it.writeText("#!/bin/sh\n"); it.setExecutable(true) }
-        System.setProperty("JD_BRIDGE_PIPELINE_DIR", pipelineDir.absolutePath)
     }
 
     @Test
-    fun `command includes gradlew run and jd-json-file flag`() = runTest {
-        val outputDir = tempDir.resolve("output").toFile().also {
-            it.mkdirs()
-            it.resolve("resume.pdf").writeBytes(fakePdf())
+    fun `claim returns 204 when queue is empty`() = testApplication {
+        application { configureApplication() }
+        val response = client.get("/api/queue/claim")
+        assertEquals(HttpStatusCode.NoContent, response.status)
+    }
+
+    @Test
+    fun `claim returns 200 with jd_record after submit`() = testApplication {
+        application { configureApplication() }
+        val submitResp = client.post("/api/jobs") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"jd_text":"${minimalJdText()}","role_title":"SDET"}""")
         }
-        val captured = mutableListOf<String>()
-        val runner = GradlePipelineRunner(fakeRunner(
-            stdoutLines = listOf(successSummary(outputDir.absolutePath)),
-            onInvoke    = { cmd, _ -> captured.addAll(cmd) },
-        ))
+        assertEquals(HttpStatusCode.Accepted, submitResp.status)
 
-        runner.run("cmd-test-001", SubmitJobRequest(jd_text = minimalJdText()))
-
-        assertTrue(captured.any { "gradlew" in it }, "command should contain gradlew")
-        assertTrue(captured.any { it == "run" }, "command should contain 'run'")
-        assertTrue(captured.any { "--jd-json-file" in it }, "command should contain --jd-json-file")
+        val claimResp = client.get("/api/queue/claim")
+        assertEquals(HttpStatusCode.OK, claimResp.status)
+        val body = Json.parseToJsonElement(claimResp.bodyAsText()).jsonObject
+        assertNotNull(body["job_id"])
+        assertNotNull(body["jd_record"])
+        assertTrue(body["jd_record"]!!.jsonObject.containsKey("jd_text"))
     }
 
     @Test
-    fun `working directory is set to pipeline dir`() = runTest {
-        val outputDir = tempDir.resolve("output2").toFile().also {
-            it.mkdirs()
-            it.resolve("resume.pdf").writeBytes(fakePdf())
+    fun `claimed job shows status claimed`() = testApplication {
+        application { configureApplication() }
+        client.post("/api/jobs") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"jd_text":"${minimalJdText()}"}""")
         }
-        var capturedWorkDir: File? = null
-        val runner = GradlePipelineRunner(fakeRunner(
-            stdoutLines = listOf(successSummary(outputDir.absolutePath)),
-            onInvoke    = { _, wd -> capturedWorkDir = wd },
-        ))
+        val claimed = client.get("/api/queue/claim")
+        val jobId = Json.parseToJsonElement(claimed.bodyAsText()).jsonObject["job_id"]!!.jsonPrimitive.content
 
-        runner.run("wd-test-001", SubmitJobRequest(jd_text = minimalJdText()))
-
-        assertEquals(pipelineDir.absolutePath, capturedWorkDir?.absolutePath)
-    }
-}
-
-class PipelineErrorHandlingTest {
-
-    @TempDir lateinit var tempDir: Path
-
-    @BeforeEach
-    fun setup() {
-        useTempStoreDir()
-        initTestDb()
-        val pipelineDir = tempDir.resolve("pipeline").toFile().also { it.mkdirs() }
-        pipelineDir.resolve("gradlew").also { it.writeText("#!/bin/sh\n"); it.setExecutable(true) }
-        System.setProperty("JD_BRIDGE_PIPELINE_DIR", pipelineDir.absolutePath)
+        val status = client.get("/api/jobs/$jobId")
+        val body = Json.parseToJsonElement(status.bodyAsText()).jsonObject
+        assertEquals("claimed", body["status"]!!.jsonPrimitive.content)
     }
 
     @Test
-    fun `non-zero exit transitions job to ERROR`() = runTest {
-        val runner = GradlePipelineRunner(fakeRunner(exitCode = 1, stderr = "fatal kotlin error"))
-        createAndRun("err-001", runner)
-        val row = getJob("err-001")!!
-        assertEquals(JobStatus.ERROR.value, row.status)
-        assertNotNull(row.error)
-    }
-
-    @Test
-    fun `empty stdout transitions job to ERROR with no-output message`() = runTest {
-        val runner = GradlePipelineRunner(fakeRunner(stdoutLines = emptyList()))
-        createAndRun("err-002", runner)
-        val row = getJob("err-002")!!
-        assertEquals(JobStatus.ERROR.value, row.status)
-        assertTrue(row.error?.contains("no output", ignoreCase = true) == true)
-    }
-
-    @Test
-    fun `invalid JSON stdout transitions job to ERROR with JSON message`() = runTest {
-        val runner = GradlePipelineRunner(fakeRunner(stdoutLines = listOf("not { valid } json")))
-        createAndRun("err-003", runner)
-        val row = getJob("err-003")!!
-        assertEquals(JobStatus.ERROR.value, row.status)
-        assertTrue(row.error?.contains("JSON", ignoreCase = true) == true)
-    }
-
-    @Test
-    fun `pipeline_action skip transitions to ERROR with score in message`() = runTest {
-        val runner = GradlePipelineRunner(fakeRunner(
-            stdoutLines = listOf(successSummary("/tmp/out", fitScore = 40.0, action = "skip")),
-        ))
-        createAndRun("err-004", runner)
-        val row = getJob("err-004")!!
-        assertEquals(JobStatus.ERROR.value, row.status)
-        assertTrue(row.error?.contains("40") == true)
-    }
-
-    @Test
-    fun `missing output_path transitions to ERROR`() = runTest {
-        val summary = buildJsonObject {
-            put("output_path",     "")
-            put("fit_score",       82.0)
-            put("pipeline_action", "tailor")
-            put("error",           "")
-        }.toString()
-        val runner = GradlePipelineRunner(fakeRunner(stdoutLines = listOf(summary)))
-        createAndRun("err-005", runner)
-        val row = getJob("err-005")!!
-        assertEquals(JobStatus.ERROR.value, row.status)
-    }
-
-    @Test
-    fun `no PDF in output directory transitions to ERROR`() = runTest {
-        val outputDir = File(System.getProperty("java.io.tmpdir"), "no-pdf-${System.nanoTime()}").also {
-            it.mkdirs()
-            it.resolve("cover_letter.txt").writeText("Dear Hiring Manager")
+    fun `second claim returns 204 when only one job was enqueued`() = testApplication {
+        application { configureApplication() }
+        client.post("/api/jobs") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"jd_text":"${minimalJdText()}"}""")
         }
-        val runner = GradlePipelineRunner(fakeRunner(
-            stdoutLines = listOf(successSummary(outputDir.absolutePath)),
-        ))
-        createAndRun("err-006", runner)
-        val row = getJob("err-006")!!
-        assertEquals(JobStatus.ERROR.value, row.status)
-        assertTrue(row.error?.contains("No PDF", ignoreCase = true) == true)
+        client.get("/api/queue/claim")  // first claim
+        val second = client.get("/api/queue/claim")
+        assertEquals(HttpStatusCode.NoContent, second.status)
+    }
+}
+
+class ResultPostTest {
+
+    @BeforeEach
+    fun setup() {
+        useTempStoreDir()
+        initTestDb()
     }
 
     @Test
-    fun `missing JD_BRIDGE_PIPELINE_DIR transitions to ERROR`() = runTest {
-        System.clearProperty("JD_BRIDGE_PIPELINE_DIR")
-        val savedEnv = System.getenv("JD_BRIDGE_PIPELINE_DIR")
-        if (savedEnv.isNullOrBlank()) {
-            val runner = GradlePipelineRunner()
-            createAndRun("err-007", runner)
-            val row = getJob("err-007")!!
-            assertEquals(JobStatus.ERROR.value, row.status)
-            assertTrue(row.error?.contains("JD_BRIDGE_PIPELINE_DIR") == true)
+    fun `POST result transitions job to done`() = testApplication {
+        application { configureApplication() }
+        val submitResp = client.post("/api/jobs") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"jd_text":"${minimalJdText()}"}""")
         }
+        val jobId = Json.parseToJsonElement(submitResp.bodyAsText()).jsonObject["job_id"]!!.jsonPrimitive.content
+        client.get("/api/queue/claim")
+
+        val resultResp = client.post("/api/jobs/$jobId/result") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"pipeline_action":"TAILOR","fit_score":85,"strengths":[],"is_duplicate":false,"has_cover_letter":false}""")
+        }
+        assertEquals(HttpStatusCode.OK, resultResp.status)
+
+        val status = Json.parseToJsonElement(client.get("/api/jobs/$jobId").bodyAsText()).jsonObject
+        assertEquals("done", status["status"]!!.jsonPrimitive.content)
+        assertEquals(85, status["fit_score"]!!.jsonPrimitive.int)
+    }
+
+    @Test
+    fun `POST result with error transitions job to error`() = testApplication {
+        application { configureApplication() }
+        val submitResp = client.post("/api/jobs") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"jd_text":"${minimalJdText()}"}""")
+        }
+        val jobId = Json.parseToJsonElement(submitResp.bodyAsText()).jsonObject["job_id"]!!.jsonPrimitive.content
+        client.get("/api/queue/claim")
+
+        client.post("/api/jobs/$jobId/result") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"pipeline_action":"SKIP","fit_score":30,"error":"Score too low"}""")
+        }
+
+        val status = Json.parseToJsonElement(client.get("/api/jobs/$jobId").bodyAsText()).jsonObject
+        assertEquals("error", status["status"]!!.jsonPrimitive.content)
     }
 }
 
-class PipelineArtifactCopyTest {
-
-    @TempDir lateinit var tempDir: Path
+class DedupTest {
 
     @BeforeEach
     fun setup() {
         useTempStoreDir()
         initTestDb()
-        val pipelineDir = tempDir.resolve("pipeline").toFile().also { it.mkdirs() }
-        pipelineDir.resolve("gradlew").also { it.writeText("#!/bin/sh\n"); it.setExecutable(true) }
-        System.setProperty("JD_BRIDGE_PIPELINE_DIR", pipelineDir.absolutePath)
     }
 
     @Test
-    fun `first PDF in output dir is copied to resume_pdf`() = runTest {
-        val outputDir = tempDir.resolve("out1").toFile().also { it.mkdirs() }
-        outputDir.resolve("Richard_Hatcher_Resume.pdf").writeBytes(fakePdf())
-        outputDir.resolve("cover_letter.txt").writeText(fakeCoverLetter())
+    fun `submitting same job_url twice returns same job_id with deduped=true`() = testApplication {
+        application { configureApplication() }
+        val body = """{"jd_text":"${minimalJdText()}","job_url":"https://example.com/job/1"}"""
+        val first  = client.post("/api/jobs") { contentType(ContentType.Application.Json); setBody(body) }
+        val second = client.post("/api/jobs") { contentType(ContentType.Application.Json); setBody(body) }
 
-        val runner = GradlePipelineRunner(fakeRunner(stdoutLines = listOf(successSummary(outputDir.absolutePath))))
-        createAndRun("art-001", runner)
-
-        val row = getJob("art-001")!!
-        assertEquals(JobStatus.COMPLETE.value, row.status)
-        assertNotNull(row.artifacts)
-        assertEquals("/api/jobs/art-001/resume.pdf", row.artifacts!!.resume_pdf)
-        assertTrue(jobDir("art-001").resolve("resume.pdf").toFile().exists())
+        val firstId  = Json.parseToJsonElement(first.bodyAsText()).jsonObject["job_id"]!!.jsonPrimitive.content
+        val secondBody = Json.parseToJsonElement(second.bodyAsText()).jsonObject
+        assertEquals(firstId, secondBody["job_id"]!!.jsonPrimitive.content)
+        assertTrue(secondBody["deduped"]!!.jsonPrimitive.boolean)
     }
 
     @Test
-    fun `when multiple PDFs exist the first one by name is chosen`() = runTest {
-        val outputDir = tempDir.resolve("out_multiple").toFile().also { it.mkdirs() }
-        outputDir.resolve("Alice_Wang_Resume.pdf").writeBytes(fakePdf())
-        outputDir.resolve("Bob_Jones_Resume.pdf").writeBytes(fakePdf())
-        outputDir.resolve("resume.pdf").writeBytes(fakePdf())
-        outputDir.resolve("cover_letter.txt").writeText(fakeCoverLetter())
+    fun `submitting same idempotency_key twice returns same job_id`() = testApplication {
+        application { configureApplication() }
+        val body = """{"jd_text":"${minimalJdText()}","idempotency_key":"email-abc-123"}"""
+        val first  = client.post("/api/jobs") { contentType(ContentType.Application.Json); setBody(body) }
+        val second = client.post("/api/jobs") { contentType(ContentType.Application.Json); setBody(body) }
 
-        val runner = GradlePipelineRunner(fakeRunner(stdoutLines = listOf(successSummary(outputDir.absolutePath))))
-        createAndRun("art-multi-001", runner)
-
-        val row = getJob("art-multi-001")!!
-        assertEquals(JobStatus.COMPLETE.value, row.status)
-        assertNotNull(row.artifacts)
-        // Should pick first PDF in sorted order (Alice < Bob < resume)
-        val copiedPdf = jobDir("art-multi-001").resolve("resume.pdf").toFile()
-        assertTrue(copiedPdf.exists(), "resume.pdf should be copied")
-    }
-
-    @Test
-    fun `absent cover_letter results in empty cover_letter_txt`() = runTest {
-        val outputDir = tempDir.resolve("out2").toFile().also { it.mkdirs() }
-        outputDir.resolve("resume.pdf").writeBytes(fakePdf())
-
-        val runner = GradlePipelineRunner(fakeRunner(stdoutLines = listOf(successSummary(outputDir.absolutePath))))
-        createAndRun("art-002", runner)
-
-        val row = getJob("art-002")!!
-        assertEquals("", row.artifacts?.cover_letter_txt)
-    }
-
-    @Test
-    fun `float fit_score 82_7 is stored as int 82`() = runTest {
-        val outputDir = tempDir.resolve("out3").toFile().also { it.mkdirs() }
-        outputDir.resolve("resume.pdf").writeBytes(fakePdf())
-
-        val runner = GradlePipelineRunner(fakeRunner(stdoutLines = listOf(successSummary(outputDir.absolutePath, fitScore = 82.7))))
-        createAndRun("art-003", runner)
-
-        assertEquals(82, getJob("art-003")!!.fitScore)
-    }
-}
-
-class PipelineCrashCleanupTest {
-
-    @TempDir lateinit var tempDir: Path
-
-    @BeforeEach
-    fun setup() {
-        useTempStoreDir()
-        initTestDb()
-        val pipelineDir = tempDir.resolve("pipeline").toFile().also { it.mkdirs() }
-        pipelineDir.resolve("gradlew").also { it.writeText("#!/bin/sh\n"); it.setExecutable(true) }
-        System.setProperty("JD_BRIDGE_PIPELINE_DIR", pipelineDir.absolutePath)
-    }
-
-    @Test
-    fun `pipeline crash leaves job in ERROR status`() = runTest {
-        // CrashRunner sets job to ERROR after creating it - we just verify the final state
-        createJob("crash-001", SubmitJobRequest(jd_text = minimalJdText()))
-        CrashPipelineRunner().run("crash-001", SubmitJobRequest(jd_text = minimalJdText()))
-        val row = getJob("crash-001")!!
-        assertEquals(JobStatus.ERROR.value, row.status)
-        assertTrue(row.error?.contains("NullPointerException") == true)
-    }
-
-    @Test
-    fun `job directory is preserved after crash`() = runTest {
-        createJob("crash-002", SubmitJobRequest(jd_text = minimalJdText()))
-        CrashPipelineRunner().run("crash-002", SubmitJobRequest(jd_text = minimalJdText()))
-        // Job directory should still exist after crash
-        assertTrue(jobDir("crash-002").toFile().isDirectory)
-    }
-}
-
-class PipelineStatusTransitionTest {
-
-    @TempDir lateinit var tempDir: Path
-
-    @BeforeEach
-    fun setup() {
-        useTempStoreDir()
-        initTestDb()
-        val pipelineDir = tempDir.resolve("pipeline").toFile().also { it.mkdirs() }
-        pipelineDir.resolve("gradlew").also { it.writeText("#!/bin/sh\n"); it.setExecutable(true) }
-        System.setProperty("JD_BRIDGE_PIPELINE_DIR", pipelineDir.absolutePath)
-    }
-
-    @Test
-    fun `successful run transitions SCORING then TAILORING then COMPLETE`() = runTest {
-        val outputDir = tempDir.resolve("transition").toFile().also { it.mkdirs() }
-        outputDir.resolve("resume.pdf").writeBytes(fakePdf())
-        outputDir.resolve("cover_letter.txt").writeText(fakeCoverLetter())
-
-        // Use a real DB + polling approach: since updateJob is sequential, the final
-        // state is COMPLETE and fit_score is set.
-        val runner = GradlePipelineRunner(fakeRunner(
-            stdoutLines = listOf(successSummary(outputDir.absolutePath)),
-        ))
-        createAndRun("trans-001", runner)
-
-        val row = getJob("trans-001")!!
-        assertEquals(JobStatus.COMPLETE.value, row.status)
-        assertNotNull(row.fitScore)
+        val firstId  = Json.parseToJsonElement(first.bodyAsText()).jsonObject["job_id"]!!.jsonPrimitive.content
+        val secondBody = Json.parseToJsonElement(second.bodyAsText()).jsonObject
+        assertEquals(firstId, secondBody["job_id"]!!.jsonPrimitive.content)
     }
 }

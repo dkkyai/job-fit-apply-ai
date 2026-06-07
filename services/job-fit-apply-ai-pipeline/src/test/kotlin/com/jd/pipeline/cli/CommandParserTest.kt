@@ -3,9 +3,6 @@ package com.jd.pipeline.cli
 import com.jd.pipeline.config.Config
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -50,14 +47,6 @@ class CommandParserTest {
         val cmd = parse("--init-profile", "path/to/file.pdf")
         assertTrue(cmd is Command.InitProfile)
         assertEquals("path/to/file.pdf", cmd.path)
-    }
-
-    @Test
-    fun jdJsonFlag() {
-        val raw = """{"test":true}"""
-        val cmd = parse("--jd-json", raw)
-        assertTrue(cmd is Command.JdJson)
-        assertEquals(raw, cmd.json)
     }
 
     // ── batch / single email ─────────────────────────────────────────────────
@@ -204,18 +193,6 @@ class CommandParserTest {
     }
 
     @Test
-    fun priorityOrder_initProfileOverJdJson() {
-        val cmd = parse("--jd-json", "{}", "--init-profile", "profile.pdf")
-        assertTrue(cmd is Command.InitProfile)
-    }
-
-    @Test
-    fun priorityOrder_jdJsonOverEmail() {
-        val cmd = parse("--email", "a@b.com", "--jd-json", "{}")
-        assertTrue(cmd is Command.JdJson)
-    }
-
-    @Test
     fun priorityOrder_emailOverSignedIn() {
         val cmd = parse("--signed-in", "--email", "a@b.com")
         assertTrue(cmd is Command.SingleEmail)
@@ -231,25 +208,6 @@ class CommandParserTest {
     fun priorityOrder_jSearchOverBatch() {
         val cmd = parse("--max-emails", "3", "--jsearch")
         assertEquals(Command.JSearch, cmd)
-    }
-
-    // ── jd-json-file flag ────────────────────────────────────────────────────
-
-    @Test
-    fun jdJsonFile_readsFileContents(@TempDir tempDir: Path) {
-        val file = tempDir.resolve("data.json")
-        Files.writeString(file, """{"key":"value"}""")
-        val cmd = parse("--jd-json-file", file.toString())
-        assertTrue(cmd is Command.JdJson)
-        assertEquals("""{"key":"value"}""", cmd.json)
-    }
-
-    @Test
-    fun jdJsonFile_invalidPathFallsBackToBatch(@TempDir tempDir: Path) {
-        val missing = tempDir.resolve("nonexistent.json")
-        val cmd = parse("--jd-json-file", missing.toString())
-        // fallback: file not found prints error, jdJson stays null, result is Batch
-        assertTrue(cmd is Command.Batch)
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

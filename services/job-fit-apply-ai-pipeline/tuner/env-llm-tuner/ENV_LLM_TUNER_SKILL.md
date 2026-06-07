@@ -345,14 +345,14 @@ After writing all four files, print:
 ```
 | Config Var               | .env.quality | .env.local-quality | .env.local-good-enough | .env.recommended |
 |--------------------------|--------------|--------------------|------------------------|------------------|
-| SCAN_MODEL               |              |                    |                        |                  |
-| SCRAPE_MODEL             |              |                    |                        |                  |
-| SCORE_MODEL              |              |                    |                        |                  |
-| RESUME_REASONING_MODEL   |              |                    |                        |                  |
-| SKILLS_MODEL             |              |                    |                        |                  |
-| COVER_LETTER_MODEL       |              |                    |                        |                  |
-| DRAFT_REPLY_MODEL        |              |                    |                        |                  |
-| Est. full-pipeline time  |              |                    |                        |                  |
+| SCAN_MODEL               | deepseek-v4-flash:ollama-cloud | qwen3.6:27b        | qwen3:8b               | qwen3:8b         |
+| SCRAPE_MODEL             | deepseek-v4-flash:ollama-cloud | qwen3.6:27b        | qwen3:8b               | qwen3:8b         |
+| SCORE_MODEL              | kimi-k2.6:ollama-cloud | deepseek-r1:70b    | qwen3:8b               | minimax-m3:ollama-cloud |
+| RESUME_REASONING_MODEL   | kimi-k2.6:ollama-cloud | deepseek-r1:70b    | qwen3:8b               | minimax-m3:ollama-cloud |
+| SKILLS_MODEL             | deepseek-v4-flash:ollama-cloud | qwen3.6:27b        | qwen3:8b               | qwen3:8b         |
+| COVER_LETTER_MODEL       | kimi-k2.6:ollama-cloud | gemma4:31b         | qwen3:8b               | qwen3:14b        |
+| DRAFT_REPLY_MODEL        | deepseek-v4-flash:ollama-cloud | qwen3:8b           | qwen3:8b               | qwen3:8b         |
+| Est. full-pipeline time  | ~154s        | ~734s              | ~173s                  | ~190s            |
 ```
 
 The last row is the sum of all node estimates for one job reaching the

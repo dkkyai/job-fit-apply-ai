@@ -78,7 +78,7 @@ object Config {
     val GMAIL_CREDENTIALS_FILE: String = get("GMAIL_CREDENTIALS_FILE", "gmail_credentials.json")
     val GMAIL_TOKEN_FILE: String = get("GMAIL_TOKEN_FILE", "tokens/gmail_token.json")
     val GMAIL_MAX_EMAILS: Int = get("GMAIL_MAX_EMAILS", "3").toInt()
-    val GMAIL_SEARCH_QUERY: String = get("GMAIL_SEARCH_QUERY", "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required")
+    val GMAIL_SEARCH_QUERY: String = get("GMAIL_SEARCH_QUERY", "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:JD_Processing")
 
     // ── Skills paths ─────────────────────────────────────────────────────────
     val SKILLS_DIR: Path = PROJECT_DIR.resolve("src/main/resources/skills")
@@ -146,6 +146,13 @@ object Config {
     val TAILOR_SKILL_TEMPLATE_PATH: Path = SKILLS_DIR.resolve("TAILOR_SKILL.template.md")
     /** Rendered TAILOR_SKILL.md, gitignored — produced by `--init-profile`. */
     val TAILOR_SKILL_PATH: Path = SKILLS_DIR.resolve("TAILOR_SKILL.md")
+
+    // ── Notifications (Discord + Telegram) ───────────────────────────────────────
+    val DISCORD_BOT_TOKEN: String  = get("DISCORD_BOT_TOKEN", "")
+    val DISCORD_CHANNEL_ID: String = get("DISCORD_CHANNEL_ID", "")
+    val TELEGRAM_BOT_TOKEN: String = get("TELEGRAM_BOT_TOKEN", "")
+    val TELEGRAM_CHAT_ID: String   = get("TELEGRAM_CHAT_ID", "")
+    val NOTIFICATION_FIT_THRESHOLD: Int = get("NOTIFICATION_FIT_THRESHOLD", "50").toInt()
 
     // ── Artifacts URL (Tailscale file server) ──────────────────────────────────────
     val ARTIFACT_BASE_URL: String = get("ARTIFACT_BASE_URL", "")

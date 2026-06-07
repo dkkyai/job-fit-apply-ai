@@ -11,8 +11,14 @@ import com.jd.pipeline.state.isInlineDigest
  */
 interface EmailLabelingService {
     /**
-     * Apply post-pipeline labeling decisions to an email.
-     * Returns a summary of actions taken.
+     * Apply the JD_Processing label to mark that this email is in-flight.
+     * Must be called before polling; cleared automatically by [applyLabeling].
+     */
+    fun applyProcessing(emailId: String, client: GmailTransport)
+
+    /**
+     * Apply terminal labeling after the worker has finished.
+     * Always clears the JD_Processing label.
      */
     fun applyLabeling(state: JDState, client: GmailTransport): LabelingResult
 }
@@ -30,22 +36,27 @@ data class LabelingResult(
 
 /**
  * Default implementation of EmailLabelingService.
- * Extracts the labeling logic from Main.kt runEmail() and runBatch() methods.
  */
 class EmailLabelingServiceImpl : EmailLabelingService {
+
+    override fun applyProcessing(emailId: String, client: GmailTransport) {
+        val labelId = client.getOrCreateLabel("JD_Processing")
+        client.labelEmail(emailId, labelId)
+    }
+
     override fun applyLabeling(state: JDState, client: GmailTransport): LabelingResult {
         val emailId = state.emailIntake?.emailId ?: ""
-        return when {
+        val result = when {
             state.error.isNotEmpty() -> {
                 val labelId = client.getOrCreateLabel("JD_Error")
                 client.labelEmail(emailId, labelId)
                 client.markUnread(emailId)
                 LabelingResult(
-                    labelApplied = "JD_Error",
-                    wasArchived = false,
-                    wasStarred = false,
-                    wasMarkedUnread = true,
-                    wasKeptInInbox = true
+                    labelApplied      = "JD_Error",
+                    wasArchived       = false,
+                    wasStarred        = false,
+                    wasMarkedUnread   = true,
+                    wasKeptInInbox    = true
                 )
             }
             state.isRecruiterResponseRequired -> {
@@ -55,11 +66,11 @@ class EmailLabelingServiceImpl : EmailLabelingService {
                 client.markUnread(emailId)
                 clearErrorLabel(emailId, client)
                 LabelingResult(
-                    labelApplied = "Recruiter_Response_Required",
-                    wasArchived = false,
-                    wasStarred = true,
-                    wasMarkedUnread = true,
-                    wasKeptInInbox = true
+                    labelApplied      = "Recruiter_Response_Required",
+                    wasArchived       = false,
+                    wasStarred        = true,
+                    wasMarkedUnread   = true,
+                    wasKeptInInbox    = true
                 )
             }
             !state.isJobPosting -> {
@@ -68,11 +79,11 @@ class EmailLabelingServiceImpl : EmailLabelingService {
                 client.markUnread(emailId)
                 clearErrorLabel(emailId, client)
                 LabelingResult(
-                    labelApplied = "JD_Not_Found",
-                    wasArchived = false,
-                    wasStarred = false,
-                    wasMarkedUnread = true,
-                    wasKeptInInbox = true
+                    labelApplied      = "JD_Not_Found",
+                    wasArchived       = false,
+                    wasStarred        = false,
+                    wasMarkedUnread   = true,
+                    wasKeptInInbox    = true
                 )
             }
             state.isDigest || state.isInlineDigest -> {
@@ -81,11 +92,11 @@ class EmailLabelingServiceImpl : EmailLabelingService {
                 client.archiveEmail(emailId)
                 clearErrorLabel(emailId, client)
                 LabelingResult(
-                    labelApplied = "JD_Processed_Digest",
-                    wasArchived = true,
-                    wasStarred = false,
-                    wasMarkedUnread = false,
-                    wasKeptInInbox = false
+                    labelApplied      = "JD_Processed_Digest",
+                    wasArchived       = true,
+                    wasStarred        = false,
+                    wasMarkedUnread   = false,
+                    wasKeptInInbox    = false
                 )
             }
             else -> {
@@ -94,14 +105,27 @@ class EmailLabelingServiceImpl : EmailLabelingService {
                 client.archiveEmail(emailId)
                 clearErrorLabel(emailId, client)
                 LabelingResult(
-                    labelApplied = "JD_Processed",
-                    wasArchived = true,
-                    wasStarred = false,
-                    wasMarkedUnread = false,
-                    wasKeptInInbox = false
+                    labelApplied      = "JD_Processed",
+                    wasArchived       = true,
+                    wasStarred        = false,
+                    wasMarkedUnread   = false,
+                    wasKeptInInbox    = false
                 )
             }
         }
+        // Always clear the in-flight label once a terminal label is applied.
+        clearProcessingLabel(emailId, client)
+        return result
+    }
+
+    private fun clearErrorLabel(emailId: String, client: GmailTransport) {
+        val errorLabelId = client.findLabelId("JD_Error") ?: return
+        client.applyLabels(emailId, addLabels = emptyList(), removeLabels = listOf(errorLabelId))
+    }
+
+    private fun clearProcessingLabel(emailId: String, client: GmailTransport) {
+        val processingLabelId = client.findLabelId("JD_Processing") ?: return
+        client.applyLabels(emailId, addLabels = emptyList(), removeLabels = listOf(processingLabelId))
     }
 
     private fun clearErrorLabel(emailId: String, client: GmailTransport) {

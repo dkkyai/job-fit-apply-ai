@@ -12,30 +12,16 @@ A monorepo AI pipeline that automates the complete job search workflow: Gmail in
 │  Recruiter emails + job board digests (LinkedIn, Glassdoor,                    │
 │  Indeed, Lensa, Monster, JobLeads, JobRight, WTTJ, ...)                        │
 └──────────────────────┬─────────────────────────────────────────────────────────┘
-                       │ OAuth2 scan (batch, CLI-driven)
+                       │ OAuth2 scan  (cron: every 30 min)
                        ▼
 ┌────────────────────────────────────────────────────────────────────────────────┐
-│  services/langgraph-ai-pipeline  (Kotlin LangGraph, JVM 21)                    │
+│  services/job-fit-apply-ai-pipeline  —  IngestionPipeline                      │
+│  --max-emails N / --email "…"                                                  │
 │                                                                                │
-│  classify → fan-out → scrape → dedup → score → tailor                          │
-│  → cover letter → PDF → draft reply → label/archive → track                    │
-│                                                                                │
-│  Main graph (16+ nodes):                                                       │
-│    ScanEmail → [fan-out digest jobs] → ScrapeJd                                │
-│    → SaveJD → CheckDuplicate → ScoreFit                                        │
-│    → [if tailor] ResumeTailoringSubgraph (6 nodes)                             │
-│    → GenerateCoverLetter → RenderResumePdf (Playwright)                        │
-│    → AddArtifactUrl → SupabaseTrack                                            │
-│    → [if recruiter email] CreateDraftReply                                     │
-│    → EmailLabelingService (label / archive / star)                             │
-│                                                                                │
-│  Tailoring subgraph:                                                           │
-│    JdExtraction → GapAnalysis → SummaryRewrite                                 │
-│    → BulletRewrite → SkillsRestructure → AtsScoring                            │
-│                                                                                │
-│  Output per job: output/{timestamp}_{company}_{role}/                          │
-│    tailored_resume.html, <Name>_<Role>.pdf, cover_letter.txt,                  │
-│    score_fit.txt, gap_analysis.json, ats_score.txt, ...                        │
+│  ScanEmail → [digest fan-out] → ScrapeJd → SaveJD                              │
+│  → bridge.submit(JdRecord)  +  apply JD_Processing label                       │
+│  → bridge.pollUntilTerminal(jobId)  (blocks until worker done)                 │
+│  → apply final Gmail label / create recruiter draft reply                      │
 └──────────────────────┬─────────────────────────────────────────────────────────┘
                        │ POST /api/jobs  (HTTP, loopback)
                        ▼
@@ -72,23 +58,14 @@ A monorepo AI pipeline that automates the complete job search workflow: Gmail in
 │  Live dashboard: fit-score filter, status management,                          │
 │  collapsible rows, direct PDF + cover letter downloads                         │
 └────────────────────────────────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────────────────────────────────┐
-│  Chrome Browser  (browsing path, separate from email)                          │
-│  apps/job-description-to-ai-pipeline-browser-extension  (Chrome MV3)           │
-│  13 ATS extractors + heuristic fallback                                        │
-└──────────────────────┬─────────────────────────────────────────────────────────┘
-                       │ POST /api/jobs (Tailscale)
-                       ▼
-┌────────────────────────────────────────────────────────────────────────────────┐
-│  services/job-description-to-ai-pipeline-bridge  (Kotlin Ktor, port 8765)      │
-│  SQLite job lifecycle → subprocess → services/langgraph-ai-pipeline            │
-│  Serves artifacts: GET /api/jobs/{id}/resume.pdf                               │
-└──────────────────────┬─────────────────────────────────────────────────────────┘
-                       │ ./gradlew run --jd-json-file
-                       ▼
-                  services/langgraph-ai-pipeline  (same pipeline)
 ```
+
+### Queue concurrency guards
+
+The `--max-emails` cron run is protected against re-entrant overlap at two levels:
+
+1. **`heartbeat_check.sh`** — checks the PID file before starting; exits immediately with `ALREADY_RUNNING` if the previous run is still polling the bridge.
+2. **`-label:JD_Processing`** — the Gmail search query excludes emails already labeled in-flight, so a second run that slips past the PID check still won't re-ingest the same email.
 
 ---
 
@@ -105,7 +82,7 @@ A monorepo AI pipeline that automates the complete job search workflow: Gmail in
 
 ## Prerequisites
 
-### services/langgraph-ai-pipeline
+### services/job-fit-apply-ai-pipeline
 - JDK 21
 - Gradle (wrapper included)
 - **Ollama** running locally with models pulled, or cloud API keys for MiniMax / DeepSeek
@@ -161,11 +138,26 @@ Save your project URL and anon key — used by both the pipeline and the dashboa
 ```bash
 cd services/job-fit-apply-ai-bridge
 
-# Edit Config.kt — set models, Supabase credentials, Gmail file paths
-# src/main/kotlin/com/jd/pipeline/config/Config.kt
+# Build the fat JAR
+./gradlew shadowJar
+
+# Start via pm2 (recommended — auto-restarts on reboot)
+pm2 start --name "jd-bridge" bash -- \
+  -c "cd $(pwd) && java -jar build/libs/jd-bridge-ktor-0.1.0.jar"
+pm2 save
+```
+
+The bridge binds to `127.0.0.1:8765` and, if Tailscale is running, also to your Tailscale IP. Override with `JD_BRIDGE_HOST` and `JD_BRIDGE_PORT` in `.env`.
+
+---
+
+### 3. services/job-fit-apply-ai-pipeline
+
+```bash
+cd services/job-fit-apply-ai-pipeline
 
 # Initialize your profile (generates candidate_profile.json & generated_resume.html)
-./gradlew run --args="--init-profile"
+./gradlew run --args="--init-profile path/to/your_resume.pdf"
 
 # First-time Gmail OAuth
 ./gradlew run --args="--reauth"
@@ -173,45 +165,13 @@ cd services/job-fit-apply-ai-bridge
 # Verify token
 ./gradlew run --args="--check-token"
 
-# Test with a sample job URL end-to-end
+# Test end-to-end on a sample JD (no Gmail / Supabase required)
 ./gradlew run --args="--test"
 
-# Test resume tailoring in isolation
-./gradlew run --args="--test-resume"
-
-# Test cover letter generation
-./gradlew run --args="--test-coverletter"
-
-# List Gmail inbox (no processing)
-./gradlew run --args="--test-gmail"
-
-# Process Gmail inbox (default 3 emails)
-./gradlew run
-
-# Process up to 10 emails
-./gradlew run --args="--max-emails 10"
-
-# Process one email by subject
-./gradlew run --args='--email "Staff SDET opportunity at Acme"'
-```
-
----
-
-### 3. services/job-description-to-ai-pipeline-bridge
-
-```bash
-cd services/job-description-to-ai-pipeline-bridge
-
-cat > .env << EOF
-JD_BRIDGE_PIPELINE_DIR=/absolute/path/to/services/langgraph-ai-pipeline
-EOF
-
-# Development
-./gradlew run
-
-# macOS LaunchAgent (auto-start on login)
-cp scripts/ai.openclaw.jd-bridge.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/ai.openclaw.jd-bridge.plist
+# Start the worker (processes jobs queued by ingestion runs and the browser extension)
+pm2 start --name "jd-worker" bash -- \
+  -c "cd $(pwd) && ./gradlew run --args='--worker'"
+pm2 save
 ```
 
 ---
@@ -223,7 +183,7 @@ launchctl load ~/Library/LaunchAgents/ai.openclaw.jd-bridge.plist
 3. Set your bridge address in `config.js`:
 
 ```js
-export const BRIDGE_API_URL = 'http://your-machine.ts.net:8765'; // or http://localhost:8765
+export const BRIDGE_API_URL = 'http://your-machine.ts.net:8765';
 ```
 
 ---
@@ -245,12 +205,18 @@ npm run build         # production build → dist/
 
 For cloud hosting, deploy to Vercel: set the two `VITE_SUPABASE_*` environment variables and it auto-deploys on push to main.
 
-**macOS LaunchAgent (optional):**
-```bash
-cp scripts/com.dkkytech.backlog.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.dkkytech.backlog.plist
-# Serves on Tailscale IP — accessible from any device on the private network
-```
+---
+
+## Automation (cron + pm2)
+
+| Process | Type | Command | Schedule |
+|---|---|---|---|
+| `jd-bridge` | pm2 (always-on) | `java -jar jd-bridge-ktor-0.1.0.jar` | continuous |
+| `jd-worker` | pm2 (always-on) | `./gradlew run --args='--worker'` | continuous |
+| Email ingestion | cron | `run_jd_pipeline.sh` (`--max-emails 3`) | every 30 min |
+| JSearch ingestion | cron | `run_jsearch.sh` (`--jsearch`) | daily 5 AM |
+
+The bridge and worker must be running before the cron jobs fire.
 
 ---
 
@@ -276,18 +242,19 @@ val GMAIL_MAX_EMAILS         = 3    // emails per batch run
 
 ## Gmail Search Query
 
-The default query fetches emails from the last 7 days, from INBOX only, excluding already-processed messages:
+The default query fetches emails from the last 7 days, from INBOX only, excluding already-processed or in-flight messages:
 
 ```
-newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required
+newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:JD_Processing
 ```
 
-Override `GMAIL_SEARCH_QUERY` in `Config.kt` to target different senders or date ranges.
+Override `GMAIL_SEARCH_QUERY` in `.env` or `Config.kt` to target different senders or date ranges.
 
 **Gmail labels applied by the pipeline:**
 
 | Outcome | Label | Inbox Action |
 |---|---|---|
+| Submitted to bridge, awaiting worker | `JD_Processing` | Kept in INBOX |
 | Recruiter draft created | `Recruiter_Response_Required` | Star, mark unread, keep in INBOX |
 | Not a job posting | `JD_Not_Found` | Mark unread, keep in INBOX |
 | Digest processed | `JD_Processed_Digest` | Archive |
@@ -310,13 +277,13 @@ All LLM prompts live in `src/main/resources/skills/` as `.md` files. Loaded at r
 | `BULLET_REWRITE_SKILL.md` | BulletRewriteNode |
 | `SKILLS_RESTRUCTURE_SKILL.md` | SkillsRestructureNode |
 | `ATS_SCORING_SKILL.md` | AtsScoringNode |
-| `DRAFT_REPLY_SKILL.md` | CreateDraftReplyNode — recruiter reply generation |
+| `DRAFT_REPLY_SKILL.md` | CreateDraftReply — recruiter reply generation |
 
 ---
 
 ## Adapting for Your Own Job Search
 
-1. **Initialize your profile** — Run `./gradlew run --args="--init-profile"` to generate your `candidate_profile.json` and personal `generated_resume.html` from the base template.
+1. **Initialize your profile** — Run `./gradlew run --args="--init-profile path/to/resume.pdf"` to generate your `candidate_profile.json` and personal `generated_resume.html`.
 2. **Update `SCORE_SKILL.md`** — rewrite the scoring rubric to reflect your background and target roles.
 3. **Tune `FIT_THRESHOLD`** — lower for more tailoring, raise to be more selective.
 4. **Tune `DUPLICATE_WINDOW_DAYS`** — how far back to look when deduplicating.
@@ -349,7 +316,7 @@ For recruiter emails that complete the tailor path:
 
 1. `DRAFT_REPLY_SKILL.md` template is filled with role, company, fit score, and strengths
 2. LLM generates a reply (temp=0.3 for natural prose variation)
-3. Recruiter email body is **sanitized** before reaching the LLM — lines matching prompt injection patterns are stripped (`ignore previous instructions`, `you are now`, `act as`, `system prompt`, etc.)
+3. Recruiter email body is **sanitized** before reaching the LLM — lines matching prompt injection patterns are stripped
 4. RFC 2822 MIME message built with threading headers (In-Reply-To, References)
 5. Tailored resume PDF and cover letter attached
 6. Gmail Draft created via Compose API
@@ -375,15 +342,15 @@ output/
     └── ats_score.txt                 # ATS composite scorecard
 ```
 
-For browser-triggered jobs, artifacts are also copied to `~/.openclaw/jd-bridge/jobs/{job_id}/` and served by the bridge API.
+For browser-triggered jobs, artifacts are also served by the bridge API at `GET /api/jobs/{id}/artifact/{filename}`.
 
 ---
 
 ## Testing
 
 ```bash
-# Pipeline (Kotlin)
-cd services/langgraph-ai-pipeline && ./gradlew test
+# Pipeline (Kotlin) — unit tests
+cd services/job-fit-apply-ai-pipeline && ./gradlew test
 
 # Bridge — unit + integration tests
 cd services/job-fit-apply-ai-bridge && ./gradlew test
@@ -394,23 +361,20 @@ cd apps/job-fit-apply-ai-backlog && npm run test:unit
 # Dashboard — E2E (Playwright, requires built app on :8080)
 cd apps/job-fit-apply-ai-backlog && npm run test:e2e
 
-# Dashboard — full CI suite locally
-cd apps/job-backlog-web-app && npm run test:ci
-
 # Extension
 cd apps/job-fit-apply-ai-extension && npm test
 ```
 
-The dashboard CI (`.github/workflows/ci.yml`) runs lint → unit tests on Node 18 and 20 → production build → Playwright E2E in sequence, then deploys to Vercel on main branch merge.
+CI runs all four test suites in parallel on every push to `main` and publishes a combined Allure report to GitHub Pages.
 
 ---
 
 ## Known Constraints
 
-- **LinkedIn scraping requires a logged-in Chrome profile.** Set `PLAYWRIGHT_CHROME_PROFILE` in `Config.kt` to a Chrome profile already authenticated to LinkedIn.
+- **LinkedIn scraping requires a logged-in Chrome profile.** Set `CHROME_PROFILE_DIRECTORY` in `.env` to a Chrome profile already authenticated to LinkedIn.
 - **Local LLM quality scales with model size.** The 6-node tailoring subgraph produces significantly better results with 70B+ models. Smaller models tend to hallucinate resume content.
-- **The Kotlin pipeline must be buildable before the bridge can use it.** Run `./gradlew build` in the pipeline directory first to resolve Gradle dependencies.
-- **Tailscale is required for the extension → bridge connection by default.** To run on localhost instead, update `BRIDGE_API_URL` in `config.js` and adjust CORS settings in `Application.kt`.
+- **The bridge and worker must be running before the cron jobs fire.** Use `pm2 start ecosystem.config.js` and `pm2 save` to ensure they survive reboots.
+- **Tailscale is required for the extension → bridge connection by default.** To run on localhost instead, update `BRIDGE_API_URL` in `config.js`.
 - **Gmail OAuth tokens expire.** Run `./gradlew run --args="--reauth"` to refresh. Use `--check-token` to verify status without triggering a full run.
 - **Fit scores are LLM-generated and model-dependent.** Tune the scoring rubric in `SCORE_SKILL.md` until scores feel calibrated to your profile.
 - **Draft replies are not sent automatically.** Review every draft in Gmail before sending.
