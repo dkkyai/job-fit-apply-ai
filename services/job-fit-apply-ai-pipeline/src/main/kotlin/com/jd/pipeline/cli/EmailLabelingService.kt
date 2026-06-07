@@ -127,4 +127,9 @@ class EmailLabelingServiceImpl : EmailLabelingService {
         val processingLabelId = client.findLabelId("JD_Processing") ?: return
         client.applyLabels(emailId, addLabels = emptyList(), removeLabels = listOf(processingLabelId))
     }
+
+    private fun clearErrorLabel(emailId: String, client: GmailTransport) {
+        val errorLabelId = client.findLabelId("JD_Error") ?: return
+        client.applyLabels(emailId, addLabels = emptyList(), removeLabels = listOf(errorLabelId))
+    }
 }

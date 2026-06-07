@@ -1,6 +1,5 @@
 package com.jd.pipeline.cli.commands
 
-import com.jd.pipeline.client.SupabaseClient
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.nodes.SupabaseTrackNode
 import com.jd.pipeline.source.IntakeContext
@@ -51,5 +50,7 @@ object TestSupabaseCommandHandler {
         } else {
             println("[ERROR] Push failed: ${result.error}")
         }
+
+        TestCleanup.removeTestRecord("test-supabase-001")
     }
 }
