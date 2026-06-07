@@ -64,7 +64,11 @@ run: ./gradlew test \
   --tests "com.jd.pipeline.pipeline.*" \
   --tests "com.jd.pipeline.utils.*" \
   --tests "com.jd.pipeline.fixtures.*" \
-  --tests "com.jd.pipeline.functional.*"
+  --tests "com.jd.pipeline.functional.*" \
+  --tests "com.jd.pipeline.client.*" \
+  --tests "com.jd.pipeline.config.*" \
+  --tests "com.jd.pipeline.models.*" \
+  --tests "com.jd.pipeline.state.*"
 ```
 
 Integration tests (`com.jd.pipeline.integration.*`) run separately with `continue-on-error: true` because they require live credentials.

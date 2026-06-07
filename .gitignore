@@ -31,6 +31,10 @@ build/
 # Coverage
 coverage/
 
+# Test artifacts
+allure-results/
+test-results/
+
 # Lockfiles (pick one per project)
 bun.lockb
 /services/.gradle
