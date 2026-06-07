@@ -1,6 +1,7 @@
 package com.jd.pipeline.nodes
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.jd.pipeline.client.LlmCaller
 import com.jd.pipeline.client.LlmClient
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.state.JDState
@@ -31,7 +32,9 @@ import java.util.regex.Pattern
  * Uses LlmClient (temperature=0 — structured extraction, deterministic).
  * Jackson replaces all regex JSON parsing.
  */
-class ScrapeJdNode : Node<JDState> {
+class ScrapeJdNode(
+    private val llm: LlmCaller = LlmClient.fromModelString(Config.SCRAPE_MODEL, jsonMode = true, temperature = 0.0, nodeKey = "scrape_jd")
+) : Node<JDState> {
 
     /** Set to false to suppress verbose progress logging (e.g. during tuner runs). */
     var verbose: Boolean = true
@@ -50,7 +53,6 @@ class ScrapeJdNode : Node<JDState> {
         batchLinkedInSessionExpired = false
     }
 
-    private val llm = LlmClient.fromModelString(Config.SCRAPE_MODEL, jsonMode = true, temperature = 0.0, nodeKey = "scrape_jd")
     private val mapper = ObjectMapper()
 
     // Page-fetching HttpClient — separate from LlmClient; needs followRedirects.

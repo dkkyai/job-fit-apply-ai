@@ -45,6 +45,7 @@ A monorepo AI pipeline that automates the complete job search workflow: Gmail in
 │  → postResult()                      │         --jsearch → bridge.submit()
 └──────────────────────────────────────┘              (same queue, same worker)
 
+
                        │ INSERT/UPDATE tracks table
                        ▼
 ┌────────────────────────────────────────────────────────────────────────────────┐

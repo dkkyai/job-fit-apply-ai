@@ -52,6 +52,14 @@ jobs:
           name: coverage-web-app
           path: apps/job-fit-apply-ai-backlog/coverage
 
+      - name: Upload to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: apps/job-fit-apply-ai-backlog/coverage/lcov.info
+          flags: web-app
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   # ── 2. Chrome Extension (Jest) ──────────────────────────────────────────────
   extension:
     name: Extension — Jest
@@ -89,6 +97,14 @@ jobs:
           path: apps/job-fit-apply-ai-extension/allure-results
           if-no-files-found: warn
 
+      - name: Upload to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: apps/job-fit-apply-ai-extension/coverage/lcov.info
+          flags: extension
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   # ── 3. Bridge (Kotlin / JUnit 5 + Allure) ───────────────────────────────────
   bridge:
     name: Bridge — Kotlin JUnit 5
@@ -120,6 +136,10 @@ jobs:
       - name: Run tests
         run: ./gradlew test
 
+      - name: JaCoCo coverage report
+        if: always()
+        run: ./gradlew jacocoTestReport
+
       - name: Upload Allure results
         if: always()
         uses: actions/upload-artifact@v4
@@ -134,6 +154,14 @@ jobs:
         with:
           name: junit-results-bridge
           path: services/job-fit-apply-ai-bridge/build/test-results/test
+
+      - name: Upload to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: services/job-fit-apply-ai-bridge/build/reports/jacoco/test/jacocoTestReport.xml
+          flags: bridge
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   # ── 4. Pipeline (Kotlin / JUnit 5 + Allure) ─────────────────────────────────
   pipeline:
@@ -185,6 +213,14 @@ jobs:
         with:
           name: coverage-pipeline
           path: services/job-fit-apply-ai-pipeline/build/reports/jacoco
+
+      - name: Upload to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: services/job-fit-apply-ai-pipeline/build/reports/jacoco/test/jacocoTestReport.xml
+          flags: pipeline
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   # ── 5. Allure Report — collect, generate, publish ───────────────────────────
   allure-report:

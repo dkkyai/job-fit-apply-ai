@@ -2,6 +2,7 @@ package com.jd.pipeline.nodes
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.jd.pipeline.client.LlmCaller
 import com.jd.pipeline.client.LlmClient
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.models.EvidenceItem
@@ -20,9 +21,10 @@ import java.nio.file.Files
  *
  * Uses LlmClient (temperature=0, no thinking) for deterministic output.
  */
-class ScoreFitNode : Node<JDState> {
+class ScoreFitNode(
+    private val llm: LlmCaller = LlmClient.fromModelString(Config.SCORE_MODEL, jsonMode = true, temperature = 0.0, nodeKey = "score_fit")
+) : Node<JDState> {
 
-    private val llm = LlmClient.fromModelString(Config.SCORE_MODEL, jsonMode = true, temperature = 0.0, nodeKey = "score_fit")
     private val mapper = ObjectMapper()
 
     override fun process(input: JDState): JDState {

@@ -19,23 +19,25 @@ import java.io.File
 import java.time.Instant
 
 object BatchCommandHandler {
-    fun run(cmd: Command.Batch) {
+    fun run(
+        cmd: Command.Batch,
+        gmailTransport: GmailTransport = GmailTransport(),
+        ingestionPipeline: IngestionPipeline = IngestionPipeline(),
+        bridge: BridgeClient = BridgeClient(),
+        labelingService: EmailLabelingServiceImpl = EmailLabelingServiceImpl(),
+    ) {
         println("[INFO] Processing batch (max ${cmd.maxEmails} emails)...")
         val batchStartTime = Instant.now()
         NodeTimer.reset()
 
         try {
-            val client = GmailTransport()
+            val client = gmailTransport
             val emails = client.fetchJdEmails(cmd.maxEmails, cmd.debug)
 
             if (emails.isEmpty()) {
                 println("[WARN] No emails found matching query.")
                 return
             }
-
-            val ingestionPipeline = IngestionPipeline()
-            val bridge            = BridgeClient()
-            val labelingService   = EmailLabelingServiceImpl()
 
             // ── Submit pass ───────────────────────────────────────────────────
             // email state → list of (jobId, isRecruiter, emailIntakeId, company, roleTitle)
@@ -46,7 +48,10 @@ object BatchCommandHandler {
                 val company: String,
                 val roleTitle: String,
             )
-            val emailSubmissions = mutableMapOf<JDState, List<Submission>>()
+            // Pre-pipeline state (key) → post-pipeline ingState + submissions.
+            // ingState carries the digest flags set by the pipeline; emailState does not.
+            data class ProcessedEmail(val ingState: JDState, val submissions: List<Submission>)
+            val emailSubmissions = mutableMapOf<JDState, ProcessedEmail>()
 
             for (emailState in emails) {
                 val subject = emailState.emailIntake?.subject?.take(60) ?: ""
@@ -98,7 +103,7 @@ object BatchCommandHandler {
                     }
                 }
 
-                emailSubmissions[emailState] = submissions
+                emailSubmissions[emailState] = ProcessedEmail(ingState, submissions)
             }
 
             // ── Polling pass ──────────────────────────────────────────────────
@@ -108,12 +113,12 @@ object BatchCommandHandler {
             var duplicate = 0
             val collectedJobs = mutableListOf<ScoredJob>()
 
-            for ((emailState, submissions) in emailSubmissions) {
-                val isDigestEmail = (emailState.emailIntake?.isDigest == true) ||
-                                    (emailState.emailIntake?.isInlineDigest == true)
+            for ((emailState, processed) in emailSubmissions) {
+                val (ingState, submissions) = processed
+                val isDigestEmail = ingState.isDigest || ingState.isInlineDigest
 
                 if (submissions.isEmpty()) {
-                    labelingService.applyLabeling(emailState, client)
+                    labelingService.applyLabeling(ingState, client)
                     continue
                 }
 
@@ -150,7 +155,8 @@ object BatchCommandHandler {
                 }
 
                 // Apply terminal label based on aggregate result.
-                val labelState = emailState.copy(
+                // Use ingState (not emailState) so digest flags are preserved.
+                val labelState = ingState.copy(
                     isJobPosting            = true,
                     error                   = if (anyError) "One or more jobs failed" else "",
                     isRecruiterResponseRequired = draftCreated,

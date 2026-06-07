@@ -6,6 +6,7 @@ plugins {
     application
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("io.qameta.allure") version "2.11.2"
+    jacoco
 }
 
 group = "com.jdbridge"
@@ -58,11 +59,29 @@ allure {
     useJUnit5 { adapterVersion.set("2.27.0") }
 }
 
+jacoco {
+    toolVersion = "0.8.11"
+}
+
 tasks.test {
     useJUnitPlatform()
     testLogging {
         events("passed", "failed", "skipped")
     }
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+    sourceDirectories.setFrom(files("src/main/kotlin"))
+    classDirectories.setFrom(files("build/classes/kotlin/main"))
+    executionData.setFrom(fileTree(layout.buildDirectory) {
+        include("jacoco/test.exec")
+    })
 }
 
 tasks.named<ShadowJar>("shadowJar") {
