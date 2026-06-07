@@ -44,14 +44,17 @@ The project uses `jvmToolchain(17)` which hardcodes Java 17. A single job approa
 ### Job Structure
 
 ```yaml
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-      - name: Setup Java 17
-      - name: Cache Gradle packages
-      - name: Run tests
+run: ./gradlew test \
+  --tests "com.jd.pipeline.nodes.*" \
+  --tests "com.jd.pipeline.cli.*" \
+  --tests "com.jd.pipeline.pipeline.*" \
+  --tests "com.jd.pipeline.utils.*" \
+  --tests "com.jd.pipeline.fixtures.*" \
+  --tests "com.jd.pipeline.functional.*" \
+  --tests "com.jd.pipeline.client.*" \
+  --tests "com.jd.pipeline.config.*" \
+  --tests "com.jd.pipeline.models.*" \
+  --tests "com.jd.pipeline.state.*"
 ```
 
 ### Caching Strategy

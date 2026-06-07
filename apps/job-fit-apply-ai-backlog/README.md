@@ -23,7 +23,7 @@ A job tracking dashboard built with Vite, React, and Supabase.
 
 ```bash
 git clone <repository-url>
-cd job-backlog-web-app
+cd job-fit-apply-ai-backlog
 ```
 
 ### 2. Install dependencies
@@ -239,8 +239,8 @@ We welcome contributions! Here's how to get started:
 1. **Fork the repository**
    ```bash
    # Click the "Fork" button on GitHub, then:
-    git clone https://github.com/<your-username>/job-backlog-web-app.git
-   cd job-backlog-web-app
+    git clone https://github.com/<your-username>/job-fit-apply-ai-backlog.git
+   cd job-fit-apply-ai-backlog
    ```
 
 2. **Create a branch**

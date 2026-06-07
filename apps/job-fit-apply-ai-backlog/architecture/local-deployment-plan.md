@@ -32,7 +32,7 @@ The current codebase is functional but lacks environment configuration, deployme
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-    cd job-backlog-web-app
+    cd job-fit-apply-ai-backlog
    ```
 
 2. **Install dependencies**
@@ -107,7 +107,7 @@ graph TD
 
 ### File Structure
 ```
-job-backlog-web-app/
+job-fit-apply-ai-backlog/
 ├── .env.example          # Template with placeholder variables
 ├── .env                  # Local secrets (git‑ignored)
 ├── .env.production       # Optional production‑specific variables

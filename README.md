@@ -37,6 +37,29 @@ A monorepo AI pipeline that automates the complete job search workflow: Gmail in
 │    tailored_resume.html, <Name>_<Role>.pdf, cover_letter.txt,                  │
 │    score_fit.txt, gap_analysis.json, ats_score.txt, ...                        │
 └──────────────────────┬─────────────────────────────────────────────────────────┘
+                       │ POST /api/jobs  (HTTP, loopback)
+                       ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│  services/job-fit-apply-ai-bridge  (Kotlin Ktor, port 8765)      │
+│  SQLite job queue — submit / claim / result / artifact endpoints               │
+│  Bound to: 127.0.0.1:8765  +  <tailscale-ip>:8765                             │
+└──────────┬──────────────────────────────────────────────────┬──────────────────┘
+           │ claim()  (worker polls)                          │ POST /api/jobs
+           ▼                                                  │ (Tailscale)
+┌──────────────────────────────────────┐                      │
+│  services/job-fit-apply-ai-pipeline  │             ┌────────┴───────────────────┐
+│  --worker  (pm2: jd-worker)          │             │  Chrome Browser            │
+│                                      │             │  apps/job-description-to-  │
+│  ProcessingPipeline:                 │             │  ai-pipeline-browser-      │
+│  CheckDuplicate → ScoreFit           │             │  extension  (MV3)          │
+│  → ResumeTailoringSubgraph (6 nodes) │             │  13 ATS extractors         │
+│  → GenerateCoverLetter               │             └────────────────────────────┘
+│  → RenderResumePdf (Playwright)      │
+│  → AddArtifactUrl → SupabaseTrack    │       JSearch API  (cron: daily 5 AM)
+│  → postResult()                      │         --jsearch → bridge.submit()
+└──────────────────────────────────────┘              (same queue, same worker)
+
+
                        │ INSERT/UPDATE tracks table
                        ▼
 ┌────────────────────────────────────────────────────────────────────────────────┐
@@ -45,7 +68,7 @@ A monorepo AI pipeline that automates the complete job search workflow: Gmail in
                        │ reads + writes (status updates only)
                        ▼
 ┌────────────────────────────────────────────────────────────────────────────────┐
-│  apps/job-backlog-web-app  (React + TypeScript + Vite, port 8080)              │
+│  apps/job-fit-apply-ai-backlog  (React + TypeScript + Vite, port 8080)              │
 │  Live dashboard: fit-score filter, status management,                          │
 │  collapsible rows, direct PDF + cover letter downloads                         │
 └────────────────────────────────────────────────────────────────────────────────┘
@@ -73,10 +96,10 @@ A monorepo AI pipeline that automates the complete job search workflow: Gmail in
 
 | Repo | Language | Description |
 |---|---|---|
-| `services/langgraph-ai-pipeline` | Kotlin 1.9 / JVM 21 | LangGraph pipeline — Gmail scan, digest fan-out, scoring, tailoring, PDF, draft reply, tracking |
-| `services/job-description-to-ai-pipeline-bridge` | Kotlin 1.9 / JVM 21 | Ktor bridge — job lifecycle state, subprocess delegation, artifact serving |
-| `apps/job-description-to-ai-pipeline-browser-extension` | JavaScript (MV3) | Chrome extension — JD extraction from job boards, real-time progress UI |
-| `apps/job-backlog-web-app` | TypeScript / React 18 | Vite dashboard — live job table, status management, artifact downloads |
+| `services/job-fit-apply-ai-pipeline` | Kotlin / JVM 21 | Email ingestion pipeline + processing pipeline + worker; CLI entry point for all modes |
+| `services/job-fit-apply-ai-bridge` | Kotlin / JVM 21 | Ktor bridge — SQLite job queue, claim/result/artifact API, artifact file server |
+| `apps/job-fit-apply-ai-extension` | JavaScript (MV3) | Chrome extension — JD extraction from job boards, real-time progress UI |
+| `apps/job-fit-apply-ai-backlog` | TypeScript / React 18 | Vite dashboard — live job table, status management, artifact downloads |
 
 ---
 
@@ -91,15 +114,15 @@ A monorepo AI pipeline that automates the complete job search workflow: Gmail in
 - **Gmail OAuth credentials** — `credentials.json` from Google Cloud Console (Gmail API enabled, OAuth 2.0 client for desktop app)
 - **Supabase** project with `tracks` table (schema below)
 
-### services/job-description-to-ai-pipeline-bridge
-- Kotlin 1.9+ / JDK 21
-- Kotlin pipeline cloned and buildable (path in `.env`)
+### services/job-fit-apply-ai-bridge
+- JDK 21
+- **Tailscale** (optional — required only for Chrome extension access)
 
-### apps/job-description-to-ai-pipeline-browser-extension
+### apps/job-fit-apply-ai-extension
 - Chrome with Developer Mode enabled
 - **Tailscale** — extension communicates with bridge over MagicDNS address
 
-### apps/job-backlog-web-app
+### apps/job-fit-apply-ai-backlog
 - Node.js 18+ or Bun 1.0+
 - Same Supabase project as the pipeline
 
@@ -133,10 +156,10 @@ Save your project URL and anon key — used by both the pipeline and the dashboa
 
 ---
 
-### 2. services/langgraph-ai-pipeline
+### 2. services/job-fit-apply-ai-bridge
 
 ```bash
-cd services/langgraph-ai-pipeline
+cd services/job-fit-apply-ai-bridge
 
 # Edit Config.kt — set models, Supabase credentials, Gmail file paths
 # src/main/kotlin/com/jd/pipeline/config/Config.kt
@@ -196,7 +219,7 @@ launchctl load ~/Library/LaunchAgents/ai.openclaw.jd-bridge.plist
 ### 4. Chrome Extension
 
 1. Chrome → `chrome://extensions` → enable Developer mode
-2. Load unpacked → select `apps/job-description-to-ai-pipeline-browser-extension/`
+2. Load unpacked → select `apps/job-fit-apply-ai-extension/`
 3. Set your bridge address in `config.js`:
 
 ```js
@@ -205,10 +228,10 @@ export const BRIDGE_API_URL = 'http://your-machine.ts.net:8765'; // or http://lo
 
 ---
 
-### 5. apps/job-backlog-web-app
+### 5. apps/job-fit-apply-ai-backlog
 
 ```bash
-cd apps/job-backlog-web-app
+cd apps/job-fit-apply-ai-backlog
 npm install
 
 cat > .env << EOF
@@ -362,20 +385,20 @@ For browser-triggered jobs, artifacts are also copied to `~/.openclaw/jd-bridge/
 # Pipeline (Kotlin)
 cd services/langgraph-ai-pipeline && ./gradlew test
 
-# Bridge
-cd services/job-description-to-ai-pipeline-bridge && ./gradlew test
+# Bridge — unit + integration tests
+cd services/job-fit-apply-ai-bridge && ./gradlew test
 
 # Dashboard — unit tests
-cd apps/job-backlog-web-app && npm run test:unit
+cd apps/job-fit-apply-ai-backlog && npm run test:unit
 
 # Dashboard — E2E (Playwright, requires built app on :8080)
-cd apps/job-backlog-web-app && npm run test:e2e
+cd apps/job-fit-apply-ai-backlog && npm run test:e2e
 
 # Dashboard — full CI suite locally
 cd apps/job-backlog-web-app && npm run test:ci
 
 # Extension
-cd apps/job-description-to-ai-pipeline-browser-extension && npm test
+cd apps/job-fit-apply-ai-extension && npm test
 ```
 
 The dashboard CI (`.github/workflows/ci.yml`) runs lint → unit tests on Node 18 and 20 → production build → Playwright E2E in sequence, then deploys to Vercel on main branch merge.
