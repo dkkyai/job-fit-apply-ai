@@ -1,11 +1,13 @@
 package com.jd.pipeline.nodes.tailor
 
+import com.jd.pipeline.client.LlmCaller
 import com.jd.pipeline.models.*
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -123,6 +125,54 @@ class SkillsRestructureNodeTest {
         tests.forEach { (input, expected) ->
             assertEquals(expected, invokeStripJsonFences(input))
         }
+    }
+
+    // ── Mock LLM: process() happy path ────────────────────────────────────────
+
+    @Test
+    @DisplayName("valid LLM response populates restructuredSkills on the state")
+    fun validLlmResponsePopulatesSkills() {
+        val json = """
+            {
+              "restructured_text": "Kotlin | Java | Playwright | GitHub Actions",
+              "removed_for_this_role": [],
+              "jd_matched_skills": ["Kotlin", "Playwright"],
+              "grouped_by_category": {
+                "Languages": ["Kotlin", "Java"],
+                "Automation": ["Playwright"]
+              }
+            }
+        """.trimIndent()
+        val mockNode = SkillsRestructureNode(llm = LlmCaller { json })
+        val result = mockNode.process(makeState())
+        assertNotNull(result.restructuredSkills)
+        assertEquals("Kotlin | Java | Playwright | GitHub Actions", result.restructuredSkills!!.restructuredText)
+        assertEquals(listOf("Kotlin", "Playwright"), result.restructuredSkills!!.jdMatchedSkills)
+        assertEquals(2, result.restructuredSkills!!.groupedByCategory.size)
+    }
+
+    @Test
+    @DisplayName("LLM returning placeholder text produces error state")
+    fun placeholderTextProducesError() {
+        val json = """
+            {
+              "restructured_text": "skill1 | skill2 | skill3",
+              "removed_for_this_role": [],
+              "jd_matched_skills": [],
+              "grouped_by_category": {}
+            }
+        """.trimIndent()
+        val mockNode = SkillsRestructureNode(llm = LlmCaller { json })
+        val result = mockNode.process(makeState())
+        assertTrue(result.error.isNotBlank(), "Expected error for placeholder text")
+    }
+
+    @Test
+    @DisplayName("LLM exception produces error state")
+    fun llmExceptionProducesError() {
+        val mockNode = SkillsRestructureNode(llm = LlmCaller { throw RuntimeException("LLM timeout") })
+        val result = mockNode.process(makeState())
+        assertTrue(result.error.isNotBlank())
     }
 
     // ── reflection helpers to exercise internal methods ─────────────────────

@@ -19,23 +19,25 @@ import java.io.File
 import java.time.Instant
 
 object BatchCommandHandler {
-    fun run(cmd: Command.Batch) {
+    fun run(
+        cmd: Command.Batch,
+        gmailTransport: GmailTransport = GmailTransport(),
+        ingestionPipeline: IngestionPipeline = IngestionPipeline(),
+        bridge: BridgeClient = BridgeClient(),
+        labelingService: EmailLabelingServiceImpl = EmailLabelingServiceImpl(),
+    ) {
         println("[INFO] Processing batch (max ${cmd.maxEmails} emails)...")
         val batchStartTime = Instant.now()
         NodeTimer.reset()
 
         try {
-            val client = GmailTransport()
+            val client = gmailTransport
             val emails = client.fetchJdEmails(cmd.maxEmails, cmd.debug)
 
             if (emails.isEmpty()) {
                 println("[WARN] No emails found matching query.")
                 return
             }
-
-            val ingestionPipeline = IngestionPipeline()
-            val bridge            = BridgeClient()
-            val labelingService   = EmailLabelingServiceImpl()
 
             // ── Submit pass ───────────────────────────────────────────────────
             // email state → list of (jobId, isRecruiter, emailIntakeId, company, roleTitle)

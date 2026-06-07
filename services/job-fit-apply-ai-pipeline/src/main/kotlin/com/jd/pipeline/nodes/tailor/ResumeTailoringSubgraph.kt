@@ -23,15 +23,15 @@ import java.nio.file.Path
  *   → BulletRewriteNode → SkillsRestructureNode → AtsScoringNode
  */
 class ResumeTailoringSubgraph(
-    private val resumeHtmlNode: GenerateResumeHtmlNode = GenerateResumeHtmlNode()
+    private val jdExtraction: JdExtractionNode        = JdExtractionNode(),
+    private val gapAnalysis: GapAnalysisNode          = GapAnalysisNode(),
+    private val summaryRewrite: SummaryRewriteNode    = SummaryRewriteNode(),
+    private val bulletRewrite: BulletRewriteNode      = BulletRewriteNode(),
+    private val skillsRestructure: SkillsRestructureNode = SkillsRestructureNode(),
+    private val atsScoring: AtsScoringNode            = AtsScoringNode(),
+    private val resumeHtmlNode: GenerateResumeHtmlNode = GenerateResumeHtmlNode(),
 ) : Node<JDState> {
 
-    private val jdExtraction = JdExtractionNode()
-    private val gapAnalysis = GapAnalysisNode()
-    private val summaryRewrite = SummaryRewriteNode()
-    private val bulletRewrite = BulletRewriteNode()
-    private val skillsRestructure = SkillsRestructureNode()
-    private val atsScoring = AtsScoringNode()
     private val mapper = ObjectMapper()
 
     override fun process(input: JDState): JDState {

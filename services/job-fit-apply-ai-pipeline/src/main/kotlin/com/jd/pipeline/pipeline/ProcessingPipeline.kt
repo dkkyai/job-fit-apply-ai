@@ -22,15 +22,15 @@ import java.io.File
  *
  * No Gmail calls. Consumed by the worker via [WorkerCommandHandler].
  */
-class ProcessingPipeline {
-
-    private var checkDuplicate: Node<JDState>       = CheckDuplicateNode()
-    private var scoreFit: Node<JDState>             = ScoreFitNode()
-    private var tailorSubgraph: Node<JDState>       = ResumeTailoringSubgraph()
-    private var generateCoverLetter: Node<JDState>  = GenerateCoverLetterNode()
-    private var renderResumePdf: Node<JDState>      = RenderResumePdfNode()
-    private var addArtifactUrl: Node<JDState>       = AddArtifactUrlNode()
-    private var supabaseTrack: Node<JDState>        = SupabaseTrackNode()
+class ProcessingPipeline(
+    private val checkDuplicate: Node<JDState>      = CheckDuplicateNode(),
+    private val scoreFit: Node<JDState>            = ScoreFitNode(),
+    private val tailorSubgraph: Node<JDState>      = ResumeTailoringSubgraph(),
+    private val generateCoverLetter: Node<JDState> = GenerateCoverLetterNode(),
+    private val renderResumePdf: Node<JDState>     = RenderResumePdfNode(),
+    private val addArtifactUrl: Node<JDState>      = AddArtifactUrlNode(),
+    private val supabaseTrack: Node<JDState>       = SupabaseTrackNode(),
+) {
 
     fun invoke(record: JdRecord): ProcessingResult {
         return try {
