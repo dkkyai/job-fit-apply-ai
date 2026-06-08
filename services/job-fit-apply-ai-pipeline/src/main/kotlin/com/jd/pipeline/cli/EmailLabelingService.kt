@@ -73,19 +73,6 @@ class EmailLabelingServiceImpl : EmailLabelingService {
                     wasKeptInInbox    = true
                 )
             }
-            !state.isJobPosting -> {
-                val labelId = client.getOrCreateLabel("JD_Not_Found")
-                client.labelEmail(emailId, labelId)
-                client.markUnread(emailId)
-                clearErrorLabel(emailId, client)
-                LabelingResult(
-                    labelApplied      = "JD_Not_Found",
-                    wasArchived       = false,
-                    wasStarred        = false,
-                    wasMarkedUnread   = true,
-                    wasKeptInInbox    = true
-                )
-            }
             state.isDigest || state.isInlineDigest -> {
                 val labelId = client.getOrCreateLabel("JD_Processed_Digest")
                 client.labelEmail(emailId, labelId)
@@ -97,6 +84,19 @@ class EmailLabelingServiceImpl : EmailLabelingService {
                     wasStarred        = false,
                     wasMarkedUnread   = false,
                     wasKeptInInbox    = false
+                )
+            }
+            !state.isJobPosting -> {
+                val labelId = client.getOrCreateLabel("JD_Not_Found")
+                client.labelEmail(emailId, labelId)
+                client.markUnread(emailId)
+                clearErrorLabel(emailId, client)
+                LabelingResult(
+                    labelApplied      = "JD_Not_Found",
+                    wasArchived       = false,
+                    wasStarred        = false,
+                    wasMarkedUnread   = true,
+                    wasKeptInInbox    = true
                 )
             }
             else -> {
