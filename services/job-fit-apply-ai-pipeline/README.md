@@ -14,9 +14,9 @@ The pipeline is split into two halves connected by the bridge job queue:
 ## What it does
 
 - Fetches recruiter emails and job-board digests from Gmail, or pulls live listings from the JSearch API.
-- Classifies the email, expands digests into per-job records, and scrapes each job page (HTTP for most boards, Playwright + Chrome profile for LinkedIn).
-- Submits each ingested job to the bridge queue and polls for results.
-- The worker claims jobs from the queue and runs the processing pipeline: deduplicates, scores fit, runs `ResumeTailoringSubgraph`, renders a tailored HTML + PDF via Playwright.
+- Classifies the email, expands digests into per-job records, and scrapes each job page (HTTP + schema.org JSON-LD for most boards, Playwright + Chrome profile for LinkedIn).
+- Submits each ingested job to the bridge queue; `--max-emails` is fire-and-forget while `--email` polls the single job to completion.
+- The worker claims jobs from the queue and runs the processing pipeline: deduplicates, scores fit, runs `ResumeTailoringSubgraph`, renders a tailored HTML + PDF via Playwright, and appends a run record to `output/runs/run_log.jsonl`.
 - Tracks every job in Supabase and, when the source is a recruiter email, drafts a reply with your preferences pre-filled.
 
 ## Quick start
@@ -56,9 +56,14 @@ flowchart TD
     ScrapeSingle --> SaveSingle["SaveJobDescriptionNode"]
     SaveSingle --> Submit
 
-    Submit["bridge.submit(JdRecord)\n+ apply JD_Processing label"] --> Poll["bridge.pollUntilTerminal(jobId)\n(blocks until worker done)"]
-    Poll --> Label["EmailLabelingService\n(JD_Processed / Recruiter_Response_Required / …)"]
+    Submit["bridge.submit(JdRecord)\n+ apply JD_Processing label"] --> Batch["--max-emails: fire-and-forget\n(worker owns terminal state)"]
+    Submit --> Single["--email: pollUntilTerminal\n→ EmailLabelingService"]
 ```
+
+`--max-emails` is **fire-and-forget**: it submits each job, applies the `JD_Processing`
+label, and returns — the worker drives the job to completion and (for recruiter emails)
+creates the draft reply and applies `Recruiter_Response_Required`. `--email` instead
+polls the single job to completion and then applies the terminal label.
 
 ### Processing (`--worker`)
 
@@ -90,7 +95,12 @@ flowchart TD
     Artifact --> Track2["SupabaseTrackNode"]
     Track1 --> Post["bridge.postResult()"]
     Track2 --> Post
+    Post --> Rec["RunReport → output/runs/run_log.jsonl"]
 ```
+
+After every job the worker appends a structured record (score, action, error,
+`jdTextLen`, board, duration) to `output/runs/run_log.jsonl`. This durable per-job log
+is what the **run analyzer** reasons over — see [`tuner/run-analyzer`](tuner/run-analyzer/README.md).
 
 ### Tailoring subgraph — what it produces
 
@@ -228,7 +238,7 @@ Prompt files live in `src/main/resources/skills/` and are loaded at runtime — 
 | File | Node | Purpose |
 |---|---|---|
 | `SCAN_SKILL.md` | `ScanEmailNode` | Email classification and field extraction |
-| `SCRAPE_SKILL.md` | `ScrapeJdNode` | Job-page structured extraction |
+| `SCRAPE_SKILL.md` | `ScrapeJdNode` | Job-page structured extraction (prefers schema.org `JobPosting` JSON-LD when the page embeds it) |
 | `SCORE_SKILL.md` | `ScoreFitNode` | Combined fit scoring + JD structure extraction (runtime-templated via `{{CANDIDATE_PROFILE}}`) |
 | `JD_EXTRACTION_SKILL.md` | `JdExtractionNode` | JD structure extraction (fallback when score_fit parse fails) |
 | `GAP_ANALYSIS_SKILL.md` | `GapAnalysisNode` | Skills gap table + keyword coverage score |
@@ -355,7 +365,7 @@ src/main/kotlin/com/jd/pipeline/
 │   ├── EmailLabelingService.kt        # Gmail label / archive / star
 │   ├── CreateDraftReply.kt            # Recruiter draft reply
 │   └── commands/
-│       ├── BatchCommandHandler.kt     # --max-emails: ingest → submit → poll
+│       ├── BatchCommandHandler.kt     # --max-emails: ingest → submit (fire-and-forget)
 │       ├── SingleEmailCommandHandler.kt # --email: single email
 │       ├── JSearchCommandHandler.kt   # --jsearch: fetch → submit to queue
 │       ├── WorkerCommandHandler.kt    # --worker: drain bridge queue
@@ -374,7 +384,7 @@ src/main/kotlin/com/jd/pipeline/
 │   └── JobListing.kt                  # JSearch API response model
 ├── nodes/
 │   ├── ScanEmailNode.kt               # Email classification and field extraction
-│   ├── ScrapeJdNode.kt                # Job-page scraping (HTTP + Playwright/LinkedIn)
+│   ├── ScrapeJdNode.kt                # Job-page scraping (HTTP + Playwright/LinkedIn, schema.org JSON-LD)
 │   ├── SaveJobDescriptionNode.kt      # Persist JD text
 │   ├── CheckDuplicateNode.kt          # Supabase-backed dedup
 │   ├── ScoreFitNode.kt                # Combined fit scoring + JD structure extraction
@@ -404,6 +414,7 @@ src/main/kotlin/com/jd/pipeline/
     ├── Json.kt                        # Shared JSON helpers
     ├── NodeTimer.kt                   # Per-node LLM call timing
     ├── OutputUtils.kt                 # Output directory naming
+    ├── RunReport.kt                   # Per-job JSONL record for the run analyzer
     └── JobFormatter.kt                # Batch summary table formatter
 
 src/main/resources/
@@ -418,6 +429,12 @@ src/main/resources/
 config/
 ├── candidate_profile.template.json    # Committed schema reference
 └── candidate_profile.json             # Gitignored — produced by --init-profile
+
+tuner/
+├── scan-email-tuner/                  # Dataset-driven tuners (skill + PROMPT + data-set)
+├── scrape-jd-url-tuner/
+├── env-llm-tuner/                     # Recommends .env model assignments
+└── run-analyzer/                      # Runs a batch + LLM-analyzes the run (see its README)
 ```
 
 ## CI and test reports

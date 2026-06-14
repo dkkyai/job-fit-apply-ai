@@ -60,7 +60,7 @@ class ScrapeJdNode(
         .followRedirects(HttpClient.Redirect.NORMAL)
         .build()
 
-    data class PageContent(val rawHtml: String, val cleanedText: String, val blockReason: String = "", val isCaptchaBlock: Boolean = false)
+    data class PageContent(val rawHtml: String, val cleanedText: String, val blockReason: String = "", val isCaptchaBlock: Boolean = false, val isBotBlock: Boolean = false, val scrapePath: String = "")
 
     companion object {
         private val DEFAULT_SCRAPE_SKILL_PROMPT = """
@@ -132,16 +132,16 @@ class ScrapeJdNode(
             if (page.blockReason.isNotEmpty()) {
                 log("[scrape_jd] Blocked for $jobUrl: ${page.blockReason}")
                 batchBlockedDomains.add(host)
-                return input.copy(error = "scrape_jd: ${page.blockReason}")
+                return input.copy(error = "scrape_jd: ${page.blockReason}", scrapePath = "blocked")
             }
 
             if (page.cleanedText.isEmpty()) {
                 log("[scrape_jd] Empty page content for $jobUrl")
-                return input.copy(error = "scrape_jd: empty page content")
+                return input.copy(error = "scrape_jd: empty page content", scrapePath = "empty")
             }
 
             parseJobPage(input, jobUrl, page.cleanedText)
-                .copy(rawPageContent = page.rawHtml)
+                .copy(rawPageContent = page.rawHtml, scrapePath = page.scrapePath)
         } catch (e: Exception) {
             log("[scrape_jd] Error fetching $jobUrl: ${e.message}")
             when (e) {
@@ -169,18 +169,25 @@ class ScrapeJdNode(
                 return PageContent(
                     rawHtml = "",
                     cleanedText = "",
-                    blockReason = "LinkedIn auth expired"
+                    blockReason = "LinkedIn auth expired",
+                    scrapePath = "blocked"
                 )
             }
-            return fetchLinkedInPageWithPlaywright(url)
+            return fetchLinkedInPageWithPlaywright(url).copy(scrapePath = "playwright_profile")
         }
 
         val httpResult = fetchPageOverHttp(url)
-        if (httpResult.isCaptchaBlock && Config.PLAYWRIGHT_FALLBACK_ON_CAPTCHA) {
-            log("[scrape_jd] HTTP CAPTCHA-blocked ($host: ${httpResult.blockReason}) — retrying with Playwright")
-            return fetchPageWithPlaywright(url)
+        if ((httpResult.isCaptchaBlock || httpResult.isBotBlock) && Config.PLAYWRIGHT_FALLBACK_ON_CAPTCHA) {
+            log("[scrape_jd] HTTP blocked ($host: ${httpResult.blockReason}) — retrying with Playwright")
+            return fetchPageWithPlaywright(url).copy(scrapePath = "playwright_clean")
         }
-        return httpResult
+        if (httpResult.blockReason.isEmpty() &&
+            httpResult.cleanedText.length < Config.PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH &&
+            Config.PLAYWRIGHT_FALLBACK_ON_THIN_CONTENT) {
+            log("[scrape_jd] Thin content ($host: ${httpResult.cleanedText.length} chars) — retrying with Playwright")
+            return fetchPageWithPlaywright(url).copy(scrapePath = "playwright_clean")
+        }
+        return httpResult.copy(scrapePath = "http")
     }
 
     private fun fetchPageOverHttp(url: String): PageContent {
@@ -205,7 +212,7 @@ class ScrapeJdNode(
             when (status) {
                 403 -> {
                     log("[scrape_jd] HTTP 403 (bot-blocked) for $url")
-                    return PageContent("", "", "HTTP 403 — bot-blocked or auth required")
+                    return PageContent("", "", "HTTP 403 — bot-blocked or auth required", isBotBlock = true)
                 }
                 429 -> {
                     log("[scrape_jd] HTTP 429 (rate-limited) for $url")
@@ -512,16 +519,95 @@ class ScrapeJdNode(
         }
 
         val document = Jsoup.parse(rawHtml)
+        // Extract schema.org JobPosting JSON-LD before stripping <script> tags. Most
+        // job boards/ATS (Indeed, Monster, ZipRecruiter, Lever, Greenhouse, Workday…)
+        // embed the full, clean JD here — far better than scraping visible text, and
+        // it's the difference between a real JD and a thin digest summary for scoring.
+        val jsonLdJob = extractJobPostingJsonLd(document)
         document.select("script,style,noscript").remove()
 
         var text = preferredVisibleText?.takeIf { it.isNotBlank() } ?: document.text()
         text = text.replace(Regex("\\s+"), " ").trim()
 
-        if (nextDataJson.isNotEmpty()) {
-            text = "PAGE_JSON_DATA:\n$nextDataJson\n\n$text"
+        val prefixes = buildList {
+            if (nextDataJson.isNotEmpty()) add("PAGE_JSON_DATA:\n$nextDataJson")
+            if (jsonLdJob != null) add(jsonLdJob)
+        }
+        if (prefixes.isNotEmpty()) {
+            text = prefixes.joinToString("\n\n") + "\n\n" + text
         }
 
         return PageContent(rawHtml, text)
+    }
+
+    /**
+     * Extract a schema.org `JobPosting` from `application/ld+json` script blocks and
+     * render it as a clean, labeled text block (title, company, location, salary,
+     * employment type, full description). Returns null when no usable JobPosting with
+     * a substantive description is found. Handles single objects, arrays, and `@graph`.
+     */
+    internal fun extractJobPostingJsonLd(html: String): String? = extractJobPostingJsonLd(Jsoup.parse(html))
+
+    internal fun extractJobPostingJsonLd(document: org.jsoup.nodes.Document): String? {
+        for (script in document.select("script[type=application/ld+json]")) {
+            val json = script.data().trim()
+            if (json.isBlank()) continue
+            val root = try { mapper.readTree(json) } catch (_: Exception) { null }
+            if (root == null) continue
+            val posting = findJobPostingNode(root) ?: continue
+
+            val descHtml = posting.path("description").asText("")
+            if (descHtml.isBlank()) continue
+            val descText = Jsoup.parse(descHtml).text().replace(Regex("\\s+"), " ").trim()
+            if (descText.length < 100) continue  // too thin to be a real JD body
+
+            val title = posting.path("title").asText("").trim()
+            val company = posting.path("hiringOrganization").path("name").asText("").trim()
+            val loc = posting.path("jobLocation").let { jl ->
+                val addr = (if (jl.isArray) jl.firstOrNull() else jl)?.path("address")
+                listOfNotNull(
+                    addr?.path("addressLocality")?.asText("")?.takeIf { it.isNotBlank() },
+                    addr?.path("addressRegion")?.asText("")?.takeIf { it.isNotBlank() },
+                ).joinToString(", ")
+            }
+            val salary = posting.path("baseSalary").path("value").let { v ->
+                val min = v.path("minValue").asText(""); val max = v.path("maxValue").asText("")
+                val unit = v.path("unitText").asText("")
+                when {
+                    min.isNotBlank() && max.isNotBlank() -> "$min - $max ${unit}".trim()
+                    min.isNotBlank() -> "$min ${unit}".trim()
+                    else -> ""
+                }
+            }
+            val employmentType = posting.path("employmentType").let {
+                if (it.isArray) it.joinToString(", ") { e -> e.asText() } else it.asText("")
+            }.trim()
+
+            return buildString {
+                appendLine("STRUCTURED_JOB_DATA (authoritative — prefer over visible text):")
+                if (title.isNotBlank()) appendLine("Title: $title")
+                if (company.isNotBlank()) appendLine("Company: $company")
+                if (loc.isNotBlank()) appendLine("Location: $loc")
+                if (salary.isNotBlank()) appendLine("Salary: $salary")
+                if (employmentType.isNotBlank()) appendLine("Employment type: $employmentType")
+                appendLine("Description: $descText")
+            }.trim()
+        }
+        return null
+    }
+
+    private fun findJobPostingNode(node: com.fasterxml.jackson.databind.JsonNode): com.fasterxml.jackson.databind.JsonNode? {
+        when {
+            node.isObject -> {
+                val type = node.path("@type")
+                val isJob = (type.isTextual && type.asText() == "JobPosting") ||
+                    (type.isArray && type.any { it.asText() == "JobPosting" })
+                if (isJob) return node
+                if (node.has("@graph")) findJobPostingNode(node.path("@graph"))?.let { return it }
+            }
+            node.isArray -> for (el in node) findJobPostingNode(el)?.let { return it }
+        }
+        return null
     }
 
     private fun extractHost(url: String): String {
@@ -992,12 +1078,28 @@ class ScrapeJdNode(
             runCatching {
                 page.waitForLoadState(LoadState.LOAD, Page.WaitForLoadStateOptions().setTimeout(15000.0))
             }
+            // Wait for SPA content hydration (WttJ, Jobright, other React/Next.js sites)
+            runCatching {
+                page.waitForSelector(
+                    "[data-testid='job-description'], article, .job-description, main",
+                    com.microsoft.playwright.Page.WaitForSelectorOptions()
+                        .setState(com.microsoft.playwright.options.WaitForSelectorState.VISIBLE)
+                        .setTimeout(8000.0)
+                )
+            }
 
             val rawHtml = page.content()
             val captchaReason = detectCaptchaInHtml(rawHtml)
             if (captchaReason != null) {
                 log("[scrape_jd] Playwright fetch still blocked: $captchaReason")
                 return PageContent(rawHtml, "", "Playwright: $captchaReason")
+            }
+
+            // Use innerText for SPA-rendered content — cleaner than Jsoup on a hydrated DOM snapshot
+            val visibleText = runCatching { page.innerText("body") }.getOrElse { "" }
+            if (visibleText.length > 200) {
+                log("[scrape_jd] Playwright fetch succeeded (innerText) for $url")
+                return PageContent(rawHtml, visibleText)
             }
 
             log("[scrape_jd] Playwright fetch succeeded for $url")

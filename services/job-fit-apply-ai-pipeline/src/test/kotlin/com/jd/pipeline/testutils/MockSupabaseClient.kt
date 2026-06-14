@@ -2,12 +2,13 @@ package com.jd.pipeline.testutils
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.jd.pipeline.client.SupabaseGateway
 
 /**
  * Mock Supabase client for integration testing.
  * Simulates all Supabase database operations without connecting to real DB.
  */
-class MockSupabaseClient {
+class MockSupabaseClient : SupabaseGateway {
 
     private val mapper = ObjectMapper()
 
@@ -25,7 +26,10 @@ class MockSupabaseClient {
     var shouldFailQuery = false
     var failMessage = "Mock failure"
 
-    fun isConfigured(): Boolean = true
+    /** Toggle to simulate the "Supabase not configured in .env" path. */
+    var configured = true
+
+    override fun isConfigured(): Boolean = configured
 
     fun reset() {
         jobs.clear()
@@ -37,6 +41,7 @@ class MockSupabaseClient {
         shouldFailInsert = false
         shouldFailPatch = false
         shouldFailQuery = false
+        configured = true
     }
 
     fun addJob(job: Map<String, Any?>) {
@@ -47,7 +52,7 @@ class MockSupabaseClient {
         tracks.add(track.toMutableMap())
     }
 
-    fun insert(table: String, record: Map<String, Any?>): JsonNode {
+    override fun insert(table: String, record: Map<String, Any?>): JsonNode {
         if (shouldFailInsert) throw RuntimeException(failMessage)
         insertCalls.add(table to record)
 

@@ -39,6 +39,9 @@ You will receive:
 - Ignore tracking, analytics, unsubscribe, and unrelated marketing metadata when reading hidden content.
 - If the email names multiple jobs with no single primary role, return `is_job_posting: false`.
 - Do not merge multiple jobs into one synthetic posting. If the email is really a multi-job digest, leave it for board-specific digest parsing instead of inventing a combined company/title/location.
+- **Forwarded messages**: If the email contains a "---------- Forwarded message ---------" header, treat the forwarded content as the primary job description source. The outer envelope message is recruiter commentary, not the JD.
+- **Conversation threads**: If the email is a reply thread showing multiple messages, focus on the most recent message and any attached or quoted job description. Earlier turns in the thread are context, not the JD, unless no JD appears in the latest message.
+- **Offer acceptance / onboarding logistics**: Emails confirming an accepted offer, providing onboarding instructions, shipping tracking numbers, pay rate confirmations, Beeline/MSP request numbers, or equipment delivery notices are `is_job_posting: false`.
 
 ## Output Format
 

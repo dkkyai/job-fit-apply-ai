@@ -32,6 +32,7 @@ data class JDState(
     val isJobPosting: Boolean = false,
     val scrapedContent: String = "",
     val rawPageContent: String = "",
+    val scrapePath: String = "",
     val jdText: String = "",
     val company: String = "",
     val roleTitle: String = "",

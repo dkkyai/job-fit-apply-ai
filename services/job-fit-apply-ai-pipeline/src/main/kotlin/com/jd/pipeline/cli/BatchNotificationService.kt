@@ -3,6 +3,7 @@ package com.jd.pipeline.cli
 import com.jd.pipeline.client.NotificationClient
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.utils.NodeTimer
+import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
@@ -29,6 +30,31 @@ class BatchNotificationService(
     private val client: NotificationClient = NotificationClient(),
     private val fitThreshold: Int = Config.NOTIFICATION_FIT_THRESHOLD,
 ) {
+
+    private val log = LoggerFactory.getLogger(BatchNotificationService::class.java)
+
+    /**
+     * Logs which notification channels are active. Call once at startup (worker / batch)
+     * so a silent misconfiguration — blank tokens leaving both channels disabled —
+     * is visible in the logs instead of failing quietly. Returns true if any channel
+     * is configured.
+     */
+    fun logConfigStatus(): Boolean {
+        val channels = buildList {
+            if (client.discordConfigured) add("Discord")
+            if (client.telegramConfigured) add("Telegram")
+        }
+        return if (channels.isEmpty()) {
+            log.warn(
+                "Notifications DISABLED — no Discord/Telegram credentials configured; nothing will be sent. " +
+                "Set DISCORD_BOT_TOKEN/DISCORD_CHANNEL_ID and/or TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID in .env."
+            )
+            false
+        } else {
+            log.info("Notifications enabled: ${channels.joinToString(", ")} (high-fit threshold ≥$fitThreshold)")
+            true
+        }
+    }
 
     data class BatchSummary(
         val emailsProcessed: Int,
@@ -113,6 +139,23 @@ class BatchNotificationService(
             lines += "• ${job.company} — $title — **$score**"
         }
         client.postDiscord(lines.joinToString("\n"))
+    }
+
+    // ── Per-job (worker) notification ─────────────────────────────────────────
+
+    fun notifyJobResult(job: ScoredJob) {
+        if (!client.discordConfigured && !client.telegramConfigured) return
+        val score = job.fitScore?.toString() ?: "?"
+        val title = job.roleTitle.ifBlank { "*(no title)*" }
+        if (job.error != null) {
+            client.postDiscord("• ${job.company} — $title — error: ${job.error}")
+            return
+        }
+        val action = job.pipelineAction ?: "?"
+        client.postDiscord("• ${job.company} — $title — **$score** ($action)")
+        if ((job.fitScore ?: 0) >= fitThreshold) {
+            client.postTelegram("High-fit: ${job.company} — $title — ${job.fitScore}")
+        }
     }
 
     // ── Telegram ping ─────────────────────────────────────────────────────────

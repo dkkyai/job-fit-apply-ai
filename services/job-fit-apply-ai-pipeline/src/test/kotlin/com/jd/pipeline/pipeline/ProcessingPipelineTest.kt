@@ -29,6 +29,14 @@ class ProcessingPipelineTest {
         source     = IngestionSource.EMAIL,
     )
 
+    private fun recruiterRecord() = minimalRecord().copy(
+        intakeMeta = com.jd.pipeline.source.IntakeContext.Email(
+            emailId = "e1", from = "rec@firm.com", subject = "Great role for you",
+            rawBody = "body", htmlBody = "",
+            isRecruiter = true, isDigest = false, isInlineDigest = false,
+        ),
+    )
+
     private fun injectNode(pipeline: ProcessingPipeline, fieldName: String, node: Node<JDState>) {
         val field = ProcessingPipeline::class.java.getDeclaredField(fieldName)
         field.isAccessible = true
@@ -103,6 +111,50 @@ class ProcessingPipelineTest {
         // tailor error surfaces in the result
         assertNotNull(result.error)
         assertTrue(result.error!!.contains("tailor subgraph failed"))
+    }
+
+    @Test
+    @DisplayName("recruiter email is forced to TAILOR even when scoreFit returns SKIP")
+    fun invokeForcesTailorForRecruiterLowScore() {
+        val pipeline = ProcessingPipeline()
+        var tailorCalled = false
+        injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
+        injectNode(pipeline, "scoreFit", Node { state ->
+            state.copy(pipelineAction = com.jd.pipeline.state.PipelineAction.SKIP, fitScore = 20f)
+        })
+        injectNode(pipeline, "tailorSubgraph", Node { state ->
+            tailorCalled = true
+            state.copy(error = "stop after tailor") // short-circuit before LLM cover-letter/PDF nodes
+        })
+        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+
+        pipeline.invoke(recruiterRecord())
+
+        // The recruiter override (ProcessingPipeline lines 81-83) must route a low-score
+        // recruiter email through the tailor node anyway.
+        assertTrue(tailorCalled, "recruiter email must be tailored even on a low fit score")
+    }
+
+    @Test
+    @DisplayName("recruiter email is scored + tailored even when it is a duplicate")
+    fun invokeDoesNotSkipDuplicateRecruiter() {
+        val pipeline = ProcessingPipeline()
+        var tailorCalled = false
+        injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = true) })
+        injectNode(pipeline, "scoreFit", Node { state ->
+            state.copy(pipelineAction = com.jd.pipeline.state.PipelineAction.SKIP, fitScore = 20f)
+        })
+        injectNode(pipeline, "tailorSubgraph", Node { state ->
+            tailorCalled = true
+            state.copy(error = "stop after tailor")
+        })
+        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+
+        pipeline.invoke(recruiterRecord())
+
+        // The duplicate guard (line 72) excludes recruiters, so a duplicate recruiter
+        // email still proceeds through score + tailor.
+        assertTrue(tailorCalled, "duplicate recruiter email must still be scored and tailored")
     }
 
     @Test

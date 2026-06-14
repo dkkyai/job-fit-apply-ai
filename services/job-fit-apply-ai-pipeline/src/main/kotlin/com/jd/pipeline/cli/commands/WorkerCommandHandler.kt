@@ -1,8 +1,14 @@
 package com.jd.pipeline.cli.commands
 
+import com.jd.pipeline.cli.BatchNotificationService
+import com.jd.pipeline.cli.ScoredJob
 import com.jd.pipeline.client.BridgeClient
+import com.jd.pipeline.nodes.CreateDraftReplyNode
 import com.jd.pipeline.pipeline.ProcessingPipeline
+import com.jd.pipeline.source.IntakeContext
+import com.jd.pipeline.source.JdRecord
 import com.jd.pipeline.source.ProcessingResult
+import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 
 object WorkerCommandHandler {
@@ -10,8 +16,10 @@ object WorkerCommandHandler {
     fun run(
         bridge: BridgeClient = BridgeClient(),
         pipeline: ProcessingPipeline = ProcessingPipeline(),
+        notificationService: BatchNotificationService = BatchNotificationService(),
     ) {
         println("[worker] Starting — polling ${System.getenv("JD_BRIDGE_URL") ?: "http://127.0.0.1:8765"}")
+        notificationService.logConfigStatus()
 
         while (true) {
             val claimed = try {
@@ -29,6 +37,7 @@ object WorkerCommandHandler {
 
             println("[worker] Processing job ${claimed.jobId} — ${claimed.jdRecord.roleTitle} @ ${claimed.jdRecord.company}")
 
+            val jobStartedAt = System.currentTimeMillis()
             val result: ProcessingResult = try {
                 pipeline.invoke(claimed.jdRecord)
             } catch (e: Exception) {
@@ -63,6 +72,48 @@ object WorkerCommandHandler {
                     bridge.postResult(claimed.jobId, result.copy(error = "Failed to post result: ${e.message}"))
                 }
             }
+
+            // Durable structured record for the run analyzer (see tuner/run-analyzer).
+            com.jd.pipeline.utils.RunReport.record(
+                claimed.jobId, claimed.jdRecord, result, System.currentTimeMillis() - jobStartedAt,
+            )
+
+            notificationService.notifyJobResult(ScoredJob(
+                company        = claimed.jdRecord.company ?: "",
+                roleTitle      = claimed.jdRecord.roleTitle ?: "",
+                fitScore       = result.fitScore,
+                pipelineAction = result.pipelineAction,
+                error          = result.error,
+            ))
+
+            if (result.pipelineAction == PipelineAction.TAILOR.name && result.error == null) {
+                val intake = claimed.jdRecord.intakeMeta
+                if (intake is IntakeContext.Email && intake.isRecruiter) {
+                    tryCreateDraft(claimed.jdRecord, result, intake)
+                }
+            }
+        }
+    }
+
+    private fun tryCreateDraft(record: JdRecord, result: ProcessingResult, intake: IntakeContext.Email) {
+        try {
+            val outputDir = result.outputPath ?: return
+            val pdfFile = java.io.File(outputDir).listFiles { f -> f.extension == "pdf" }?.firstOrNull()
+            val state = JDState(
+                intake           = intake,
+                isJobPosting     = true,
+                company          = record.company ?: "",
+                roleTitle        = record.roleTitle ?: "",
+                location         = record.location ?: "",
+                fitScore         = result.fitScore.toFloat(),
+                strengths        = result.strengths,
+                outputPath       = outputDir,
+                resumeHtmlPdf    = pdfFile?.absolutePath ?: "",
+                candidateProfile = JDState.loadCandidateProfile(),
+            )
+            CreateDraftReplyNode().process(state)
+        } catch (e: Exception) {
+            System.err.println("[worker] draft_reply failed: ${e.message}")
         }
     }
 }

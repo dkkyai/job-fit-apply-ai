@@ -1,5 +1,6 @@
 package com.jd.pipeline.cli.commands
 
+import com.jd.pipeline.cli.BatchNotificationService
 import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.ClaimDto
 import com.jd.pipeline.pipeline.ProcessingPipeline
@@ -9,6 +10,7 @@ import com.jd.pipeline.source.ProcessingResult
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
@@ -104,6 +106,78 @@ class WorkerCommandHandlerTest {
             org.mockito.kotlin.eq("job-err"),
             org.mockito.kotlin.argThat { error != null && error!!.contains("pipeline exploded") }
         )
+    }
+
+    @Test
+    @DisplayName("worker notifies per-job result mapped from the pipeline output")
+    fun workerNotifiesJobResult() {
+        val record = fakeRecord()
+        val result = successResult()
+        val claim  = ClaimDto(jobId = "job-notify", jdRecord = record)
+
+        val notified = CountDownLatch(1)
+
+        val bridge = mock<BridgeClient>()
+        val pipeline = mock<ProcessingPipeline>()
+        val notifier = mock<BatchNotificationService>()
+
+        val workerThread = Thread { WorkerCommandHandler.run(bridge, pipeline, notifier) }
+
+        whenever(bridge.claim())
+            .doReturn(claim)
+            .doAnswer {
+                workerThread.interrupt()
+                null
+            }
+        whenever(pipeline.invoke(record)).doReturn(result)
+        doAnswer { notified.countDown() }.whenever(notifier).notifyJobResult(any())
+
+        workerThread.isDaemon = true
+        workerThread.start()
+
+        assertTrue(notified.await(5, TimeUnit.SECONDS), "worker should notify within 5s")
+
+        verify(notifier).logConfigStatus()
+        verify(notifier).notifyJobResult(argThat {
+            company == "Acme Corp" &&
+                roleTitle == "Staff SDET" &&
+                fitScore == 82 &&
+                pipelineAction == "TAILOR" &&
+                error == null
+        })
+    }
+
+    @Test
+    @DisplayName("worker still notifies (with the error) when the pipeline throws")
+    fun workerNotifiesOnPipelineError() {
+        val record = fakeRecord()
+        val claim  = ClaimDto(jobId = "job-err-notify", jdRecord = record)
+
+        val notified = CountDownLatch(1)
+
+        val bridge = mock<BridgeClient>()
+        val pipeline = mock<ProcessingPipeline>()
+        val notifier = mock<BatchNotificationService>()
+
+        val workerThread = Thread { WorkerCommandHandler.run(bridge, pipeline, notifier) }
+
+        whenever(bridge.claim())
+            .doReturn(claim)
+            .doAnswer {
+                workerThread.interrupt()
+                null
+            }
+        whenever(pipeline.invoke(record)).thenThrow(RuntimeException("boom"))
+        doAnswer { notified.countDown() }.whenever(notifier).notifyJobResult(any())
+
+        workerThread.isDaemon = true
+        workerThread.start()
+
+        assertTrue(notified.await(5, TimeUnit.SECONDS), "worker should notify error within 5s")
+
+        verify(notifier).notifyJobResult(argThat {
+            error != null && error!!.contains("boom") && fitScore == 0
+        })
     }
 
     @Test

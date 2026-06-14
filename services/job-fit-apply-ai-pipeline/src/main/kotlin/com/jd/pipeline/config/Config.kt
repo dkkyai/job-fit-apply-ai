@@ -26,8 +26,13 @@ object Config {
     val DEEPSEEK_API_KEY: String = get("DEEPSEEK_API_KEY", "")
     val JSEARCH_API_KEY: String = get("JSEARCH_API_KEY", "")
 
+    // ── oMLX (local MLX inference, OpenAI-compatible) ──────────────────────────────
+    // Default backend for no-suffix model strings. Served by oMLX on this host.
+    val MLX_LOCAL_BASE_URL: String = get("MLX_LOCAL_BASE_URL", "http://127.0.0.1:11436/v1")
+    val MLX_API_KEY: String = get("MLX_API_KEY", "11436")
+
     // ── Ollama ───────────────────────────────────────────────────────────────────
-    // Local Ollama endpoint (no-suffix model strings).
+    // Local Ollama endpoint (":ollama-local" suffix escape hatch).
     val OLLAMA_LOCAL_BASE_URL: String = get("OLLAMA_LOCAL_BASE_URL", "http://localhost:11434")
     // Ollama Cloud endpoint (:ollama-cloud suffix model strings).
     val OLLAMA_CLOUD_BASE_URL: String = get("OLLAMA_CLOUD_BASE_URL", "https://ollama.com")
@@ -42,30 +47,33 @@ object Config {
 
     // ── Model configuration ───────────────────────────────────────────────────────
     // Scan / scrape: structured JSON extraction — small, fast, deterministic (temp=0)
-    // Best local: qwen3.5:9b-q4_K_M   Cloud: deepseek-v4-flash:ollama-cloud
-    val SCAN_MODEL: String = get("SCAN_MODEL", "qwen3.5:9b-q4_K_M")
+    // Best local (oMLX): Qwen3.5-9B-OptiQ-4bit   Cloud: deepseek-v4-flash:ollama-cloud
+    val SCAN_MODEL: String = get("SCAN_MODEL", "Qwen3.5-9B-OptiQ-4bit")
     val SCRAPE_MODEL: String = get("SCRAPE_MODEL", SCAN_MODEL)
 
     // Score: rubric-based fit scoring — needs chain-of-thought reasoning (thinking enabled)
-    // Best local: qwen3.5:9b-q4_K_M   Cloud: deepseek-v4-pro:ollama-cloud
-    val SCORE_MODEL: String = get("SCORE_MODEL", "qwen3.5:9b-q4_K_M")
+    // Best local (oMLX): Qwen3.5-9B-OptiQ-4bit   Cloud: deepseek-v4-pro:ollama-cloud
+    val SCORE_MODEL: String = get("SCORE_MODEL", "Qwen3.5-9B-OptiQ-4bit")
 
-    // Cover letter: prose writing quality — larger model pays off here
-    // Best local: qwen3.5:9b-q4_K_M   Cloud: glm-5.1:ollama-cloud
-    val COVER_LETTER_MODEL: String = get("COVER_LETTER_MODEL", "qwen3.5:9b-q4_K_M")
+    // Cover letter: prose writing quality — a dedicated prose model pays off here
+    // Best local (oMLX): gemma-4-12B-it-qat-4bit   Cloud: glm-5.1:ollama-cloud
+    val COVER_LETTER_MODEL: String = get("COVER_LETTER_MODEL", "gemma-4-12B-it-qat-4bit")
 
-    // Draft reply: short recruiter email — any capable 7B is fine
-    // Best local: qwen3.5:9b-q4_K_M   Cloud: deepseek-v4-flash:ollama-cloud
-    val DRAFT_REPLY_MODEL: String = get("DRAFT_REPLY_MODEL", "qwen3.5:9b-q4_K_M")
+    // Draft reply: short recruiter email — any capable small model is fine
+    // Best local (oMLX): Qwen3.5-9B-OptiQ-4bit   Cloud: deepseek-v4-flash:ollama-cloud
+    val DRAFT_REPLY_MODEL: String = get("DRAFT_REPLY_MODEL", "Qwen3.5-9B-OptiQ-4bit")
 
     // Resume tailoring subgraph — reasoning (summary rewrite, bullet rewrite)
-    // Creative (temp=0.4, thinking enabled): prose quality matters
-    // Best local: qwen3.5:9b-q4_K_M   Cloud: glm-5.1:ollama-cloud
-    val RESUME_REASONING_MODEL: String = get("RESUME_REASONING_MODEL", "qwen3.5:9b-q4_K_M")
+    // Creative (temp=0.4): prose quality matters
+    // Best local (oMLX): Qwen3.5-9B-OptiQ-4bit   Cloud: glm-5.1:ollama-cloud
+    val RESUME_REASONING_MODEL: String = get("RESUME_REASONING_MODEL", "Qwen3.5-9B-OptiQ-4bit")
+    // When false (default), /no_think is prepended to qwen3 reasoning calls to avoid 300s+ thinking timeouts.
+    // Set to true only if the local model is fast enough to finish thinking within the 300s timeout.
+    val RESUME_REASONING_THINKING: Boolean = get("RESUME_REASONING_THINKING", "false").toBoolean()
 
     // Skills restructure: judgment-heavy (category ordering, JD phrasing match) but factually grounded.
     // temp=0.2 — enough flexibility to follow multi-constraint instructions without hallucinating skills.
-    // Best local: qwen3.5:9b-q4_K_M   Cloud: deepseek-v4-pro:ollama-cloud
+    // Best local (oMLX): Qwen3.5-9B-OptiQ-4bit   Cloud: deepseek-v4-pro:ollama-cloud
     val SKILLS_MODEL: String = get("SKILLS_MODEL", RESUME_REASONING_MODEL)
 
     // ── Scoring thresholds ───────────────────────────────────────────────────────
@@ -78,7 +86,7 @@ object Config {
     val GMAIL_CREDENTIALS_FILE: String = get("GMAIL_CREDENTIALS_FILE", "gmail_credentials.json")
     val GMAIL_TOKEN_FILE: String = get("GMAIL_TOKEN_FILE", "tokens/gmail_token.json")
     val GMAIL_MAX_EMAILS: Int = get("GMAIL_MAX_EMAILS", "3").toInt()
-    val GMAIL_SEARCH_QUERY: String = get("GMAIL_SEARCH_QUERY", "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:JD_Processing")
+    val GMAIL_SEARCH_QUERY: String = get("GMAIL_SEARCH_QUERY", "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:JD_Processing -label:JD_Error")
 
     // ── Skills paths ─────────────────────────────────────────────────────────
     val SKILLS_DIR: Path = PROJECT_DIR.resolve("src/main/resources/skills")
@@ -129,11 +137,16 @@ object Config {
     val PLAYWRIGHT_HEADLESS: Boolean = get("PLAYWRIGHT_HEADLESS", "false").toBoolean()
     // When true, sites blocked by HTTP (403, CAPTCHA, Cloudflare) are retried with a clean Playwright session.
     val PLAYWRIGHT_FALLBACK_ON_CAPTCHA: Boolean = get("PLAYWRIGHT_FALLBACK_ON_CAPTCHA", "true").toBoolean()
+    // When true, pages that return fewer than PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH chars via HTTP
+    // (JS-rendered SPAs like Jobright/Next.js) are retried with a clean Playwright session.
+    val PLAYWRIGHT_FALLBACK_ON_THIN_CONTENT: Boolean = get("PLAYWRIGHT_FALLBACK_ON_THIN_CONTENT", "true").toBoolean()
+    val PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH: Int = get("PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH", "500").toInt()
 
     // ── Resume generation from DOCX/PDF ─────────────────────────────────────────
-    // Needs strong instruction-following to replicate HTML structure from a template.
-    // Best local: qwen3.5:9b-q4_K_M   Cloud: deepseek-v4-pro:ollama-cloud
-    val RESUME_GEN_MODEL: String = get("RESUME_GEN_MODEL", "qwen3.5:9b-q4_K_M")
+    // Needs strong instruction-following to replicate HTML structure from a template,
+    // plus a longer context window for the full resume HTML — a capable prose model fits well.
+    // Best local (oMLX): gemma-4-12B-it-qat-4bit   Cloud: deepseek-v4-pro:ollama-cloud
+    val RESUME_GEN_MODEL: String = get("RESUME_GEN_MODEL", "gemma-4-12B-it-qat-4bit")
     val RESUME_GEN_SKILL: Path = SKILLS_DIR.resolve("RESUME_GEN_SKILL.md")
 
     // ── Candidate profile generation (--init-profile) ───────────────────────────
@@ -146,6 +159,10 @@ object Config {
     val TAILOR_SKILL_TEMPLATE_PATH: Path = SKILLS_DIR.resolve("TAILOR_SKILL.template.md")
     /** Rendered TAILOR_SKILL.md, gitignored — produced by `--init-profile`. */
     val TAILOR_SKILL_PATH: Path = SKILLS_DIR.resolve("TAILOR_SKILL.md")
+
+    // ── Digest LLM fallback ───────────────────────────────────────────────────────
+    val DIGEST_LLM_FALLBACK_ENABLED: Boolean = get("DIGEST_LLM_FALLBACK_ENABLED", "true").toBoolean()
+    val DIGEST_SKILL: Path = SKILLS_DIR.resolve("DIGEST_SKILL.md")
 
     // ── Notifications (Discord + Telegram) ───────────────────────────────────────
     val DISCORD_BOT_TOKEN: String  = get("DISCORD_BOT_TOKEN", "")

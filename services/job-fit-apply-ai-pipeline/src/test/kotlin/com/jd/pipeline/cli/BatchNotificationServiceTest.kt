@@ -148,6 +148,90 @@ class BatchNotificationServiceTest {
     }
 
     @Nested
+    @DisplayName("logConfigStatus")
+    inner class LogConfigStatus {
+
+        @Test
+        @DisplayName("returns false and warns when no channel is configured")
+        fun falseWhenUnconfigured() {
+            whenever(client.discordConfigured).thenReturn(false)
+            whenever(client.telegramConfigured).thenReturn(false)
+            assertEquals(false, service.logConfigStatus())
+        }
+
+        @Test
+        @DisplayName("returns true when Discord is configured")
+        fun trueWhenDiscordConfigured() {
+            whenever(client.discordConfigured).thenReturn(true)
+            whenever(client.telegramConfigured).thenReturn(false)
+            assertEquals(true, service.logConfigStatus())
+        }
+
+        @Test
+        @DisplayName("returns true when only Telegram is configured")
+        fun trueWhenTelegramConfigured() {
+            whenever(client.discordConfigured).thenReturn(false)
+            whenever(client.telegramConfigured).thenReturn(true)
+            assertEquals(true, service.logConfigStatus())
+        }
+    }
+
+    @Nested
+    @DisplayName("notifyJobResult (per-job worker notification)")
+    inner class NotifyJobResult {
+
+        @Test
+        @DisplayName("sends nothing when neither channel is configured")
+        fun skipsWhenUnconfigured() {
+            whenever(client.discordConfigured).thenReturn(false)
+            whenever(client.telegramConfigured).thenReturn(false)
+            service.notifyJobResult(ScoredJob("Acme", "Staff SDET", 90, "TAILOR", null))
+            verify(client, never()).postDiscord(any())
+            verify(client, never()).postTelegram(any())
+        }
+
+        @Test
+        @DisplayName("posts a Discord line for every successful job")
+        fun postsDiscordPerJob() {
+            whenever(client.discordConfigured).thenReturn(true)
+            whenever(client.telegramConfigured).thenReturn(false)
+            service.notifyJobResult(ScoredJob("Acme", "Engineer", 30, "SKIP", null))
+            verify(client).postDiscord(any())
+        }
+
+        @Test
+        @DisplayName("pings Telegram for a high-fit job at/above threshold")
+        fun pingsTelegramForHighFit() {
+            whenever(client.discordConfigured).thenReturn(true)
+            whenever(client.telegramConfigured).thenReturn(true)
+            // fitThreshold is 75 (set in @BeforeEach)
+            service.notifyJobResult(ScoredJob("Acme", "Staff SDET", 75, "TAILOR", null))
+            verify(client).postDiscord(any())
+            verify(client).postTelegram(any())
+        }
+
+        @Test
+        @DisplayName("does not ping Telegram below threshold")
+        fun noTelegramBelowThreshold() {
+            whenever(client.discordConfigured).thenReturn(true)
+            whenever(client.telegramConfigured).thenReturn(true)
+            service.notifyJobResult(ScoredJob("Acme", "Engineer", 74, "TAILOR", null))
+            verify(client).postDiscord(any())
+            verify(client, never()).postTelegram(any())
+        }
+
+        @Test
+        @DisplayName("posts an error line and never pings Telegram for failed jobs")
+        fun errorJobPostsErrorOnly() {
+            whenever(client.discordConfigured).thenReturn(true)
+            whenever(client.telegramConfigured).thenReturn(true)
+            service.notifyJobResult(ScoredJob("Acme", "Engineer", 90, "TAILOR", "LLM timeout"))
+            verify(client).postDiscord(any())
+            verify(client, never()).postTelegram(any())
+        }
+    }
+
+    @Nested
     @DisplayName("ScoredJob data class")
     inner class ScoredJobModel {
 

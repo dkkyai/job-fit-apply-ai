@@ -10,7 +10,7 @@ import java.net.http.HttpResponse
 import java.time.Duration
 import kotlin.math.pow
 
-enum class LlmBackend { OLLAMA_LOCAL, OLLAMA_CLOUD, DEEPSEEK_CLOUD, MINIMAX_CLOUD }
+enum class LlmBackend { MLX_LOCAL, OLLAMA_LOCAL, OLLAMA_CLOUD, DEEPSEEK_CLOUD, MINIMAX_CLOUD }
 
 fun interface LlmCaller {
     fun call(prompt: String): String
@@ -53,6 +53,7 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
         val t0 = System.currentTimeMillis()
         try {
             return when (config.backend) {
+                LlmBackend.MLX_LOCAL          -> callMlxLocal(prompt)
                 LlmBackend.OLLAMA_LOCAL       -> callOllama(prompt, Config.OLLAMA_LOCAL_BASE_URL)
                 LlmBackend.OLLAMA_CLOUD -> callOllama(prompt, Config.OLLAMA_CLOUD_BASE_URL, Config.OLLAMA_API_KEY)
                 LlmBackend.DEEPSEEK_CLOUD -> callDeepSeekCloud(prompt)
@@ -61,6 +62,33 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
         } finally {
             if (config.nodeKey.isNotEmpty()) NodeTimer.record(config.nodeKey, System.currentTimeMillis() - t0)
         }
+    }
+
+    // ── oMLX local (OpenAI-compatible /v1/chat/completions) ────────────────────
+
+    /**
+     * Local MLX inference via oMLX. oMLX speaks the OpenAI chat API, so this reuses the same
+     * wire format as the cloud backends. The "/no_think" prefix is kept for qwen3-family models
+     * (it is prompt-level and works regardless of server) to suppress chain-of-thought.
+     */
+    private fun callMlxLocal(prompt: String): String {
+        val isQwen3 = config.model.startsWith("qwen3", ignoreCase = true)
+        val content = if (!config.thinkingEnabled && isQwen3) "/no_think\n$prompt" else prompt
+
+        val body = buildMap<String, Any> {
+            put("model", config.model)
+            put("messages", listOf(mapOf("role" to "user", "content" to content)))
+            put("stream", false)
+            if (config.jsonMode) put("response_format", mapOf("type" to "json_object"))
+            config.temperature?.let { put("temperature", it) }
+        }
+        val responseBody = post(
+            url = "${Config.MLX_LOCAL_BASE_URL}/chat/completions",
+            bodyMap = body,
+            headers = mapOf("Authorization" to "Bearer ${Config.MLX_API_KEY}"),
+            timeoutSeconds = config.timeoutSeconds
+        )
+        return extractChatContent(responseBody)
     }
 
     // ── Ollama (local and cloud share the same /api/chat wire format) ─────────
@@ -74,6 +102,7 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
             put("model", config.model)
             put("messages", messages)
             put("stream", false)
+            put("keep_alive", -1)  // prevent model eviction between pipeline steps
             if (config.jsonMode) put("format", "json")
             config.temperature?.let { put("options", mapOf("temperature" to it)) }
         }
@@ -209,18 +238,19 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
         }
 
         /**
-         * Reasoning executor: creative rewriting nodes (temp=0.4, thinking enabled for both
-         * Ollama backends). Thinking is injected via /no_think suppression on qwen3 models;
-         * cloud models (DeepSeek, MiniMax) manage their own reasoning internally.
+         * Reasoning executor: creative rewriting nodes (temp=0.4). Thinking is controlled by
+         * RESUME_REASONING_THINKING (default false) — qwen3:32b thinking traces routinely exceed
+         * the 300s timeout on local hardware, so thinking is off by default.
          */
         fun reasoningClient(nodeKey: String = ""): LlmClient {
             val model = Config.RESUME_REASONING_MODEL
             val backend = backendFor(model)
+            val isOllama = backend == LlmBackend.OLLAMA_LOCAL || backend == LlmBackend.OLLAMA_CLOUD
             return LlmClient(
                 LlmConfig(
                     model = stripBackendSuffix(model),
                     backend = backend,
-                    thinkingEnabled = backend == LlmBackend.OLLAMA_LOCAL || backend == LlmBackend.OLLAMA_CLOUD,
+                    thinkingEnabled = isOllama && Config.RESUME_REASONING_THINKING,
                     temperature = 0.4,
                     timeoutSeconds = 300,
                     nodeKey = nodeKey
@@ -248,7 +278,8 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
 
         /**
          * Build a client from a model string. Suffix conventions:
-         *   "qwen3:14b"                  → local Ollama (OLLAMA_BASE_URL)
+         *   "Qwen3.5-9B-OptiQ-4bit"      → local oMLX (MLX_LOCAL_BASE_URL)
+         *   "qwen3:14b:ollama-local"     → local Ollama escape hatch (OLLAMA_LOCAL_BASE_URL)
          *   "glm-5.1:ollama-cloud"       → Ollama Cloud (OLLAMA_CLOUD_BASE_URL + OLLAMA_API_KEY)
          *   "deepseek-v4-pro:cloud"      → DeepSeek API
          *   "MiniMax-M2.7:cloud"         → MiniMax API
@@ -257,7 +288,7 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
             model: String,
             jsonMode: Boolean = true,
             temperature: Double? = null,
-            timeoutSeconds: Long = 120,
+            timeoutSeconds: Long = 180,
             nodeKey: String = ""
         ): LlmClient {
             return LlmClient(
@@ -275,14 +306,16 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
 
         /**
          * Determine the LLM backend from a model string.
-         *   No suffix           → OLLAMA  (local, OLLAMA_BASE_URL)
+         *   No suffix           → MLX_LOCAL (local oMLX, MLX_LOCAL_BASE_URL)
+         *   ":ollama-local"     → OLLAMA_LOCAL (escape hatch, OLLAMA_LOCAL_BASE_URL)
          *   ":ollama-cloud"     → OLLAMA_CLOUD (OLLAMA_CLOUD_BASE_URL + OLLAMA_API_KEY)
          *   "minimax*:cloud"    → MINIMAX_CLOUD
          *   "<other>:cloud"     → DEEPSEEK_CLOUD
          */
         private fun backendFor(model: String): LlmBackend = when {
+            model.endsWith(":ollama-local") -> LlmBackend.OLLAMA_LOCAL
             model.endsWith(":ollama-cloud") -> LlmBackend.OLLAMA_CLOUD
-            !model.endsWith(":cloud")       -> LlmBackend.OLLAMA_LOCAL
+            !model.endsWith(":cloud")       -> LlmBackend.MLX_LOCAL
             else -> {
                 val name = model.removeSuffix(":cloud")
                 if (name.startsWith("minimax", ignoreCase = true)) LlmBackend.MINIMAX_CLOUD
@@ -292,6 +325,7 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
 
         /** Strip any backend routing suffix to get the bare model name sent to the API. */
         private fun stripBackendSuffix(model: String): String = when {
+            model.endsWith(":ollama-local") -> model.removeSuffix(":ollama-local")
             model.endsWith(":ollama-cloud") -> model.removeSuffix(":ollama-cloud")
             model.endsWith(":cloud")        -> model.removeSuffix(":cloud")
             else                            -> model

@@ -44,13 +44,7 @@ object GmailAuth {
         credentialsFile: String = Config.GMAIL_CREDENTIALS_FILE,
         tokenFile: String = Config.GMAIL_TOKEN_FILE
     ) {
-        val clientSecrets = GoogleClientSecrets.load(
-            GsonFactory.getDefaultInstance(),
-            InputStreamReader(FileInputStream(credentialsFile))
-        )
-        val flow = GoogleAuthorizationCodeFlow.Builder(
-            NetHttpTransport(), GsonFactory.getDefaultInstance(), clientSecrets, SCOPES
-        ).build()
+        val flow = buildAuthorizationCodeFlow(credentialsFile)
         val authUrl = flow.newAuthorizationUrl().setRedirectUri(REDIRECT_URI).build()
 
         val code = captureCodeWithPlaywright(authUrl) ?: captureCodeManually(authUrl)
@@ -247,10 +241,12 @@ object GmailAuth {
         println("[GmailAuth] Token stored at: ${Config.GMAIL_TOKEN_FILE}")
     }
 
-    private fun buildAuthorizationCodeFlow(): GoogleAuthorizationCodeFlow {
+    private fun buildAuthorizationCodeFlow(
+        credentialsFile: String = Config.GMAIL_CREDENTIALS_FILE
+    ): GoogleAuthorizationCodeFlow {
         val clientSecrets = GoogleClientSecrets.load(
             GsonFactory.getDefaultInstance(),
-            InputStreamReader(FileInputStream(Config.GMAIL_CREDENTIALS_FILE))
+            InputStreamReader(FileInputStream(credentialsFile))
         )
 
         return GoogleAuthorizationCodeFlow.Builder(
@@ -258,15 +254,15 @@ object GmailAuth {
             GsonFactory.getDefaultInstance(),
             clientSecrets,
             SCOPES
-        ).build()
+        )
+            // Request a refresh token so cached tokens can auto-renew; force the
+            // consent screen so Google re-issues one even on repeat authorizations.
+            .setAccessType("offline")
+            .setApprovalPrompt("force")
+            .build()
     }
 
     fun getCredentials(): Credential {
-        val clientSecrets = GoogleClientSecrets.load(
-            GsonFactory.getDefaultInstance(),
-            InputStreamReader(FileInputStream(Config.GMAIL_CREDENTIALS_FILE))
-        )
-
         val tokenPath = Path.of(Config.GMAIL_TOKEN_FILE)
         if (Files.exists(tokenPath)) {
             println("[GmailAuth] Found stored token at: ${Config.GMAIL_TOKEN_FILE}")
@@ -275,12 +271,7 @@ object GmailAuth {
                 val response = GsonFactory.getDefaultInstance()
                     .fromInputStream(tokenStream, GoogleTokenResponse::class.java)
 
-                val flow = GoogleAuthorizationCodeFlow.Builder(
-                    NetHttpTransport(),
-                    GsonFactory.getDefaultInstance(),
-                    clientSecrets,
-                    SCOPES
-                ).build()
+                val flow = buildAuthorizationCodeFlow()
 
                 val credential = flow.createAndStoreCredential(response, null)
 
@@ -308,12 +299,7 @@ object GmailAuth {
         }
 
         println("[GmailAuth] Initiating OAuth flow for new credentials...")
-        val flow = GoogleAuthorizationCodeFlow.Builder(
-            NetHttpTransport(),
-            GsonFactory.getDefaultInstance(),
-            clientSecrets,
-            SCOPES
-        ).build()
+        val flow = buildAuthorizationCodeFlow()
 
         val redirectUri = "http://localhost"
         val app = AuthorizationCodeInstalledApp(flow, redirectUri)

@@ -1,17 +1,13 @@
 package com.jd.pipeline.cli.commands
 
-import com.jd.pipeline.cli.CliOutput
 import com.jd.pipeline.cli.Command
-import com.jd.pipeline.cli.CreateDraftReply
 import com.jd.pipeline.cli.EmailLabelingServiceImpl
 import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.gmail.GmailTransport
 import com.jd.pipeline.pipeline.IngestionPipeline
-import com.jd.pipeline.source.ProcessingResult
-import com.jd.pipeline.state.JDState
+import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.state.emailIntake
 import com.jd.pipeline.state.isRecruiterEmail
-import java.io.File
 
 object SingleEmailCommandHandler {
     fun run(cmd: Command.SingleEmail) {
@@ -76,38 +72,18 @@ object SingleEmailCommandHandler {
 
             println("  ↳ Job $jobId done — ${finalStatus.pipeline_action}, score=${finalStatus.fit_score}")
 
-            // 5. Recruiter: download artifacts and create draft reply
-            var draftCreated = false
-            if (finalStatus.status == "done" && ingState.isRecruiterEmail) {
-                val intake = emailState.emailIntake
-                if (intake != null) {
-                    try {
-                        val tmpDir  = createTempDir("single-email-$jobId")
-                        val pdfFile = File(tmpDir, "resume.pdf")
-                        val clFile  = File(tmpDir, "cover_letter.txt")
-                        bridge.downloadArtifact(jobId, "resume.pdf", pdfFile)
-                        runCatching { bridge.downloadArtifact(jobId, "cover_letter.txt", clFile) }
-                        val profile = JDState.loadCandidateProfile()
-                        val result = ProcessingResult(
-                            pipelineAction = finalStatus.pipeline_action ?: "TAILOR",
-                            fitScore       = finalStatus.fit_score ?: 0,
-                            strengths      = emptyList(),
-                            isDuplicate    = false,
-                            outputPath     = null,
-                            hasCoverLetter = clFile.exists(),
-                        )
-                        val draftId = CreateDraftReply.run(intake, result, pdfFile, clFile.takeIf { it.exists() }, profile)
-                        draftCreated = draftId != null
-                    } catch (e: Exception) {
-                        System.err.println("[draft] Failed: ${e.message}")
-                    }
-                }
-            }
+            // 5. Recruiter draft is created by the worker (CreateDraftReplyNode) for
+            // every recruiter TAILOR job — see WorkerCommandHandler.tryCreateDraft.
+            // The handler must NOT create its own draft (that produced a duplicate);
+            // it only records that a draft exists so the email is labeled correctly.
+            val workerCreatedDraft = finalStatus.status == "done" &&
+                ingState.isRecruiterEmail &&
+                finalStatus.pipeline_action == PipelineAction.TAILOR.name
 
             // 6. Apply terminal label
             val labelState = ingState.copy(
                 error                       = finalStatus.error ?: "",
-                isRecruiterResponseRequired = draftCreated,
+                isRecruiterResponseRequired = workerCreatedDraft,
             )
             val labelResult = labelingService.applyLabeling(labelState, client)
 
@@ -121,7 +97,4 @@ object SingleEmailCommandHandler {
             System.err.println("[ERROR] ${e.message}")
         }
     }
-
-    @Suppress("DEPRECATION")
-    private fun createTempDir(prefix: String): File = kotlin.io.createTempDir(prefix)
 }

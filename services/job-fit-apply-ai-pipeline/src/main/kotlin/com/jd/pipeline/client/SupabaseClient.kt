@@ -10,24 +10,35 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 
 /**
+ * Minimal seam for the Supabase operations that nodes depend on, so tests can
+ * inject a fake instead of hitting the real database. Mirrors the [LlmCaller]
+ * pattern: the production [SupabaseClient] object implements this, and tests
+ * supply their own implementation.
+ */
+interface SupabaseGateway {
+    fun isConfigured(): Boolean
+    fun insert(table: String, record: Map<String, Any?>): JsonNode
+}
+
+/**
  * Shared Supabase REST client.
  *
  * Replaces the hand-rolled HTTP + toJson() pattern that was duplicated in every node.
  * Jackson handles all serialization/deserialization — no manual escaping.
  */
-object SupabaseClient {
+object SupabaseClient : SupabaseGateway {
 
     private val http = HttpClient.newHttpClient()
     private val mapper = ObjectMapper()
 
-    fun isConfigured(): Boolean =
+    override fun isConfigured(): Boolean =
         Config.SUPABASE_PROJECT_URL.isNotEmpty() && Config.SUPABASE_SERVICE_ROLE_KEY.isNotEmpty()
 
     /**
      * POST /rest/v1/{table} — insert a single record.
      * Returns the first row of the "return=representation" response.
      */
-    fun insert(table: String, record: Map<String, Any?>): JsonNode {
+    override fun insert(table: String, record: Map<String, Any?>): JsonNode {
         val body = mapper.writeValueAsString(record)
         val request = HttpRequest.newBuilder()
             .uri(URI.create("${Config.SUPABASE_PROJECT_URL}/rest/v1/$table"))

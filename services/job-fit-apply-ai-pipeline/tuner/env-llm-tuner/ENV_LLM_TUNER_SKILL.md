@@ -20,10 +20,10 @@ overwritten the next time the skill executes.
 
 | Config var               | Node(s)                                                         | Temp | JSON  | Thinking    | Typical output tokens |
 |--------------------------|-----------------------------------------------------------------|------|-------|-------------|-----------------------|
-| `SCAN_MODEL`             | ScanEmailNode                                                   | 0.0  | yes   | no          | 200–400               |
+| `SCAN_MODEL`             | ScanEmailNode, LlmDigestStrategy                                | 0.0  | yes   | no          | 200–400               |
 | `SCRAPE_MODEL`           | ScrapeJdNode (defaults to SCAN_MODEL)                           | 0.0  | yes   | no          | 300–600               |
 | `SCORE_MODEL`            | ScoreFitNode, JdExtractionNode, GapAnalysisNode, AtsScoringNode | 0.0  | yes   | no          | 400–900               |
-| `RESUME_REASONING_MODEL` | SummaryRewriteNode, BulletRewriteNode                           | 0.4  | mixed | yes (local) | 300–800               |
+| `RESUME_REASONING_MODEL` | SummaryRewriteNode, BulletRewriteNode                           | 0.4  | mixed | yes (Ollama)| 300–800               |
 | `SKILLS_MODEL`           | SkillsRestructureNode (defaults to RESUME_REASONING_MODEL)      | 0.2  | yes   | no          | 200–500               |
 | `COVER_LETTER_MODEL`     | GenerateCoverLetterNode                                         | 0.4  | no    | no          | 300–600               |
 | `DRAFT_REPLY_MODEL`      | CreateDraftReplyNode                                            | 0.3  | no    | no          | 100–200               |
@@ -185,6 +185,19 @@ ENV_LLM_TUNER_SKILL.md updated: N changes.   (or "unchanged.")
 
 If nothing changed, print `Self-Scan: pipeline unchanged.` and skip to Section D.
 
+## Self-Scan Changelog
+- [MATCH]   SCAN_MODEL: ScanEmailNode, LlmDigestStrategy (No config updates, added LlmDigestStrategy node description to Section A registry)
+- [MATCH]   SCRAPE_MODEL: ScrapeJdNode
+- [MATCH]   SCORE_MODEL: ScoreFitNode, JdExtractionNode, GapAnalysisNode, AtsScoringNode
+- [MATCH]   RESUME_REASONING_MODEL: SummaryRewriteNode, BulletRewriteNode (No config updates, updated registry thinking setting to yes (Ollama))
+- [MATCH]   SKILLS_MODEL: SkillsRestructureNode
+- [MATCH]   COVER_LETTER_MODEL: GenerateCoverLetterNode
+- [MATCH]   DRAFT_REPLY_MODEL: CreateDraftReplyNode
+- [MATCH]   RESUME_GEN_MODEL: GenerateResumeHtmlNode
+- [MATCH]   PROFILE_GEN_MODEL: GenerateCandidateProfileNode
+ENV_LLM_TUNER_SKILL.md updated: 2 registry description changes.
+
+
 ---
 
 ## Section D — Model Research
@@ -345,13 +358,13 @@ After writing all four files, print:
 ```
 | Config Var               | .env.quality | .env.local-quality | .env.local-good-enough | .env.recommended |
 |--------------------------|--------------|--------------------|------------------------|------------------|
-| SCAN_MODEL               | deepseek-v4-flash:ollama-cloud | qwen3.6:27b        | qwen3:8b               | qwen3:8b         |
-| SCRAPE_MODEL             | deepseek-v4-flash:ollama-cloud | qwen3.6:27b        | qwen3:8b               | qwen3:8b         |
-| SCORE_MODEL              | kimi-k2.6:ollama-cloud | deepseek-r1:70b    | qwen3:8b               | minimax-m3:ollama-cloud |
-| RESUME_REASONING_MODEL   | kimi-k2.6:ollama-cloud | deepseek-r1:70b    | qwen3:8b               | minimax-m3:ollama-cloud |
-| SKILLS_MODEL             | deepseek-v4-flash:ollama-cloud | qwen3.6:27b        | qwen3:8b               | qwen3:8b         |
-| COVER_LETTER_MODEL       | kimi-k2.6:ollama-cloud | gemma4:31b         | qwen3:8b               | qwen3:14b        |
-| DRAFT_REPLY_MODEL        | deepseek-v4-flash:ollama-cloud | qwen3:8b           | qwen3:8b               | qwen3:8b         |
+| SCAN_MODEL               | deepseek-v4-flash:ollama-cloud | qwen3.5:27b        | qwen3.5:9b             | qwen3.5:9b       |
+| SCRAPE_MODEL             | deepseek-v4-flash:ollama-cloud | qwen3.5:27b        | qwen3.5:9b             | qwen3.5:9b       |
+| SCORE_MODEL              | kimi-k2.6:ollama-cloud | deepseek-r1:70b    | qwen3.5:9b             | minimax-m3:ollama-cloud |
+| RESUME_REASONING_MODEL   | kimi-k2.6:ollama-cloud | deepseek-r1:70b    | qwen3.5:9b             | minimax-m3:ollama-cloud |
+| SKILLS_MODEL             | deepseek-v4-flash:ollama-cloud | qwen3.5:27b        | qwen3.5:9b             | qwen3.5:9b       |
+| COVER_LETTER_MODEL       | kimi-k2.6:ollama-cloud | gemma4:31b         | qwen3.5:9b             | gemma4:12b       |
+| DRAFT_REPLY_MODEL        | deepseek-v4-flash:ollama-cloud | qwen3.5:9b         | qwen3.5:9b             | qwen3.5:9b       |
 | Est. full-pipeline time  | ~154s        | ~734s              | ~173s                  | ~190s            |
 ```
 

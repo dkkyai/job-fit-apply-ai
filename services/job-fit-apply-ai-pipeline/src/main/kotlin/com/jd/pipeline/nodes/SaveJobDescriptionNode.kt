@@ -1,5 +1,6 @@
 package com.jd.pipeline.nodes
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.emailIntake
 import com.jd.pipeline.utils.OutputUtils
@@ -13,6 +14,10 @@ import java.nio.charset.StandardCharsets
  * Saves the job description to the output directory as job_description.txt.
  */
 class SaveJobDescriptionNode : Node<JDState> {
+
+    companion object {
+        private val MAPPER = ObjectMapper()
+    }
 
     override fun process(input: JDState): JDState {
         // Prefer jd_text over scraped_content
@@ -57,6 +62,14 @@ class SaveJobDescriptionNode : Node<JDState> {
             } catch (e: Exception) {
                 System.err.println("[save_jd] WARN: failed to write raw_page_contents.txt: ${e.message}")
             }
+        }
+
+        // Write meta.json with pipeline metadata
+        try {
+            val meta = mapOf("scrape_path" to input.scrapePath)
+            Files.writeString(outputDir.resolve("meta.json"), MAPPER.writeValueAsString(meta), StandardCharsets.UTF_8)
+        } catch (e: Exception) {
+            System.err.println("[save_jd] WARN: failed to write meta.json: ${e.message}")
         }
 
         // Write raw email content if available

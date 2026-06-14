@@ -3,7 +3,6 @@ package com.jd.pipeline.cli.commands
 import com.jd.pipeline.cli.Command
 import com.jd.pipeline.cli.EmailLabelingServiceImpl
 import com.jd.pipeline.client.BridgeClient
-import com.jd.pipeline.client.JobStatusDto
 import com.jd.pipeline.client.gmail.GmailTransport
 import com.jd.pipeline.pipeline.IngestionPipeline
 import com.jd.pipeline.source.IntakeContext
@@ -15,6 +14,8 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.mock
@@ -57,11 +58,12 @@ class BatchCommandHandlerTest {
         emailId: String = "email-001",
         isJobPosting: Boolean = true,
         isDigest: Boolean = false,
+        isRecruiter: Boolean = false,
     ) = JDState(
         intake = IntakeContext.Email(
             emailId = emailId, from = "hr@acme.com", subject = "Staff SDET at Acme",
             rawBody = "We are hiring.", htmlBody = "",
-            isRecruiter = false, isDigest = isDigest, isInlineDigest = false,
+            isRecruiter = isRecruiter, isDigest = isDigest, isInlineDigest = false,
         ),
         isJobPosting = isJobPosting,
         company = "Acme", roleTitle = "Staff SDET", jdText = "We are hiring.",
@@ -71,10 +73,6 @@ class BatchCommandHandlerTest {
         jdText = "jd text", company = company, roleTitle = "Engineer",
         location = null, jobUrl = null,
         source = IngestionSource.EMAIL,
-    )
-
-    private fun doneStatus(action: String = "TAILOR", score: Int = 85) = JobStatusDto(
-        job_id = "job-001", status = "done", pipeline_action = action, fit_score = score,
     )
 
     // ── Empty inbox ───────────────────────────────────────────────────────────
@@ -119,7 +117,7 @@ class BatchCommandHandlerTest {
     inner class SingleJobPosting {
 
         @Test
-        @DisplayName("ingests, submits to bridge, applies processing label, then polls")
+        @DisplayName("ingests, submits to bridge, applies processing + terminal label — fire-and-forget (no poll)")
         fun jobPostingFullFlow() {
             val email = emailState()
             val ingested = email.copy(isJobPosting = true, jdText = "full jd text")
@@ -128,31 +126,56 @@ class BatchCommandHandlerTest {
             whenever(ingestion.invoke(email)).doReturn(ingested)
             whenever(ingestion.toJdRecord(any(), any())).doReturn(record)
             whenever(bridge.submit(record)).doReturn("job-001")
-            whenever(bridge.pollUntilTerminal(any(), any(), any())).doReturn(doneStatus("TAILOR"))
 
             run()
 
             verify(bridge).submit(record)
             verify(labeling).applyProcessing(any(), any())
-            verify(bridge).pollUntilTerminal(org.mockito.kotlin.eq("job-001"), any(), any())
             verify(labeling).applyLabeling(any(), any())
+            // The batch is fire-and-forget: the jd-worker owns terminal state, so the
+            // batch must never block on pollUntilTerminal.
+            verify(bridge, never()).pollUntilTerminal(any(), any(), any())
         }
 
         @Test
-        @DisplayName("SKIP result increments skipped count (no exception)")
-        fun skipResultHandledCleanly() {
-            val email = emailState()
-            val ingested = email.copy(isJobPosting = true)
+        @DisplayName("direct recruiter job posting is labeled Recruiter_Response_Required (kept in inbox, not archived)")
+        fun recruiterEmailKeptInInbox() {
+            val email = emailState(isRecruiter = true)
+            val ingested = email.copy(isJobPosting = true, jdText = "full jd text")
             val record = minRecord()
             whenever(gmail.fetchJdEmails(any(), any())).doReturn(listOf(email))
             whenever(ingestion.invoke(email)).doReturn(ingested)
             whenever(ingestion.toJdRecord(any(), any())).doReturn(record)
-            whenever(bridge.submit(record)).doReturn("job-002")
-            whenever(bridge.pollUntilTerminal(any(), any(), any())).doReturn(
-                JobStatusDto(job_id = "job-002", status = "done", pipeline_action = "SKIP", fit_score = 25)
-            )
+            whenever(bridge.submit(record)).doReturn("job-001")
+
+            run()
+
+            val captor = argumentCaptor<JDState>()
+            verify(labeling).applyLabeling(captor.capture(), any())
+            assert(captor.firstValue.isRecruiterResponseRequired) {
+                "recruiter email must be labeled Recruiter_Response_Required, not archived"
+            }
+        }
+
+        @Test
+        @DisplayName("digest email submits each child job to the bridge")
+        fun digestSubmitsEachChild() {
+            val parent = emailState(isDigest = true)
+            val child1 = emailState(isJobPosting = true)
+            val child2 = emailState(isJobPosting = true)
+            val ingested = parent.copy(digestJobs = listOf(child1, child2))
+            whenever(gmail.fetchJdEmails(any(), any())).doReturn(listOf(parent))
+            whenever(ingestion.invoke(parent)).doReturn(ingested)
+            // Digest children are converted via toJdRecord(child) — idempotencyKey defaults
+            // to null, so the second matcher must accept null (anyOrNull, not any).
+            whenever(ingestion.toJdRecord(any(), anyOrNull())).doReturn(minRecord("Co1"), minRecord("Co2"))
+            whenever(bridge.submit(any())).doReturn("job-c1", "job-c2")
+
             run() // must not throw
-            verify(bridge).pollUntilTerminal(org.mockito.kotlin.eq("job-002"), any(), any())
+
+            verify(bridge, org.mockito.Mockito.times(2)).submit(any())
+            verify(labeling).applyProcessing(any(), any())
+            verify(bridge, never()).pollUntilTerminal(any(), any(), any())
         }
 
         @Test
@@ -186,31 +209,6 @@ class BatchCommandHandlerTest {
             // labeling is applied even on ingestion failure
             verify(labeling).applyLabeling(any(), any())
             verify(bridge, never()).submit(any())
-        }
-    }
-
-    // ── Poll timeout / error ──────────────────────────────────────────────────
-
-    @Nested
-    @DisplayName("poll error or timeout")
-    inner class PollError {
-
-        @Test
-        @DisplayName("poll exception is caught — terminal label is still applied")
-        fun pollExceptionCaught() {
-            val email = emailState()
-            val ingested = email.copy(isJobPosting = true)
-            val record = minRecord()
-            whenever(gmail.fetchJdEmails(any(), any())).doReturn(listOf(email))
-            whenever(ingestion.invoke(email)).doReturn(ingested)
-            whenever(ingestion.toJdRecord(any(), any())).doReturn(record)
-            whenever(bridge.submit(record)).doReturn("job-timeout")
-            whenever(bridge.pollUntilTerminal(any(), any(), any())).thenThrow(RuntimeException("poll timeout"))
-
-            run() // must not throw
-
-            // Terminal label is applied even after poll failure
-            verify(labeling).applyLabeling(any(), any())
         }
     }
 

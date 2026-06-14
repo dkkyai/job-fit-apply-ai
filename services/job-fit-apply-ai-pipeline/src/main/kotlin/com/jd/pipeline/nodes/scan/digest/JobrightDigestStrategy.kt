@@ -20,11 +20,13 @@ object JobrightDigestStrategy : BoardDigestStrategy {
         val doc = Jsoup.parse(emailHtml)
         val anchors = doc.select("a[href*=jobright.ai]")
         val jobs = mutableListOf<JDState>()
+        val seenHrefs = mutableSetOf<String>()
 
         for (anchor in anchors) {
             if (jobs.size >= MAX_JOBS_PER_EMAIL) break
             val href = cleanUrl(anchor.attr("abs:href").ifBlank { anchor.attr("href") })
             if (href.isBlank() || !href.contains("jobright.ai")) continue
+            if (!seenHrefs.add(href)) continue
             val fullText = anchor.text().replace(Regex("\\s+"), " ").trim()
             if (fullText.isBlank()) continue
             val (parsedCompany, parsedRole) = parseJobRightTitleLine(fullText)
