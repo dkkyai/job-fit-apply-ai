@@ -14,6 +14,7 @@ import com.jd.pipeline.source.ProcessingResult
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.state.isRecruiterEmail
+import com.jd.pipeline.utils.MetadataUtils
 import java.io.File
 
 /**
@@ -99,6 +100,7 @@ class ProcessingPipeline(
         state = generateCoverLetter.process(state)
         state = renderResumePdf.process(state)
         state = addArtifactUrl.process(state)
+        MetadataUtils.writeMetadata(state)
         state = supabaseTrack.process(state)
 
         return toResult(state)
