@@ -58,5 +58,6 @@ class NotificationClientTest {
         // Must not throw or attempt any HTTP when channels are disabled.
         c.postDiscord("hello")
         c.postTelegram("hello")
+        c.postTelegramHtml("<a href=\"https://x/report.md\">hello</a>")
     }
 }

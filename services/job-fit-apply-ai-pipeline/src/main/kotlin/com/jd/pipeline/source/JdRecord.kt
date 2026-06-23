@@ -21,4 +21,5 @@ data class ProcessingResult(
     val outputPath: String?,
     val hasCoverLetter: Boolean,
     val error: String? = null,
+    val artifactUrl: String? = null,
 )

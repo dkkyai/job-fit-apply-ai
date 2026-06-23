@@ -15,6 +15,8 @@ data class ScoredJob(
     val fitScore: Int?,
     val pipelineAction: String?,
     val error: String?,
+    val artifactUrl: String? = null,
+    val jobUrl: String? = null,
 )
 
 /**
@@ -135,10 +137,21 @@ class BatchNotificationService(
         val lines = mutableListOf("**Scored Jobs**")
         for (job in jobs) {
             val score = job.fitScore?.toString() ?: "?"
-            val title = job.roleTitle.ifBlank { "*(no title)*" }
-            lines += "• ${job.company} — $title — **$score**"
+            lines += "• ${discordJobLabel(job)} — **$score**"
         }
         client.postDiscord(lines.joinToString("\n"))
+    }
+
+    /**
+     * Discord label for a job: `Company — [Title](artifactUrl)`, linking the title to its
+     * report when an artifact URL is present (Discord renders Markdown links). Falls back to
+     * a plain title when there is no URL, and to `*(no title)*` when the title is blank.
+     */
+    private fun discordJobLabel(job: ScoredJob): String {
+        val title = job.roleTitle.ifBlank { "*(no title)*" }
+        val url   = job.artifactUrl?.takeIf { it.isNotBlank() }
+        val titlePart = if (url != null && job.roleTitle.isNotBlank()) "[$title]($url)" else title
+        return "${job.company} — $titlePart"
     }
 
     // ── Per-job (worker) notification ─────────────────────────────────────────
@@ -152,10 +165,53 @@ class BatchNotificationService(
             return
         }
         val action = job.pipelineAction ?: "?"
-        client.postDiscord("• ${job.company} — $title — **$score** ($action)")
+        client.postDiscord("• ${discordJobLabel(job)} — **$score** ($action)")
         if ((job.fitScore ?: 0) >= fitThreshold) {
-            client.postTelegram("High-fit: ${job.company} — $title — ${job.fitScore}")
+            client.postTelegramHtml("High-fit: ${telegramJobLabel(job)} — ${job.fitScore}")
         }
+    }
+
+    /**
+     * Telegram (HTML) label for a job: `Company — <a href="…/report.md">Title</a>`, linking the
+     * role title to its rendered report instead of dumping the full URL. Falls back to a plain,
+     * HTML-escaped title when no artifact is available.
+     */
+    private fun telegramJobLabel(job: ScoredJob): String {
+        val company = htmlEscape(job.company)
+        val title   = htmlEscape(job.roleTitle.ifBlank { "(no title)" })
+        val reportUrl = reportUrlOf(job)
+        val jobUrl    = job.jobUrl?.takeIf { it.isNotBlank() }
+        val companyPart = if (jobUrl != null) "<a href=\"${htmlEscape(jobUrl)}\">$company</a>" else company
+        val titlePart   = if (reportUrl != null) "<a href=\"${htmlEscape(reportUrl)}\">$title</a>" else title
+        return "$companyPart — $titlePart"
+    }
+
+    /** Report URL for a job: the artifact directory + `report.md` (matches MetadataUtils). */
+    private fun reportUrlOf(job: ScoredJob): String? =
+        job.artifactUrl?.takeIf { it.isNotBlank() }?.let { "${it.trimEnd('/')}/report.md" }
+
+    private fun htmlEscape(s: String): String = s
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+
+    // ── Pipeline-level alert ──────────────────────────────────────────────────
+
+    /**
+     * Alert that a pipeline run exceeded its time budget and was killed. Sent to both
+     * channels so it surfaces regardless of which is configured. This replaces the inline
+     * curl + hardcoded Telegram token that used to live in `run_jd_pipeline.sh`.
+     */
+    fun notifyTimeout(minutes: Int) {
+        if (!client.discordConfigured && !client.telegramConfigured) return
+        val dateStr = DateTimeFormatter
+            .ofPattern("yyyy-MM-dd HH:mm z")
+            .withZone(ZoneId.systemDefault())
+            .format(Instant.now())
+        val msg = "⚠️ JD Pipeline timed out after $minutes min and was killed — $dateStr"
+        client.postDiscord(msg)
+        client.postTelegram(msg)
     }
 
     // ── Telegram ping ─────────────────────────────────────────────────────────
@@ -165,9 +221,8 @@ class BatchNotificationService(
         if (highFit.isEmpty()) return
         val lines = mutableListOf("High-fit jobs (≥$fitThreshold):")
         for (job in highFit) {
-            val title = job.roleTitle.ifBlank { "*(no title)*" }
-            lines += "• ${job.company} — $title — ${job.fitScore}"
+            lines += "• ${telegramJobLabel(job)} — ${job.fitScore}"
         }
-        client.postTelegram(lines.joinToString("\n"))
+        client.postTelegramHtml(lines.joinToString("\n"))
     }
 }

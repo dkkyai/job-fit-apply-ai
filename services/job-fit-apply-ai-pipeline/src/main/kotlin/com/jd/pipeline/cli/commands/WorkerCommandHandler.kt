@@ -3,6 +3,7 @@ package com.jd.pipeline.cli.commands
 import com.jd.pipeline.cli.BatchNotificationService
 import com.jd.pipeline.cli.ScoredJob
 import com.jd.pipeline.client.BridgeClient
+import com.jd.pipeline.client.gmail.GmailAuth
 import com.jd.pipeline.nodes.CreateDraftReplyNode
 import com.jd.pipeline.pipeline.ProcessingPipeline
 import com.jd.pipeline.source.IntakeContext
@@ -17,6 +18,9 @@ object WorkerCommandHandler {
         bridge: BridgeClient = BridgeClient(),
         pipeline: ProcessingPipeline = ProcessingPipeline(),
         notificationService: BatchNotificationService = BatchNotificationService(),
+        // Non-interactive Gmail token check. The worker must NEVER trigger interactive OAuth
+        // (it has no stdin) — a missing/expired token would otherwise hang the whole loop.
+        gmailTokenValid: () -> Boolean = { GmailAuth.checkTokenStatus().status == GmailAuth.TokenStatus.VALID },
     ) {
         println("[worker] Starting — polling ${System.getenv("JD_BRIDGE_URL") ?: "http://127.0.0.1:8765"}")
         notificationService.logConfigStatus()
@@ -84,18 +88,35 @@ object WorkerCommandHandler {
                 fitScore       = result.fitScore,
                 pipelineAction = result.pipelineAction,
                 error          = result.error,
+                artifactUrl    = result.artifactUrl?.takeIf { it.isNotBlank() },
+                jobUrl         = claimed.jdRecord.jobUrl?.takeIf { it.isNotBlank() },
             ))
 
             if (result.pipelineAction == PipelineAction.TAILOR.name && result.error == null) {
                 val intake = claimed.jdRecord.intakeMeta
                 if (intake is IntakeContext.Email && intake.isRecruiter) {
-                    tryCreateDraft(claimed.jdRecord, result, intake)
+                    tryCreateDraft(claimed.jdRecord, result, intake, gmailTokenValid)
                 }
             }
         }
     }
 
-    private fun tryCreateDraft(record: JdRecord, result: ProcessingResult, intake: IntakeContext.Email) {
+    private fun tryCreateDraft(
+        record: JdRecord,
+        result: ProcessingResult,
+        intake: IntakeContext.Email,
+        gmailTokenValid: () -> Boolean,
+    ) {
+        // Guard against the worker blocking on interactive OAuth: CreateDraftReplyNode →
+        // GmailTransport.getCredentials() launches a blocking browser/stdin flow when the token
+        // is missing/expired. Skip (keeping the Recruiter_Response_Required label) instead of hanging.
+        if (!gmailTokenValid()) {
+            System.err.println(
+                "[worker] draft_reply SKIPPED for ${record.company} — Gmail token not valid; run --reauth. " +
+                "Email keeps its Recruiter_Response_Required label for manual follow-up."
+            )
+            return
+        }
         try {
             val outputDir = result.outputPath ?: return
             val pdfFile = java.io.File(outputDir).listFiles { f -> f.extension == "pdf" }?.firstOrNull()

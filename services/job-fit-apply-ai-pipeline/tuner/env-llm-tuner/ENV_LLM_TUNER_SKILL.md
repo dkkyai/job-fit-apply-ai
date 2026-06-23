@@ -23,7 +23,7 @@ overwritten the next time the skill executes.
 | `SCAN_MODEL`             | ScanEmailNode, LlmDigestStrategy                                | 0.0  | yes   | no          | 200–400               |
 | `SCRAPE_MODEL`           | ScrapeJdNode (defaults to SCAN_MODEL)                           | 0.0  | yes   | no          | 300–600               |
 | `SCORE_MODEL`            | ScoreFitNode, JdExtractionNode, GapAnalysisNode, AtsScoringNode | 0.0  | yes   | no          | 400–900               |
-| `RESUME_REASONING_MODEL` | SummaryRewriteNode, BulletRewriteNode                           | 0.4  | mixed | yes (Ollama)| 300–800               |
+| `RESUME_REASONING_MODEL` | SummaryRewriteNode, BulletRewriteNode                           | 0.4  | mixed | qwen3 /no_think | 300–800           |
 | `SKILLS_MODEL`           | SkillsRestructureNode (defaults to RESUME_REASONING_MODEL)      | 0.2  | yes   | no          | 200–500               |
 | `COVER_LETTER_MODEL`     | GenerateCoverLetterNode                                         | 0.4  | no    | no          | 300–600               |
 | `DRAFT_REPLY_MODEL`      | CreateDraftReplyNode                                            | 0.3  | no    | no          | 100–200               |
@@ -83,37 +83,46 @@ overwritten the next time the skill executes.
 
 | Suffix             | Backend         | Endpoint used                                                                  |
 |--------------------|-----------------|--------------------------------------------------------------------------------|
-| *(none)*           | `OLLAMA_LOCAL`  | `OLLAMA_LOCAL_BASE_URL` (default: http://localhost:11434)                      |
+| *(none)*           | `MLX_LOCAL`     | `MLX_LOCAL_BASE_URL` + `MLX_API_KEY` (default: http://127.0.0.1:11436/v1) — **oMLX** |
+| `:ollama-local`    | `OLLAMA_LOCAL`  | `OLLAMA_LOCAL_BASE_URL` (default: http://localhost:11434) — legacy escape hatch |
 | `:ollama-cloud`    | `OLLAMA_CLOUD`  | `OLLAMA_CLOUD_BASE_URL` + `OLLAMA_API_KEY` (default base: https://ollama.com)  |
 | `minimax*:cloud`   | `MINIMAX_CLOUD` | `MINIMAX_BASE_URL` + `MINIMAX_API_KEY`                                         |
 | `<other>:cloud`    | `DEEPSEEK_CLOUD`| `DEEPSEEK_BASE_URL` + `DEEPSEEK_API_KEY`                                       |
 
-Both Ollama backends share the same `/api/chat` wire format and `/no_think` injection for qwen3 models. `thinkingEnabled=true` is set by `reasoningClient()` for both `OLLAMA_LOCAL` and `OLLAMA_CLOUD`.
+**Local models run on oMLX (no suffix).** oMLX is an OpenAI-compatible MLX server
+(`/v1/chat/completions`); local model names are bare MLX model ids from
+`mlx-community` / LM Studio (e.g. `Qwen3.5-9B-OptiQ-4bit`), **not** Ollama GGUF tags.
+`/no_think` is still prepended for qwen3-family models to suppress thinking, and
+output reasoning (`<think>`/`<thinking>`) is stripped centrally in `LlmClient.call()`.
+`:ollama-local` remains only as a legacy escape hatch; do not use it for recommendations.
 
 Examples:
-- Local Ollama:    `qwen3:32b` (no suffix)
-- Ollama Cloud:   `glm-5.1:ollama-cloud`
-- DeepSeek direct: `deepseek-v4-pro:cloud`
-- MiniMax direct:  `MiniMax-M2.7:cloud`
+- Local oMLX:       `Qwen3.5-9B-OptiQ-4bit` (no suffix)
+- Ollama Cloud:     `glm-5.1:ollama-cloud`
+- DeepSeek direct:  `deepseek-v4-pro:cloud`
+- MiniMax direct:   `MiniMax-M2.7:cloud`
 
 ---
 
 ## Section B — Hardware Reference
 
-MacBook Max 64 GB memory budget (leave ~8 GB for OS):
+Local models run on **oMLX** (MLX format). MacBook Max 64 GB memory budget (leave ~8 GB for OS):
 - Available for model weights: ~56 GB
-- Max at Q4_K_M: ~70B params (~38 GB)
-- Max at Q8_0:   ~32B params (~34 GB)
-- Max at fp16:   ~28B params (~56 GB)
+- Max at MLX 4-bit: ~70B dense (~38 GB) — but prefer MoE for speed (see below)
+- Max at MLX 8-bit: ~32B dense (~34 GB)
+- MoE models (e.g. `*-A3B-*`) load the full weights but only activate ~3B params per
+  token, so they run at small-model speed with large-model quality — strongly preferred
+  on this hardware for the heavier nodes.
 
-Ollama token-generation speeds on M-series Max (tokens/sec):
-| Model size | Q4_K_M | Q8_0  |
-|------------|--------|-------|
-| 7B         | 55–70  | 35–50 |
-| 14B        | 28–40  | 18–26 |
-| 32B        | 13–20  | 8–14  |
-| 70B        | 6–10   | 4–7   |
+oMLX/MLX token-generation speeds on M-series Max (tokens/sec, 4-bit):
+| Model class            | 4-bit | 8-bit |
+|------------------------|-------|-------|
+| 7–9B dense             | 60–85 | 38–55 |
+| 12–14B dense           | 40–55 | 24–34 |
+| 27–32B dense           | 16–24 | 9–15  |
+| 30–35B MoE (~3B active)| 45–70 | —     |
 
+MLX is generally ~15–30% faster than Ollama/GGUF on Apple Silicon for the same model.
 Use these figures and the typical output tokens in Section A to estimate
 wall-clock time per node. Report as `~Xs`.
 
@@ -205,12 +214,12 @@ ENV_LLM_TUNER_SKILL.md updated: 2 registry description changes.
 ### Provider Catalogue URLs
 
 For each provider key listed in `CLOUD_SUBSCRIPTIONS`, fetch the corresponding
-URL(s) below. Always fetch the `ollama_local` row for local-file targets.
+URL(s) below. Always handle the `mlx_local` row for local-file targets.
 
 | Provider key      | Catalogue URL(s) to fetch                                                          |
 |-------------------|------------------------------------------------------------------------------------|
 | `ollama_cloud`    | https://ollama.com/search?c=cloud                                                  |
-| `ollama_local`    | https://ollama.com/search  *(always fetch for local files)*                        |
+| `mlx_local`       | **First** query the live oMLX server for installed models: `curl -s -H "Authorization: Bearer $MLX_API_KEY" $MLX_LOCAL_BASE_URL/models`. Recommendations MUST come from this installed set. To research/expand the pool: https://huggingface.co/mlx-community (and https://lmstudio.ai/models) — MLX 4-bit/8-bit builds only. |
 | `deepseek_direct` | https://platform.deepseek.com/  and  https://api.deepseek.com/models               |
 | `minimax_direct`  | https://platform.minimaxi.com/document/Models  and  https://www.minimaxi.com/en/news |
 | `openai`          | https://platform.openai.com/docs/models                                            |
@@ -224,8 +233,10 @@ URL(s) below. Always fetch the `ollama_local` row for local-file targets.
 ### D.1 — Parse active providers
 
 Read `CLOUD_SUBSCRIPTIONS` from the prompt. Collect every provider key whose
-value is `true`. Always add `ollama_local` to the active set (required for
-local env files regardless of subscription settings).
+value is `true`. Always add `mlx_local` to the active set (required for the
+local env files regardless of subscription settings). Local candidates are
+restricted to MLX models actually installed in the oMLX server (query it first);
+never recommend an Ollama GGUF tag for a local file.
 
 ### D.2 — Fetch model catalogues
 
@@ -270,9 +281,10 @@ estimate wall-clock time per node per candidate. Then select the winning model
 per config var per output file using:
 
 - `.env.quality`: best cloud model, cost no object. Approved providers only.
-- `.env.local-llm-quality`: best local model ≤56 GB; prefer Q8_0. No cloud.
-- `.env.local-llm-good-enough`: local model finishing each node in ≤60 s;
-  prefer Q4_K_M; favour smaller where quality is sufficient.
+- `.env.local-llm-quality`: best installed oMLX model ≤56 GB; prefer 8-bit MLX or a
+  large MoE (`*-A3B-*`) for quality without crippling speed. No cloud.
+- `.env.local-llm-good-enough`: installed oMLX model finishing each node in ≤60 s;
+  prefer 4-bit MLX; favour smaller dense or MoE where quality is sufficient.
 - `.env.recommended`: best everyday mix — cloud for high-value nodes
   (SCORE, RESUME_REASONING), local for cheaper nodes; optimise
   quality/cost/speed.
@@ -337,10 +349,10 @@ RESUME_GEN_MODEL=
 PROFILE_GEN_MODEL=
 ```
 
-Local files also include:
+Local files also include (oMLX endpoint — no Ollama):
 ```
-OLLAMA_LOCAL_BASE_URL=http://localhost:11434
-# OLLAMA_API_KEY intentionally not set (local)
+MLX_LOCAL_BASE_URL=http://127.0.0.1:11436/v1
+MLX_API_KEY=11436
 ```
 
 Cloud quality file also includes:

@@ -119,6 +119,7 @@ class ProcessingPipeline(
             outputPath     = outputPath,
             hasCoverLetter = hasCoverLetter,
             error          = state.error.takeIf { it.isNotBlank() },
+            artifactUrl    = state.artifactUrl.takeIf { it.isNotBlank() },
         )
     }
 }

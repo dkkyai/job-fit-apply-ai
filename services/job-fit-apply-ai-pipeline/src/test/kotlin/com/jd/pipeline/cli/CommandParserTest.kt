@@ -85,6 +85,13 @@ class CommandParserTest {
     }
 
     @Test
+    fun notifyTimeoutFlag() {
+        val cmd = parse("--notify-timeout", "120")
+        assertTrue(cmd is Command.NotifyTimeout)
+        assertEquals(120, cmd.minutes)
+    }
+
+    @Test
     fun maxEmailsFlag() {
         val cmd = parse("--max-emails", "10")
         assertTrue(cmd is Command.Batch)

@@ -8,6 +8,9 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import kotlin.math.pow
 
 enum class LlmBackend { MLX_LOCAL, OLLAMA_LOCAL, OLLAMA_CLOUD, DEEPSEEK_CLOUD, MINIMAX_CLOUD }
@@ -31,7 +34,10 @@ data class LlmConfig(
     val temperature: Double? = null,
     val timeoutSeconds: Long = 120,
     val jsonMode: Boolean = true,
-    val nodeKey: String = ""
+    val nodeKey: String = "",
+    // Grace added to timeoutSeconds for the hard wall-clock bound on the whole HTTP exchange
+    // (headers + body). Guarantees a stalled response body can't hang the worker indefinitely.
+    val hardTimeoutGraceSeconds: Long = 15,
 )
 
 /**
@@ -48,17 +54,24 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
         .build()
     private val mapper = ObjectMapper()
 
-    /** Call the configured LLM and return the raw assistant content string. */
+    /**
+     * Call the configured LLM and return the assistant content with any chain-of-thought
+     * reasoning stripped. Stripping is applied centrally here so every backend (MLX, Ollama
+     * local/cloud, DeepSeek, MiniMax) returns clean text — reasoning models such as Qwen3.5
+     * (`<thinking>`) and DeepSeek-R1 (`<think>`) otherwise leak their reasoning into prose
+     * outputs like the recruiter draft reply.
+     */
     override fun call(prompt: String): String {
         val t0 = System.currentTimeMillis()
         try {
-            return when (config.backend) {
+            val raw = when (config.backend) {
                 LlmBackend.MLX_LOCAL          -> callMlxLocal(prompt)
                 LlmBackend.OLLAMA_LOCAL       -> callOllama(prompt, Config.OLLAMA_LOCAL_BASE_URL)
                 LlmBackend.OLLAMA_CLOUD -> callOllama(prompt, Config.OLLAMA_CLOUD_BASE_URL, Config.OLLAMA_API_KEY)
                 LlmBackend.DEEPSEEK_CLOUD -> callDeepSeekCloud(prompt)
                 LlmBackend.MINIMAX_CLOUD  -> callMinimaxCloud(prompt)
             }
+            return stripReasoning(raw)
         } finally {
             if (config.nodeKey.isNotEmpty()) NodeTimer.record(config.nodeKey, System.currentTimeMillis() - t0)
         }
@@ -161,14 +174,12 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
     /** Extract choices[0].message.content from an OpenAI-compatible chat response. */
     private fun extractChatContent(responseBody: String): String {
         val root = mapper.readTree(responseBody)
-        var content = root.path("choices").path(0).path("message").path("content").asText()
+        val content = root.path("choices").path(0).path("message").path("content").asText()
         if (content.isBlank()) {
             val snippet = responseBody.take(400)
             throw RuntimeException("Empty content in cloud API response: $snippet")
         }
-        // Strip <think>...</think> reasoning blocks emitted by some models (MiniMax, DeepSeek R1)
-        // before the actual JSON response.
-        content = content.replace(Regex("<think>[\\s\\S]*?</think>", RegexOption.IGNORE_CASE), "").trim()
+        // Reasoning (<think>/<thinking>) is stripped centrally in call().
         return content
     }
 
@@ -192,7 +203,21 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
 
             headers.forEach { (k, v) -> requestBuilder.header(k, v) }
 
-            val response = http.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString())
+            // Hard wall-clock bound. HttpRequest.timeout() only covers time-to-response-headers;
+            // a server that returns headers then stalls the body would otherwise hang the (single-
+            // threaded) worker forever. sendAsync + Future.get(timeout) bounds the TOTAL exchange,
+            // and on timeout we cancel the request so the connection is released.
+            val hardTimeoutSeconds = timeoutSeconds + config.hardTimeoutGraceSeconds
+            val future = http.sendAsync(requestBuilder.build(), HttpResponse.BodyHandlers.ofString())
+            val response = try {
+                future.get(hardTimeoutSeconds, TimeUnit.SECONDS)
+            } catch (e: TimeoutException) {
+                future.cancel(true)
+                throw RuntimeException("LLM call to $url exceeded hard timeout of ${hardTimeoutSeconds}s")
+            } catch (e: ExecutionException) {
+                future.cancel(true)
+                throw RuntimeException("LLM call to $url failed: ${e.cause?.message ?: e.message}")
+            }
             if (response.statusCode() < 400) {
                 return response.body()
             }
@@ -218,6 +243,36 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
     companion object {
         /** Maximum retry attempts on HTTP 429 rate-limit responses. */
         private const val MAX_RETRIES = 3
+
+        // Well-formed reasoning block: <think>/<thinking>/<reasoning> … matching close tag.
+        // Tolerant of attributes and surrounding whitespace; case-insensitive; DOTALL via [\s\S].
+        private val REASONING_BLOCK = Regex(
+            "<\\s*(think|thinking|reasoning)\\b[^>]*>[\\s\\S]*?<\\s*/\\s*\\1\\s*>",
+            RegexOption.IGNORE_CASE
+        )
+        // Orphan closing tag — some chat templates emit reasoning, a close tag, then the answer,
+        // with no opening tag.
+        private val REASONING_CLOSE = Regex(
+            "<\\s*/\\s*(?:think|thinking|reasoning)\\s*>",
+            RegexOption.IGNORE_CASE
+        )
+
+        /**
+         * Remove chain-of-thought reasoning that reasoning models emit before their answer:
+         *  - well-formed `<think>`/`<thinking>`/`<reasoning>` … `</…>` blocks, and
+         *  - an orphan closing tag (reasoning emitted without an opening tag, then the answer).
+         *
+         * Applied to every LLM response so reasoning never leaks into outputs such as the
+         * recruiter draft reply. Safe on clean text (returns it trimmed, unchanged).
+         */
+        internal fun stripReasoning(content: String): String {
+            if (content.isEmpty()) return content
+            var out = REASONING_BLOCK.replace(content, "")
+            REASONING_CLOSE.findAll(out).lastOrNull()?.let { orphan ->
+                out = out.substring(orphan.range.last + 1)
+            }
+            return out.trim()
+        }
 
         /**
          * Orchestration executor: deterministic extraction/analysis nodes (temp=0, thinking disabled).

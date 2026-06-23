@@ -29,6 +29,7 @@ object Main {
             is Command.TokenFromUrl -> TokenFromUrlCommandHandler.run(command)
             is Command.Batch -> BatchCommandHandler.run(command)
             Command.Worker -> WorkerCommandHandler.run()
+            is Command.NotifyTimeout -> BatchNotificationService().notifyTimeout(command.minutes)
         }
     }
 }

@@ -46,10 +46,12 @@ both from the project `.env` automatically.
 
 ## Wiring into cron
 
-Replace the `pipeline_start.sh` + `pipeline_complete.sh` steps in
-`~/.local/scripts/run_jd_pipeline.sh` with a call to `analyze_run.sh`, keeping the
-existing `heartbeat_check.sh` guard (already-running / screen-locked / GPU-busy) and
-the timeout watcher. The findings task files can then be reviewed (or fed to a coding
+`~/.local/scripts/run_jd_pipeline.sh` calls `analyze_run.sh`, keeping the existing
+`heartbeat_check.sh` guard (already-running / screen-locked / GPU-busy) and the timeout
+watcher. Discord/Telegram notifications are owned by the Kotlin pipeline
+(`BatchCommandHandler` + `WorkerCommandHandler` via `BatchNotificationService`); the old
+`pipeline_complete.sh` notifier is retired, and the timeout alert is sent by
+`./gradlew run --args="--notify-timeout <minutes>"`. The findings task files can then be reviewed (or fed to a coding
 session via each file's "Agent prompt" section).
 
 Note: the jd-worker must be running (pm2) — it processes the jobs the batch submits and

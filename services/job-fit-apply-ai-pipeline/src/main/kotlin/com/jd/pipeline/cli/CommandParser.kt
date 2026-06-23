@@ -27,6 +27,7 @@ object CommandParser {
         var jsearch = false
         var worker = false
         var tokenFromUrl: String? = null
+        var notifyTimeoutMinutes: Int? = null
 
         var i = 0
         while (i < args.size) {
@@ -98,6 +99,12 @@ object CommandParser {
                 }
                 "--jsearch" -> jsearch = true
                 "--worker" -> worker = true
+                "--notify-timeout" -> {
+                    if (i + 1 < args.size) {
+                        notifyTimeoutMinutes = args[i + 1].toIntOrNull()
+                        i++
+                    }
+                }
                 "--token-from-url" -> {
                     if (i + 1 < args.size) {
                         tokenFromUrl = args[i + 1]
@@ -109,6 +116,7 @@ object CommandParser {
         }
 
         return when {
+            notifyTimeoutMinutes != null -> Command.NotifyTimeout(notifyTimeoutMinutes)
             tokenFromUrl != null -> Command.TokenFromUrl(tokenFromUrl)
             test -> Command.Test
             testResume -> Command.TestResume

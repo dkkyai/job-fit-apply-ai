@@ -24,4 +24,6 @@ sealed class Command {
     data class Batch(val maxEmails: Int, val debug: Boolean) : Command()
     data class TokenFromUrl(val redirectUrl: String) : Command()
     object Worker : Command()
+    /** Send a pipeline-timeout alert to Discord/Telegram. Invoked by run_jd_pipeline.sh. */
+    data class NotifyTimeout(val minutes: Int) : Command()
 }

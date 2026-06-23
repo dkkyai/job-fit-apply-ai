@@ -28,7 +28,7 @@ class WorkerCommandHandlerTest {
         company   = "Acme Corp",
         roleTitle = "Staff SDET",
         location  = "Seattle, WA",
-        jobUrl    = null,
+        jobUrl    = "https://boards.example.com/acme/job/123",
         source    = IngestionSource.EMAIL,
     )
 
@@ -40,6 +40,7 @@ class WorkerCommandHandlerTest {
         outputPath     = null,
         hasCoverLetter = false,
         error          = null,
+        artifactUrl    = "https://artifacts.example.com/acme",
     )
 
     @Test
@@ -143,8 +144,42 @@ class WorkerCommandHandlerTest {
                 roleTitle == "Staff SDET" &&
                 fitScore == 82 &&
                 pipelineAction == "TAILOR" &&
-                error == null
+                error == null &&
+                artifactUrl == "https://artifacts.example.com/acme" &&
+                jobUrl == "https://boards.example.com/acme/job/123"
         })
+    }
+
+    @Test
+    @DisplayName("worker maps a blank artifactUrl to null in the notification")
+    fun workerMapsBlankArtifactUrlToNull() {
+        val record = fakeRecord()
+        val result = successResult().copy(artifactUrl = "")
+        val claim  = ClaimDto(jobId = "job-blank-url", jdRecord = record)
+
+        val notified = CountDownLatch(1)
+
+        val bridge = mock<BridgeClient>()
+        val pipeline = mock<ProcessingPipeline>()
+        val notifier = mock<BatchNotificationService>()
+
+        val workerThread = Thread { WorkerCommandHandler.run(bridge, pipeline, notifier) }
+
+        whenever(bridge.claim())
+            .doReturn(claim)
+            .doAnswer {
+                workerThread.interrupt()
+                null
+            }
+        whenever(pipeline.invoke(record)).doReturn(result)
+        doAnswer { notified.countDown() }.whenever(notifier).notifyJobResult(any())
+
+        workerThread.isDaemon = true
+        workerThread.start()
+
+        assertTrue(notified.await(5, TimeUnit.SECONDS), "worker should notify within 5s")
+
+        verify(notifier).notifyJobResult(argThat { artifactUrl == null })
     }
 
     @Test
@@ -178,6 +213,47 @@ class WorkerCommandHandlerTest {
         verify(notifier).notifyJobResult(argThat {
             error != null && error!!.contains("boom") && fitScore == 0
         })
+    }
+
+    @Test
+    @DisplayName("recruiter draft is skipped (no hang) when the Gmail token is not valid")
+    fun recruiterDraftSkippedWhenTokenInvalid() {
+        val recruiterRecord = fakeRecord().copy(
+            intakeMeta = com.jd.pipeline.source.IntakeContext.Email(
+                emailId = "e1", from = "rec@firm.com", subject = "Great role",
+                rawBody = "hi", htmlBody = "<p>hi</p>",
+                isRecruiter = true, isDigest = false, isInlineDigest = false,
+            )
+        )
+        val result = successResult() // TAILOR, error == null → recruiter draft path is reached
+        val claim  = ClaimDto(jobId = "job-rec", jdRecord = recruiterRecord)
+
+        val tokenChecked = java.util.concurrent.atomic.AtomicBoolean(false)
+        val resultPosted = CountDownLatch(1)
+
+        val bridge = mock<BridgeClient>()
+        val pipeline = mock<ProcessingPipeline>()
+        val notifier = mock<BatchNotificationService>()
+
+        val workerThread = Thread {
+            WorkerCommandHandler.run(bridge, pipeline, notifier, gmailTokenValid = {
+                tokenChecked.set(true); false   // simulate missing/expired token
+            })
+        }
+
+        whenever(bridge.claim())
+            .doReturn(claim)
+            .doAnswer { workerThread.interrupt(); null }
+        whenever(pipeline.invoke(recruiterRecord)).doReturn(result)
+        doAnswer { resultPosted.countDown() }.whenever(bridge).postResult(any(), any())
+
+        workerThread.isDaemon = true
+        workerThread.start()
+
+        // The worker must post the result and keep going — never block on interactive OAuth.
+        assertTrue(resultPosted.await(5, TimeUnit.SECONDS), "worker should post result and not hang on OAuth")
+        workerThread.join(2_000)
+        assertTrue(tokenChecked.get(), "worker should consult the gmail token guard for a recruiter TAILOR job")
     }
 
     @Test
