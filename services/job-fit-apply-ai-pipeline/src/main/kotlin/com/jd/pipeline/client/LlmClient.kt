@@ -85,7 +85,10 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
      * (it is prompt-level and works regardless of server) to suppress chain-of-thought.
      */
     private fun callMlxLocal(prompt: String): String {
-        val isQwen3 = config.model.startsWith("qwen3", ignoreCase = true)
+        // substringAfterLast("--") strips an HF-cache publisher prefix (e.g.
+        // "mlx-community--Qwen3.6-27B-4bit") so /no_think still fires for qwen3 models
+        // served under their prefixed oMLX id, not just bare-named ones.
+        val isQwen3 = config.model.substringAfterLast("--").startsWith("qwen3", ignoreCase = true)
         val content = if (!config.thinkingEnabled && isQwen3) "/no_think\n$prompt" else prompt
 
         val body = buildMap<String, Any> {
@@ -107,7 +110,10 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
     // ── Ollama (local and cloud share the same /api/chat wire format) ─────────
 
     private fun callOllama(prompt: String, baseUrl: String, apiKey: String = ""): String {
-        val isQwen3 = config.model.startsWith("qwen3", ignoreCase = true)
+        // substringAfterLast("--") strips an HF-cache publisher prefix (e.g.
+        // "mlx-community--Qwen3.6-27B-4bit") so /no_think still fires for qwen3 models
+        // served under their prefixed oMLX id, not just bare-named ones.
+        val isQwen3 = config.model.substringAfterLast("--").startsWith("qwen3", ignoreCase = true)
         val content = if (!config.thinkingEnabled && isQwen3) "/no_think\n$prompt" else prompt
 
         val messages = listOf(mapOf("role" to "user", "content" to content))
@@ -297,7 +303,7 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
          * RESUME_REASONING_THINKING (default false) — qwen3:32b thinking traces routinely exceed
          * the 300s timeout on local hardware, so thinking is off by default.
          */
-        fun reasoningClient(nodeKey: String = ""): LlmClient {
+        fun reasoningClient(nodeKey: String = "", timeoutSeconds: Long = 300): LlmClient {
             val model = Config.RESUME_REASONING_MODEL
             val backend = backendFor(model)
             val isOllama = backend == LlmBackend.OLLAMA_LOCAL || backend == LlmBackend.OLLAMA_CLOUD
@@ -306,8 +312,10 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
                     model = stripBackendSuffix(model),
                     backend = backend,
                     thinkingEnabled = isOllama && Config.RESUME_REASONING_THINKING,
-                    temperature = 0.4,
-                    timeoutSeconds = 300,
+                    // 0.25 (was 0.4): lower drift/fabrication on dense local models (gemma-4-31b)
+                    // while keeping bullet/summary prose from going flat.
+                    temperature = 0.25,
+                    timeoutSeconds = timeoutSeconds,
                     nodeKey = nodeKey
                 )
             )

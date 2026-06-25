@@ -111,8 +111,30 @@ Local models run on **oMLX** (MLX format). MacBook Max 64 GB memory budget (leav
 - Max at MLX 4-bit: ~70B dense (~38 GB) — but prefer MoE for speed (see below)
 - Max at MLX 8-bit: ~32B dense (~34 GB)
 - MoE models (e.g. `*-A3B-*`) load the full weights but only activate ~3B params per
-  token, so they run at small-model speed with large-model quality — strongly preferred
-  on this hardware for the heavier nodes.
+  token, so they run at small-model speed with large-model breadth — preferred for the
+  **extraction/classification/scoring** nodes (SCAN, SCRAPE, SCORE, PROFILE_GEN) where
+  throughput matters and per-token reasoning depth is light.
+- **DENSE models beat MoE for resume CONTENT writing.** RESUME_REASONING (SummaryRewrite +
+  BulletRewrite) and SKILLS (SkillsRestructure) are dense multi-constraint tasks — map JD
+  requirements onto real candidate facts, inject ATS keywords, frame impact, never fabricate —
+  and depend on *single-token quality*, which scales with **active** params, not total. A
+  ~3B-active MoE (e.g. `Qwen3.6-35B-A3B`) measurably degraded resume PDFs (2026-06 regression);
+  switching RESUME_REASONING + SKILLS to a dense model fixed it.
+  **Rule: prefer dense for RESUME_REASONING + SKILLS; MoE is fine for the lighter JSON/extraction nodes.**
+- **THREE constraints the dense pick MUST satisfy (all verified 2026-06-24 via `--test-resume`):**
+  1. **NOT multimodal.** `gemma-4-*` is image-text → oMLX runs it on `VLMBatchedEngine`, brutally slow
+     for text: `gemma-4-31B-it-qat-8bit` ~1.8 tok/s (timeout); `gemma-4-12B-it-qat-4bit` HUNG on the real
+     long-prompt summary_rewrite (315s, zero tokens — fine only on tiny test prompts). Multimodal is OUT
+     for the resume hot path at any size; check the model card for image/vision support before choosing.
+  2. **Capable enough for strict structured output.** bullet_rewrite expects a JSON *array* of RoleRewrite;
+     `Qwen3.5-9B-OptiQ-4bit` (dense text) returned a wrapping *object* → deserialization failure. Sub-~27B
+     dense models may be too weak for the schema. Prefer ≥27B dense.
+  3. **`/no_think` must fire** or qwen3 models leak chain-of-thought. The check is
+     `model.substringAfterLast("--").startsWith("qwen3")` (LlmClient.kt) — prefix-tolerant, so HF-cache ids
+     like `mlx-community--Qwen3.6-27B-4bit` work. (gemma is not a thinking model, so this only matters for qwen.)
+  **Chosen pick: `mlx-community--Qwen3.6-27B-4bit`** (dense, text engine, ~13 tok/s) — the only installed
+  model meeting all three; full TAILOR run ~10 min/job. Cover-letter/draft prose is single-pass and does
+  well on `gemma-4-12B-it-qat-4bit` (multimodal but those prompts are short, so the VLM engine is tolerable).
 
 oMLX/MLX token-generation speeds on M-series Max (tokens/sec, 4-bit):
 | Model class            | 4-bit | 8-bit |
@@ -281,10 +303,14 @@ estimate wall-clock time per node per candidate. Then select the winning model
 per config var per output file using:
 
 - `.env.quality`: best cloud model, cost no object. Approved providers only.
-- `.env.local-llm-quality`: best installed oMLX model ≤56 GB; prefer 8-bit MLX or a
-  large MoE (`*-A3B-*`) for quality without crippling speed. No cloud.
+- `.env.local-llm-quality`: best installed oMLX model ≤56 GB. For RESUME_REASONING + SKILLS
+  pick a **dense, non-multimodal, ≥27B** text model (`mlx-community--Qwen3.6-27B-4bit`) — NOT a
+  multimodal model (any `gemma-4-*` → VLM engine → hangs/timeout on real prompts) and NOT a sub-27B
+  dense (too weak for bullet_rewrite's JSON-array schema); for SCAN/SCRAPE/SCORE/PROFILE_GEN a large
+  MoE (`*-A3B-*`) is fine for speed. No cloud.
 - `.env.local-llm-good-enough`: installed oMLX model finishing each node in ≤60 s;
-  prefer 4-bit MLX; favour smaller dense or MoE where quality is sufficient.
+  prefer 4-bit MLX; MoE is acceptable here even for content nodes if dense is too slow,
+  but note resume quality will suffer vs a dense pick.
 - `.env.recommended`: best everyday mix — cloud for high-value nodes
   (SCORE, RESUME_REASONING), local for cheaper nodes; optimise
   quality/cost/speed.
@@ -370,15 +396,22 @@ After writing all four files, print:
 ```
 | Config Var               | .env.quality | .env.local-quality | .env.local-good-enough | .env.recommended |
 |--------------------------|--------------|--------------------|------------------------|------------------|
-| SCAN_MODEL               | deepseek-v4-flash:ollama-cloud | qwen3.5:27b        | qwen3.5:9b             | qwen3.5:9b       |
-| SCRAPE_MODEL             | deepseek-v4-flash:ollama-cloud | qwen3.5:27b        | qwen3.5:9b             | qwen3.5:9b       |
-| SCORE_MODEL              | kimi-k2.6:ollama-cloud | deepseek-r1:70b    | qwen3.5:9b             | minimax-m3:ollama-cloud |
-| RESUME_REASONING_MODEL   | kimi-k2.6:ollama-cloud | deepseek-r1:70b    | qwen3.5:9b             | minimax-m3:ollama-cloud |
-| SKILLS_MODEL             | deepseek-v4-flash:ollama-cloud | qwen3.5:27b        | qwen3.5:9b             | qwen3.5:9b       |
-| COVER_LETTER_MODEL       | kimi-k2.6:ollama-cloud | gemma4:31b         | qwen3.5:9b             | gemma4:12b       |
-| DRAFT_REPLY_MODEL        | deepseek-v4-flash:ollama-cloud | qwen3.5:9b         | qwen3.5:9b             | qwen3.5:9b       |
+| SCAN_MODEL               | deepseek-v4-flash:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
+| SCRAPE_MODEL             | deepseek-v4-flash:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
+| SCORE_MODEL              | kimi-k2.6:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
+| RESUME_REASONING_MODEL   | kimi-k2.6:ollama-cloud | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | mlx-community--Qwen3.6-27B-4bit |
+| SKILLS_MODEL             | deepseek-v4-flash:ollama-cloud | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | mlx-community--Qwen3.6-27B-4bit |
+| COVER_LETTER_MODEL       | kimi-k2.6:ollama-cloud | gemma-4-12B-it-qat-4bit | gemma-4-12B-it-qat-4bit | gemma-4-12B-it-qat-4bit |
+| DRAFT_REPLY_MODEL        | deepseek-v4-flash:ollama-cloud | gemma-4-12B-it-qat-4bit | gemma-4-12B-it-qat-4bit | gemma-4-12B-it-qat-4bit |
 | Est. full-pipeline time  | ~154s        | ~734s              | ~173s                  | ~190s            |
 ```
 
 The last row is the sum of all node estimates for one job reaching the
 tailoring subgraph (the worst-case hot path).
+
+**RESUME_REASONING_MODEL and SKILLS_MODEL must be DENSE (not `*-A3B-*` MoE), non-multimodal,
+≥27B (for the JSON-array schema), and `/no_think`-clean** in every local profile — they write the
+resume content and depend on single-token quality (see the dense-vs-MoE rule + the three constraints
+in the memory budget section). MoE is fine for the other (extraction/JSON) nodes. Re-estimate local
+timings after any swap — measured: Qwen3.6-27B-4bit ~13 tok/s (full TAILOR ~10 min/job), vs ~45–70
+for a 3B-active MoE (and any multimodal `gemma-4-*` hangs/times out on real long prompts).

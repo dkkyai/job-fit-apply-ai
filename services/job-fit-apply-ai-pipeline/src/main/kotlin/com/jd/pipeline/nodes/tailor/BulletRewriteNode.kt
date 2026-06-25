@@ -15,7 +15,10 @@ import java.nio.file.Files
  * Tailor subgraph node 4/6: Bullet Rewrite (per-role structured)
  */
 class BulletRewriteNode(
-    private val llm: LlmCaller = LlmClient.reasoningClient(nodeKey = "bullet_rewrite")
+    // 480s (default 300): bullet_rewrite emits the largest output (all roles' bullets) and on the
+    // dense local 27B was measured at 3082 tok / 297s — only ~18s under the old 315s hard wall.
+    // Raised so resumes with more roles/bullets don't time out. (hard wall = 480 + 15s grace.)
+    private val llm: LlmCaller = LlmClient.reasoningClient(nodeKey = "bullet_rewrite", timeoutSeconds = 480)
 ) {
     private val mapper = ObjectMapper().registerKotlinModule()
 
