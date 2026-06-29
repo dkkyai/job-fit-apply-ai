@@ -46,6 +46,11 @@ fun Application.configureApplication() {
         json(Json {
             explicitNulls  = false
             encodeDefaults = true
+            // Tolerate result/record fields the worker adds over time (e.g. artifact_url).
+            // Without this, any new ProcessingResult field 400s every postResult and stalls
+            // the queue (jobs stuck in "claimed"). The bridge must not be coupled to the
+            // worker's exact result schema.
+            ignoreUnknownKeys = true
         })
     }
 
