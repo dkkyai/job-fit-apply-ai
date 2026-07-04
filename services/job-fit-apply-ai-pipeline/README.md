@@ -204,6 +204,8 @@ All node-level model variables default to `qwen3.5:9b-q4_K_M`. Override per node
 |---|---|---|
 | `FIT_THRESHOLD` | `50` | Minimum fit score to trigger tailoring |
 | `DUPLICATE_WINDOW_DAYS` | `30` | Jobs seen within this window are skipped as duplicates |
+| `ATS_REFINE_ENABLED` | `true` | Re-run summary+bullet rewrites once with ATS feedback when the first pass scores below the refine threshold (keeps the better-scoring pass) |
+| `ATS_REFINE_THRESHOLD` | `80` | ATS overall score below which the refinement pass triggers |
 
 ### Gmail
 

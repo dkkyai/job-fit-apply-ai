@@ -29,7 +29,7 @@ You will receive:
 - For `yoe_required`: extract the number only if explicitly stated (e.g. "5+ years" → 5). Otherwise `null`.
 - For `remote_policy`: use `"remote"`, `"hybrid"`, `"onsite"`, or `"unknown"`.
 - For `tech_stack`: list every tool, language, framework, and platform explicitly mentioned. Include acronyms as written (e.g. "CI/CD", "XCTest", "Playwright", "K8s").
-- For `jd_text`: return the cleaned job description text — strip recruiter boilerplate, email signatures, unsubscribe footers, and navigation links. Preserve all requirements, responsibilities, qualifications, and tech mentions.
+- For `jd_text`: return the cleaned job description text — strip recruiter boilerplate, email signatures, unsubscribe footers, and navigation links. Copy the JD content itself **verbatim**: do not summarise, shorten, or reword it. Every requirement, responsibility, and qualification line must appear in full, and all tech/tool mentions must be preserved exactly — downstream scoring and resume tailoring match against this text word-for-word.
 - For `job_url`: extract the direct URL to the job posting or application page if one is explicitly present in the content (e.g. "Apply here: https://…", an ATS link). Use `null` if no URL is present.
 - Reject generic company homepages, scheduling links, unsubscribe links, and recruiter profile links as `job_url`.
 - If multiple URLs are present, choose the URL that most directly represents the job posting or application page.
