@@ -9,6 +9,8 @@ object CommandParser {
         var testCoverLetter = false
         var testSupabase = false
         var testGmail = false
+        var testChrome = false
+        var testChromeUrl: String? = null
         var reauth = false
         var checkToken = false
         var scanTuner = false
@@ -37,6 +39,13 @@ object CommandParser {
                 "--test-coverletter" -> testCoverLetter = true
                 "--test-supabase" -> testSupabase = true
                 "--test-gmail" -> testGmail = true
+                "--test-chrome" -> {
+                    testChrome = true
+                    if (i + 1 < args.size && !args[i + 1].startsWith("--")) {
+                        testChromeUrl = args[i + 1]
+                        i++
+                    }
+                }
                 "--reauth" -> reauth = true
                 "--check-token" -> checkToken = true
                 "--scantuner" -> {
@@ -123,6 +132,7 @@ object CommandParser {
             testCoverLetter -> Command.TestCoverLetter
             testSupabase -> Command.TestSupabase
             testGmail -> Command.TestGmail
+            testChrome -> Command.TestChrome(testChromeUrl)
             reauth -> Command.Reauth
             checkToken -> Command.CheckToken
             scanTuner -> Command.ScanTuner(scanTunerFile, maxIterations, debug)

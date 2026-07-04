@@ -1,6 +1,7 @@
 package com.jd.pipeline.cli
 
 import com.jd.pipeline.cli.commands.*
+import com.jd.pipeline.client.AlertService
 
 object Main {
     @JvmStatic
@@ -17,6 +18,7 @@ object Main {
             Command.TestCoverLetter -> TestCoverLetterCommandHandler.run()
             Command.TestSupabase -> TestSupabaseCommandHandler.run()
             Command.TestGmail -> TestGmailCommandHandler.run()
+            is Command.TestChrome -> TestChromeCommandHandler.run(command)
             Command.Reauth -> ReauthCommandHandler.run()
             Command.CheckToken -> CheckTokenCommandHandler.run()
             is Command.ScanTuner -> ScanTunerCommandHandler.run(command)
@@ -29,7 +31,7 @@ object Main {
             is Command.TokenFromUrl -> TokenFromUrlCommandHandler.run(command)
             is Command.Batch -> BatchCommandHandler.run(command)
             Command.Worker -> WorkerCommandHandler.run()
-            is Command.NotifyTimeout -> BatchNotificationService().notifyTimeout(command.minutes)
+            is Command.NotifyTimeout -> AlertService().pipelineTimeout(command.minutes)
         }
     }
 }

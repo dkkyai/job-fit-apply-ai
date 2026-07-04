@@ -196,24 +196,6 @@ class BatchNotificationService(
         .replace(">", "&gt;")
         .replace("\"", "&quot;")
 
-    // ── Pipeline-level alert ──────────────────────────────────────────────────
-
-    /**
-     * Alert that a pipeline run exceeded its time budget and was killed. Sent to both
-     * channels so it surfaces regardless of which is configured. This replaces the inline
-     * curl + hardcoded Telegram token that used to live in `run_jd_pipeline.sh`.
-     */
-    fun notifyTimeout(minutes: Int) {
-        if (!client.discordConfigured && !client.telegramConfigured) return
-        val dateStr = DateTimeFormatter
-            .ofPattern("yyyy-MM-dd HH:mm z")
-            .withZone(ZoneId.systemDefault())
-            .format(Instant.now())
-        val msg = "⚠️ JD Pipeline timed out after $minutes min and was killed — $dateStr"
-        client.postDiscord(msg)
-        client.postTelegram(msg)
-    }
-
     // ── Telegram ping ─────────────────────────────────────────────────────────
 
     private fun pingHighFit(jobs: List<ScoredJob>) {

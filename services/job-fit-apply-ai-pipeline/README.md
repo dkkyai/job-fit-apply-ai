@@ -229,9 +229,55 @@ All node-level model variables default to `qwen3.5:9b-q4_K_M`. Override per node
 | `CHROME_EXECUTABLE_PATH` | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` (macOS) |
 | `CHROME_USER_DATA_DIR` | `~/Library/Application Support/Google/Chrome` (macOS) |
 | `CHROME_PROFILE_DIRECTORY` | `Default` |
+| `CHROME_CDP_ENDPOINT` | _(empty)_ — e.g. `http://localhost:9222` to use the persistent Chrome |
+| `CHROME_DEBUG_PORT` | `9222` |
+| `CDP_FORCE_DOMAINS` | _(empty)_ — comma-separated domains that always scrape via the CDP browser (e.g. `glassdoor.com`) |
 | `PLAYWRIGHT_TIMEOUT_MS` | `45000` |
 | `PLAYWRIGHT_HEADLESS` | `false` |
 | `PLAYWRIGHT_FALLBACK_ON_CAPTCHA` | `true` |
+
+#### Persistent Chrome over CDP (recommended)
+
+By default the scraper copies your Chrome profile into a temp dir and launches a throwaway
+browser **per job**, so LinkedIn's mid-visit session-cookie refreshes are discarded — the real
+profile slowly goes stale and gets signed out, and every cold launch looks like a bot.
+
+Instead, run **one** long-lived Chrome with a remote-debugging port and point the pipeline at it.
+It reuses a warm, logged-in session (one tab per domain), which sharply reduces sign-outs and
+CAPTCHAs.
+
+> **Dedicated profile required.** Current Chrome refuses `--remote-debugging-port` on the **Default**
+> profile dir ("DevTools remote debugging requires a non-default data directory"). So the debug
+> Chrome uses a separate `CHROME_CDP_USER_DATA_DIR` — it runs **alongside** your everyday Chrome,
+> and you sign into the job boards in it **once** (the login persists there).
+
+```bash
+# 1. Launch the dedicated debug Chrome (idempotent; coexists with your normal Chrome)
+scripts/launch-chrome-cdp.sh
+# 2. Confirm it's listening
+curl -s http://localhost:9222/json/version
+# 3. Enable it for the pipeline
+echo 'CHROME_CDP_ENDPOINT=http://localhost:9222' >> .env
+# 4. In the debug Chrome window, sign into LinkedIn (and any other boards) — one time
+# 5. Smoke-test the connection + login
+./gradlew run --args="--test-chrome https://www.linkedin.com/feed/"
+```
+
+`--test-chrome` connects over CDP, opens a probe tab (pass a URL to override the default), and
+reports whether the session looks authenticated — a quick check without running a full batch. With
+`CHROME_CDP_ENDPOINT` empty it just reports that CDP is disabled.
+
+To keep it running across logins, install the optional launch agent
+`scripts/com.jd.chrome-cdp.plist` (instructions are in the file header).
+
+**What routes through the browser:** most sites are scraped over plain HTTP (fast, uses embedded
+schema.org JSON-LD). The CDP browser is used for **LinkedIn** (always), for pages the HTTP fetch
+finds **blocked or thin** (Cloudflare / 403 / JS-rendered SPA), and for any domain listed in
+**`CDP_FORCE_DOMAINS`** — a proactive list for sites that soft-block plain HTTP (e.g. Glassdoor)
+where waiting to detect a block isn't reliable.
+
+If the debug Chrome is unreachable, the scraper automatically falls back to the legacy
+copy-profile / clean-launch path and sends a one-time alert (see Alerts below).
 
 ## Skills (prompt files)
 
@@ -352,8 +398,17 @@ The pipeline uses OAuth 2.0 to authenticate with Gmail. Tokens are stored at `GM
 
 | Symptom | Fix |
 |---|---|
-| "LinkedIn session expired" warning | Re-authenticate Chrome profile used by `CHROME_PROFILE_DIRECTORY` |
-| "Security verification" checkpoint | Manually complete in Chrome, then retry |
+| "LinkedIn session expired" warning / "Sign-in required" alert | Sign back in to the persistent Chrome (`scripts/launch-chrome-cdp.sh`); the pipeline reuses the session |
+| "Security verification" checkpoint | Manually complete in the persistent Chrome, then retry |
+| "Chrome debug instance unreachable" alert | Debug Chrome isn't running — `scripts/launch-chrome-cdp.sh` (scraping still falls back to the legacy path meanwhile) |
+
+### Alerts
+
+Operational alerts (a site needs sign-in, the debug Chrome is down, a pipeline timed out) are
+sent through `AlertService` to the same Discord/Telegram channels as job notifications — set
+`DISCORD_BOT_TOKEN`/`DISCORD_CHANNEL_ID` and/or `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`. With no
+channel configured, alerts are silent no-ops. Each distinct alert is de-duplicated per run so a
+recurring condition pings once, not once per job.
 
 ## Project layout
 

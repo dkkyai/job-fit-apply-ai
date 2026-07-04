@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Optional launchd agent: start the CDP-enabled Chrome at login.
+
+  Install:
+    1. Edit the ProgramArguments path below if your checkout differs.
+    2. cp scripts/com.jd.chrome-cdp.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.jd.chrome-cdp.plist
+
+  Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.jd.chrome-cdp.plist
+
+  KeepAlive is false so you can still quit Chrome normally. Flip it to <true/> only if you
+  want launchd to relaunch Chrome whenever it exits (it will fight a manual Cmd-Q).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jd.chrome-cdp</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/dkkyai/projects/job-fit-apply-ai/services/job-fit-apply-ai-pipeline/scripts/launch-chrome-cdp.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/jd-chrome-cdp.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/jd-chrome-cdp.err.log</string>
+</dict>
+</plist>
