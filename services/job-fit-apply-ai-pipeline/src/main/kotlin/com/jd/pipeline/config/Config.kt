@@ -134,6 +134,26 @@ object Config {
         Paths.get(System.getProperty("user.home"), "Library", "Application Support", "Google", "Chrome").toString()
     )
     val CHROME_PROFILE_DIRECTORY: String = get("CHROME_PROFILE_DIRECTORY", "Default")
+    // CDP (Chrome DevTools Protocol) connection to a long-lived, user-launched Chrome.
+    // When set (e.g. http://localhost:9222), the scraper connects to that already-running
+    // Chrome and reuses its logged-in profile + warm session instead of launching a fresh,
+    // profile-copied browser per job. Empty = disabled (legacy per-job launch path).
+    // Launch the target Chrome with scripts/launch-chrome-cdp.sh.
+    val CHROME_CDP_ENDPOINT: String = get("CHROME_CDP_ENDPOINT", "")
+    // Remote-debugging port the launch script opens; also used to surface a helpful endpoint hint.
+    val CHROME_DEBUG_PORT: String = get("CHROME_DEBUG_PORT", "9222")
+    // Dedicated user-data-dir for the CDP debug Chrome (used by scripts/launch-chrome-cdp.sh).
+    // Must NOT be the Default profile — current Chrome refuses remote debugging on the default dir
+    // ("DevTools remote debugging requires a non-default data directory"). This profile can run
+    // alongside your everyday Chrome; sign into the job boards in it once (the login persists here).
+    val CHROME_CDP_USER_DATA_DIR: String = get(
+        "CHROME_CDP_USER_DATA_DIR",
+        Paths.get(System.getProperty("user.home"), "Library", "Application Support", "Google", "Chrome-CDP").toString()
+    )
+    // Comma-separated domains that skip the HTTP fetch and scrape via the CDP browser directly
+    // (proactive — for sites that soft-block or challenge plain HTTP, e.g. Glassdoor's Cloudflare).
+    // Suffix match (a domain also matches its subdomains). Requires the debug Chrome to be up.
+    val CDP_FORCE_DOMAINS: String = get("CDP_FORCE_DOMAINS", "")
     val PLAYWRIGHT_HEADLESS: Boolean = get("PLAYWRIGHT_HEADLESS", "false").toBoolean()
     // When true, sites blocked by HTTP (403, CAPTCHA, Cloudflare) are retried with a clean Playwright session.
     val PLAYWRIGHT_FALLBACK_ON_CAPTCHA: Boolean = get("PLAYWRIGHT_FALLBACK_ON_CAPTCHA", "true").toBoolean()

@@ -32,6 +32,7 @@ object SingleEmailCommandHandler {
             val labelingService   = EmailLabelingServiceImpl()
             val emailId           = emailState.emailIntake?.emailId ?: ""
 
+            try {
             // 1. Ingestion: scan → scrape → save
             val ingState = try {
                 ingestionPipeline.invoke(emailState)
@@ -91,6 +92,9 @@ object SingleEmailCommandHandler {
                 "Recruiter_Response_Required" -> println("[INFO] Draft reply queued — labeled Recruiter_Response_Required, starred, kept unread.")
                 "JD_Not_Found"               -> println("[INFO] JD_Not_Found — labeled, kept in inbox, marked unread.")
                 else                         -> println("[INFO] Labeled and archived.")
+            }
+            } finally {
+                runCatching { ingestionPipeline.close() }
             }
 
         } catch (e: Exception) {

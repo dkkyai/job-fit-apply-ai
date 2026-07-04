@@ -6,6 +6,8 @@ sealed class Command {
     object TestCoverLetter : Command()
     object TestSupabase : Command()
     object TestGmail : Command()
+    /** Smoke-test the persistent Chrome (CDP) scraping setup. Optional probe URL. */
+    data class TestChrome(val url: String?) : Command()
     object Reauth : Command()
     object CheckToken : Command()
     data class ScanTuner(val file: String?, val maxIterations: Int, val debug: Boolean) : Command()

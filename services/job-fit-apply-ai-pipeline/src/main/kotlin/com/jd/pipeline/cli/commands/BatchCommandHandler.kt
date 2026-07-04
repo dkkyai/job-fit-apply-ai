@@ -3,6 +3,7 @@ package com.jd.pipeline.cli.commands
 import com.jd.pipeline.cli.BatchNotificationService
 import com.jd.pipeline.cli.Command
 import com.jd.pipeline.cli.EmailLabelingServiceImpl
+import com.jd.pipeline.client.AlertService
 import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.gmail.GmailTransport
 import com.jd.pipeline.pipeline.IngestionPipeline
@@ -22,6 +23,7 @@ object BatchCommandHandler {
         bridge: BridgeClient = BridgeClient(),
         labelingService: EmailLabelingServiceImpl = EmailLabelingServiceImpl(),
         notificationService: BatchNotificationService = BatchNotificationService(),
+        alertService: AlertService = AlertService(),
     ) {
         println("[INFO] Processing batch (max ${cmd.maxEmails} emails)...")
         val batchStartTime = Instant.now()
@@ -145,6 +147,7 @@ object BatchCommandHandler {
 
             if (ingestionPipeline.batchLinkedInSessionExpired()) {
                 println("[WARN] LinkedIn session expired — re-authenticate Chrome profile to enable LinkedIn scraping")
+                alertService.reauthRequired("LinkedIn")
             }
             val blocked = ingestionPipeline.batchBlockedDomains()
             if (blocked.isNotEmpty()) {
@@ -153,6 +156,8 @@ object BatchCommandHandler {
 
         } catch (e: Exception) {
             System.err.println("[ERROR] ${e.message}")
+        } finally {
+            runCatching { ingestionPipeline.close() }
         }
     }
 

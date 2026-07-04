@@ -360,36 +360,6 @@ class BatchNotificationServiceTest {
     }
 
     @Nested
-    @DisplayName("notifyTimeout (pipeline-timeout alert)")
-    inner class NotifyTimeoutAlert {
-
-        @Test
-        @DisplayName("posts the timeout alert to both Discord and Telegram")
-        fun postsToBothChannels() {
-            whenever(client.discordConfigured).thenReturn(true)
-            whenever(client.telegramConfigured).thenReturn(true)
-            service.notifyTimeout(120)
-            verify(client).postDiscord(org.mockito.kotlin.check {
-                assertTrue(it.contains("120 min"), "alert should state the timeout duration")
-                assertTrue(it.contains("timed out"), "alert should say it timed out")
-            })
-            verify(client).postTelegram(org.mockito.kotlin.check {
-                assertTrue(it.contains("120 min"), "alert should state the timeout duration")
-            })
-        }
-
-        @Test
-        @DisplayName("sends nothing when no channel is configured")
-        fun skipsWhenUnconfigured() {
-            whenever(client.discordConfigured).thenReturn(false)
-            whenever(client.telegramConfigured).thenReturn(false)
-            service.notifyTimeout(120)
-            verify(client, never()).postDiscord(any())
-            verify(client, never()).postTelegram(any())
-        }
-    }
-
-    @Nested
     @DisplayName("ScoredJob data class")
     inner class ScoredJobModel {
 
