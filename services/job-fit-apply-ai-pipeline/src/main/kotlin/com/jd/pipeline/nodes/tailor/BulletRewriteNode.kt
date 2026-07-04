@@ -123,21 +123,29 @@ class BulletRewriteNode(
         }
         val rolesJson = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(rolesPayload)
 
-        return """
-            $skillPrompt
-
-            TARGET ROLE: ${jd.roleTitle} (${jd.seniority}) at ${state.company}
-            REQUIRED SKILLS: ${jd.requiredSkills.take(10).joinToString(", ")}
-            DOMAIN KEYWORDS: ${jd.domainKeywords.take(10).joinToString(", ")}
-            ATS PHRASES: ${jd.atsExactPhrases.take(5).joinToString(", ")}
-            TOP GAPS (de-emphasise or omit): ${gap.topGaps.take(5).joinToString(", ")}
-
-            CANDIDATE ROLES (career history + projects). Rewrite the bullets array for each role.
-            Preserve role/company/start_date verbatim — those are the join keys.
-            Return one rewritten bullet per original bullet, in the same order.
-
-            $rolesJson
-        """.trimIndent()
+        return buildString {
+            appendLine(skillPrompt.trim())
+            appendLine()
+            appendLine("TARGET ROLE: ${jd.roleTitle} (${jd.seniority}) at ${state.company}")
+            appendLine("REQUIRED SKILLS: ${jd.requiredSkills.take(12).joinToString(", ")}")
+            appendLine("PREFERRED SKILLS: ${jd.preferredSkills.take(8).joinToString(", ")}")
+            appendLine("DOMAIN KEYWORDS: ${jd.domainKeywords.take(10).joinToString(", ")}")
+            appendLine("ATS PHRASES (distribute across bullets where truthful): ${jd.atsExactPhrases.take(10).joinToString(", ")}")
+            appendLine("TOP GAPS (de-emphasise or omit): ${gap.topGaps.take(5).joinToString(", ")}")
+            state.atsScore?.let { score ->
+                appendLine()
+                appendLine("PREVIOUS ATS FEEDBACK (revision pass — address these where truthful):")
+                appendLine("- Previous overall score: ${score.overallScore}/100")
+                appendLine("- Remaining gaps: ${score.remainingGaps.joinToString("; ").ifBlank { "(none)" }}")
+                appendLine("- Improvements: ${score.top3Improvements.joinToString("; ").ifBlank { "(none)" }}")
+            }
+            appendLine()
+            appendLine("CANDIDATE ROLES (career history + projects). Rewrite the bullets array for each role.")
+            appendLine("Preserve role/company/start_date verbatim — those are the join keys.")
+            appendLine("Return one rewritten bullet per original bullet, in the same order.")
+            appendLine()
+            append(rolesJson)
+        }
     }
 
     private fun stripJsonFences(text: String): String =

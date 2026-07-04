@@ -78,6 +78,12 @@ object Config {
 
     // ── Scoring thresholds ───────────────────────────────────────────────────────
     val FIT_THRESHOLD: Float = get("FIT_THRESHOLD", "50").toFloat()
+    // ATS refinement pass: when the tailored resume's ATS overall score lands below the
+    // threshold, the subgraph re-runs summary+bullet rewrites once with the ATS feedback in
+    // the prompts and keeps the better-scoring pass. Adds up to one extra summary/bullet/score
+    // round per job (~several minutes on local models) — disable for latency-sensitive runs.
+    val ATS_REFINE_ENABLED: Boolean = get("ATS_REFINE_ENABLED", "true").toBoolean()
+    val ATS_REFINE_THRESHOLD: Int = get("ATS_REFINE_THRESHOLD", "80").toInt()
     // Duplicate detection: jobs seen within this window are considered duplicates.
     // Re-opened positions after the window expires are treated as new.
     val DUPLICATE_WINDOW_DAYS: Int = get("DUPLICATE_WINDOW_DAYS", "30").toInt()

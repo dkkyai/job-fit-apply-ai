@@ -1,6 +1,7 @@
 package com.jd.pipeline.nodes.tailor
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.jd.pipeline.config.Config
 import com.jd.pipeline.nodes.GenerateResumeHtmlNode
 import com.jd.pipeline.nodes.Node
 import com.jd.pipeline.state.JDState
@@ -114,6 +115,9 @@ class ResumeTailoringSubgraph(
             return input.copy(outputPath = outputPath, error = state.error)
         }
 
+        // ── Optional refinement pass driven by the ATS feedback ───────────────
+        state = maybeRefine(state)
+
         // ── Save output files ──────────────────────────────────────────────────
         saveOutputFiles(outputDir, state)
 
@@ -131,6 +135,36 @@ class ResumeTailoringSubgraph(
             val msg = "tailor_subgraph: render_resume_html failed: ${e.message}"
             System.err.println("[tailor_subgraph] ERROR: $msg")
             input.copy(outputPath = outputPath, error = msg)
+        }
+    }
+
+    /**
+     * One ATS-feedback-driven refinement pass. When the first pass scores below
+     * [Config.ATS_REFINE_THRESHOLD], summary and bullet rewrites re-run with the
+     * ATS feedback (remaining gaps + improvements) in their prompts, then re-score.
+     * Keeps whichever pass scored higher; any refinement error is non-fatal and
+     * falls back to the first-pass outputs.
+     */
+    private fun maybeRefine(initial: TailorState): TailorState {
+        val firstScore = initial.atsScore?.overallScore ?: return initial
+        if (!Config.ATS_REFINE_ENABLED || firstScore >= Config.ATS_REFINE_THRESHOLD) return initial
+
+        println("[tailor_subgraph] ATS score $firstScore < ${Config.ATS_REFINE_THRESHOLD} — running refinement pass")
+        var state = summaryRewrite.process(initial)
+        if (state.error.isEmpty()) state = bulletRewrite.process(state)
+        if (state.error.isEmpty()) state = atsScoring.process(state)
+        if (state.error.isNotEmpty()) {
+            System.err.println("[tailor_subgraph] WARN (refine): ${state.error} — keeping first-pass outputs")
+            return initial
+        }
+
+        val refinedScore = state.atsScore?.overallScore ?: 0
+        return if (refinedScore >= firstScore) {
+            println("[tailor_subgraph] Refinement improved ATS score: $firstScore → $refinedScore")
+            state
+        } else {
+            println("[tailor_subgraph] Refinement scored lower ($refinedScore < $firstScore) — keeping first pass")
+            initial
         }
     }
 
