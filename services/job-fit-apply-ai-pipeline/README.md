@@ -267,8 +267,12 @@ echo 'CHROME_CDP_ENDPOINT=http://localhost:9222' >> .env
 reports whether the session looks authenticated — a quick check without running a full batch. With
 `CHROME_CDP_ENDPOINT` empty it just reports that CDP is disabled.
 
-To keep it running across logins, install the optional launch agent
-`scripts/com.jd.chrome-cdp.plist` (instructions are in the file header).
+To keep it up automatically, install the optional launch agent
+`scripts/com.jd.chrome-cdp.plist` (install/uninstall commands are in the file header). It runs
+`scripts/cdp-watchdog.sh` at login and every 60s: the watchdog polls the debug port and only
+(re)launches Chrome when it's actually down, so it recovers from a crash, a manual `Cmd-Q`, or a
+hung-but-alive Chrome within one interval. Because it relaunches on demand, `Cmd-Q` won't stick
+while it's loaded — `launchctl bootout` the agent to stop it.
 
 **What routes through the browser:** most sites are scraped over plain HTTP (fast, uses embedded
 schema.org JSON-LD). The CDP browser is used for **LinkedIn** (always), for pages the HTTP fetch
@@ -400,7 +404,7 @@ The pipeline uses OAuth 2.0 to authenticate with Gmail. Tokens are stored at `GM
 |---|---|
 | "LinkedIn session expired" warning / "Sign-in required" alert | Sign back in to the persistent Chrome (`scripts/launch-chrome-cdp.sh`); the pipeline reuses the session |
 | "Security verification" checkpoint | Manually complete in the persistent Chrome, then retry |
-| "Chrome debug instance unreachable" alert | Debug Chrome isn't running — `scripts/launch-chrome-cdp.sh` (scraping still falls back to the legacy path meanwhile) |
+| "Chrome debug instance unreachable" alert | Debug Chrome isn't running — `scripts/launch-chrome-cdp.sh` (scraping still falls back to the legacy path meanwhile). Install the `com.jd.chrome-cdp` launch agent to auto-recover within 60s. |
 
 ### Alerts
 
