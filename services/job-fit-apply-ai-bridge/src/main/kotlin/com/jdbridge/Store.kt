@@ -61,6 +61,10 @@ internal object Jobs : Table("jobs") {
     val fitScore        = integer("fit_score").nullable()
     val pipelineAction  = text("pipeline_action").nullable()
     val artifactsJson   = text("artifacts_json").nullable()
+    // Processed-posting identity (from the result) — for completed-feed event-stream consumers.
+    val company         = text("company").nullable()
+    val roleTitle       = text("role_title").nullable()
+    val artifactUrl     = text("artifact_url").nullable()   // markserv report URL
     val error           = text("error").nullable()
     val claimedAt       = long("claimed_at").nullable()
     val createdAt       = long("created_at")
@@ -209,6 +213,12 @@ suspend fun recordResult(jobId: String, req: ResultRequest) {
             row[Jobs.fitScore]        = req.fit_score
             row[Jobs.pipelineAction]  = req.pipeline_action
             req.error?.let { row[Jobs.error] = it }
+            // Processed-posting identity + report URL (for completed-feed consumers). job_url may
+            // have been null at enqueue (EMAIL_RAW) — the result carries the scraped value.
+            req.company?.let { row[Jobs.company] = it }
+            req.role_title?.let { row[Jobs.roleTitle] = it }
+            req.job_url?.let { row[Jobs.jobUrl] = it }
+            req.artifact_url?.let { row[Jobs.artifactUrl] = it }
             row[Jobs.claimedAt]       = null
             row[Jobs.updatedAt]       = now
             // Gmail write-back payload
@@ -226,12 +236,15 @@ suspend fun recordResult(jobId: String, req: ResultRequest) {
  * Completed jobs the Poller still needs to write back to Gmail: terminal status,
  * not yet acknowledged, with completed_seq > [since]. Oldest first.
  */
-suspend fun completedJobs(since: Long, limit: Int = 50): List<CompletedJob> = dbQuery {
+// [all] = false → the Poller's work queue (writeback_done = false). [all] = true → the full event
+// stream (every completed job by completed_seq > since, regardless of write-back) for consumers
+// like the Notifier that track their own cursor.
+suspend fun completedJobs(since: Long, limit: Int = 50, all: Boolean = false): List<CompletedJob> = dbQuery {
     Jobs.selectAll()
         .where {
-            (Jobs.status inList listOf(JobStatus.DONE.value, JobStatus.ERROR.value)) and
-            (Jobs.writebackDone eq false) and
-            (Jobs.completedSeq greater since)
+            val terminal = (Jobs.status inList listOf(JobStatus.DONE.value, JobStatus.ERROR.value)) and
+                (Jobs.completedSeq greater since)
+            if (all) terminal else terminal and (Jobs.writebackDone eq false)
         }
         .orderBy(Jobs.completedSeq, SortOrder.ASC)
         .limit(limit)
@@ -240,18 +253,27 @@ suspend fun completedJobs(since: Long, limit: Int = 50): List<CompletedJob> = db
                 runCatching { Json.decodeFromString<ArtifactUrls>(it) }.getOrNull()
             }
             CompletedJob(
-                job_id         = row[Jobs.id],
-                completed_seq  = row[Jobs.completedSeq] ?: 0L,
-                status         = row[Jobs.status],
-                message_id     = row[Jobs.messageId],
-                terminal_label = row[Jobs.terminalLabel],
-                draft_text     = row[Jobs.draftText],
-                is_recruiter   = row[Jobs.isRecruiter],
-                artifacts      = artifacts,
-                error          = row[Jobs.error],
+                job_id          = row[Jobs.id],
+                completed_seq   = row[Jobs.completedSeq] ?: 0L,
+                status          = row[Jobs.status],
+                message_id      = row[Jobs.messageId],
+                terminal_label  = row[Jobs.terminalLabel],
+                draft_text      = row[Jobs.draftText],
+                is_recruiter    = row[Jobs.isRecruiter],
+                artifacts       = artifacts,
+                error           = row[Jobs.error],
+                company         = row[Jobs.company],
+                role_title      = row[Jobs.roleTitle],
+                fit_score       = row[Jobs.fitScore],
+                pipeline_action = row[Jobs.pipelineAction],
+                job_url         = row[Jobs.jobUrl],
+                artifact_url    = row[Jobs.artifactUrl],
             )
         }
 }
+
+/** The current max completed_seq — a cursor consumer seeds here on cold start to skip history. */
+fun latestCompletedSeq(): Long = completedSeqCounter.get()
 
 /** Mark a completed job as written back to Gmail (drops it from the feed). */
 suspend fun markWritebackDone(jobId: String): Boolean = dbQuery {

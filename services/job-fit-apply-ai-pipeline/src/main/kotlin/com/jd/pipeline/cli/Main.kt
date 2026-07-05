@@ -22,7 +22,6 @@ object Main {
             is Command.ResumeGen -> ResumeGenCommandHandler.run(command)
             is Command.InitProfile -> InitProfileCommandHandler.run(command)
             Command.SignedIn -> SignedInCommandHandler.run()
-            Command.JSearch -> JSearchCommandHandler.run()
             Command.Processor -> ProcessorCommandHandler.run()
             is Command.NotifyTimeout -> AlertService().pipelineTimeout(command.minutes)
             Command.Usage -> printUsage()
@@ -40,7 +39,6 @@ object Main {
               --processor              Claim work items from the bridge and process them (scan/scrape/score/tailor)
 
             One-shot / dev:
-              --jsearch                Ingest JSearch API results
               --resume-gen <path>      Generate a tailored resume from a JD file
               --init-profile <path>    Scaffold a candidate profile
               --scrapetuner [file]     Tune the JD scraper

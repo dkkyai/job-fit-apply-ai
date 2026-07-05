@@ -14,7 +14,6 @@ object CommandParser {
         var signedIn = false
         var resumeGenPath: String? = null
         var initProfilePath: String? = null
-        var jsearch = false
         var processor = false
         var notifyTimeoutMinutes: Int? = null
 
@@ -58,7 +57,6 @@ object CommandParser {
                         i++
                     }
                 }
-                "--jsearch" -> jsearch = true
                 "--processor" -> processor = true
                 // Deprecated alias for --processor (Phase 1 rename). Removed at cutover.
                 "--worker" -> {
@@ -86,7 +84,6 @@ object CommandParser {
             resumeGenPath != null -> Command.ResumeGen(resumeGenPath)
             initProfilePath != null -> Command.InitProfile(initProfilePath)
             signedIn -> Command.SignedIn
-            jsearch -> Command.JSearch
             processor -> Command.Processor
             else -> Command.Usage
         }

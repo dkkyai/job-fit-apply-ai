@@ -116,5 +116,44 @@ services:
     # No ports — the Poller only makes outbound calls (Gmail + bridge). Healthcheck (exec `--health`)
     # is baked into the image.
 
+  jsearch:
+    build: ./services/job-fit-apply-ai-jsearch
+    container_name: jobfit-jsearch
+    restart: unless-stopped
+    depends_on:
+      bridge:
+        condition: service_healthy
+    environment:
+      JD_BRIDGE_URL: "http://bridge:8765"
+      # RapidAPI key — put JSEARCH_API_KEY=... in the repo-root .env (gitignored). Required to fetch.
+      JSEARCH_API_KEY: "${JSEARCH_API_KEY:-}"
+      # Once/day fetch (4 calls) → ~120 of a 150/month quota. The persisted last-run makes restarts free.
+      JSEARCH_INTERVAL_MS: "${JSEARCH_INTERVAL_MS:-86400000}"
+    volumes:
+      # Persisted last-run state so restarts don't re-fetch (and burn quota).
+      - "${JD_JSEARCH_STATE_HOST:-${HOME}/.openclaw/jd-jsearch-state}:/state"
+    # No ports — outbound only (JSearch API + bridge). Shell-loop entrypoint + heartbeat healthcheck
+    # are baked into the image; the JVM only runs ~once/day and exits.
+
+  notifier:
+    build: ./services/job-fit-apply-ai-notifier
+    container_name: jobfit-notifier
+    restart: unless-stopped
+    depends_on:
+      bridge:
+        condition: service_healthy
+    environment:
+      JD_BRIDGE_URL: "http://bridge:8765"
+      # Discord/Telegram creds — put these in the repo-root .env (gitignored). Blank → nothing sent.
+      DISCORD_BOT_TOKEN: "${DISCORD_BOT_TOKEN:-}"
+      DISCORD_CHANNEL_ID: "${DISCORD_CHANNEL_ID:-}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
+      NOTIFICATION_FIT_THRESHOLD: "${NOTIFICATION_FIT_THRESHOLD:-50}"
+    volumes:
+      # Persisted consumer cursor (max completed_seq notified) — survives restarts.
+      - "${JD_NOTIFIER_STATE_HOST:-${HOME}/.openclaw/jd-notifier-state}:/state"
+    # No ports — a completed-feed event consumer. Healthcheck (exec --health) baked into the image.
+
 volumes:
   jobfit-db-data:

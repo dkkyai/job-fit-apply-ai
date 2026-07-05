@@ -49,6 +49,9 @@ class ProcessingPipeline(
                 outputPath     = null,
                 hasCoverLetter = false,
                 error          = e.message ?: "ProcessingPipeline failed",
+                company        = record.company,
+                roleTitle      = record.roleTitle,
+                jobUrl         = record.jobUrl,
             )
         }
     }
@@ -131,6 +134,10 @@ class ProcessingPipeline(
             hasCoverLetter = hasCoverLetter,
             error          = state.error.takeIf { it.isNotBlank() },
             artifactUrl    = state.artifactUrl.takeIf { it.isNotBlank() },
+            // Processed-posting identity — for completed-feed consumers (Notifier).
+            company        = state.company.takeIf { it.isNotBlank() },
+            roleTitle      = state.roleTitle.takeIf { it.isNotBlank() },
+            jobUrl         = state.jobUrl.takeIf { it.isNotBlank() },
             // Gmail write-back — the Poller labels the email and delivers any recruiter draft.
             terminalLabel  = TerminalLabel.forState(state),
             draftText      = state.draftText.takeIf { it.isNotBlank() },

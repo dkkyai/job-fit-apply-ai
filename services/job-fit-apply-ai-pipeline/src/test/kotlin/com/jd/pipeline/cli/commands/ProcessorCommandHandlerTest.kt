@@ -1,6 +1,5 @@
 package com.jd.pipeline.cli.commands
 
-import com.jd.pipeline.cli.BatchNotificationService
 import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.ClaimDto
 import com.jd.pipeline.client.ClaimedEmail
@@ -119,111 +118,7 @@ class ProcessorCommandHandlerTest {
         )
     }
 
-    @Test
-    @DisplayName("processor notifies per-job result mapped from the pipeline output")
-    fun processorNotifiesJobResult() {
-        val record = fakeRecord()
-        val result = successResult()
-        val claim  = ClaimDto(jobId = "job-notify", jdRecord = record)
-
-        val notified = CountDownLatch(1)
-
-        val bridge = mock<BridgeClient>()
-        val pipeline = mock<ProcessingPipeline>()
-        val notifier = mock<BatchNotificationService>()
-
-        val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, notifier) }
-
-        whenever(bridge.claim())
-            .doReturn(claim)
-            .doAnswer {
-                processorThread.interrupt()
-                null
-            }
-        whenever(pipeline.invoke(record)).doReturn(result)
-        doAnswer { notified.countDown() }.whenever(notifier).notifyJobResult(any())
-
-        processorThread.isDaemon = true
-        processorThread.start()
-
-        assertTrue(notified.await(5, TimeUnit.SECONDS), "processor should notify within 5s")
-
-        verify(notifier).logConfigStatus()
-        verify(notifier).notifyJobResult(argThat {
-            company == "Acme Corp" &&
-                roleTitle == "Staff SDET" &&
-                fitScore == 82 &&
-                pipelineAction == "TAILOR" &&
-                error == null &&
-                artifactUrl == "https://artifacts.example.com/acme" &&
-                jobUrl == "https://boards.example.com/acme/job/123"
-        })
-    }
-
-    @Test
-    @DisplayName("processor maps a blank artifactUrl to null in the notification")
-    fun processorMapsBlankArtifactUrlToNull() {
-        val record = fakeRecord()
-        val result = successResult().copy(artifactUrl = "")
-        val claim  = ClaimDto(jobId = "job-blank-url", jdRecord = record)
-
-        val notified = CountDownLatch(1)
-
-        val bridge = mock<BridgeClient>()
-        val pipeline = mock<ProcessingPipeline>()
-        val notifier = mock<BatchNotificationService>()
-
-        val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, notifier) }
-
-        whenever(bridge.claim())
-            .doReturn(claim)
-            .doAnswer {
-                processorThread.interrupt()
-                null
-            }
-        whenever(pipeline.invoke(record)).doReturn(result)
-        doAnswer { notified.countDown() }.whenever(notifier).notifyJobResult(any())
-
-        processorThread.isDaemon = true
-        processorThread.start()
-
-        assertTrue(notified.await(5, TimeUnit.SECONDS), "processor should notify within 5s")
-
-        verify(notifier).notifyJobResult(argThat { artifactUrl == null })
-    }
-
-    @Test
-    @DisplayName("processor still notifies (with the error) when the pipeline throws")
-    fun processorNotifiesOnPipelineError() {
-        val record = fakeRecord()
-        val claim  = ClaimDto(jobId = "job-err-notify", jdRecord = record)
-
-        val notified = CountDownLatch(1)
-
-        val bridge = mock<BridgeClient>()
-        val pipeline = mock<ProcessingPipeline>()
-        val notifier = mock<BatchNotificationService>()
-
-        val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, notifier) }
-
-        whenever(bridge.claim())
-            .doReturn(claim)
-            .doAnswer {
-                processorThread.interrupt()
-                null
-            }
-        whenever(pipeline.invoke(record)).thenThrow(RuntimeException("boom"))
-        doAnswer { notified.countDown() }.whenever(notifier).notifyJobResult(any())
-
-        processorThread.isDaemon = true
-        processorThread.start()
-
-        assertTrue(notified.await(5, TimeUnit.SECONDS), "processor should notify error within 5s")
-
-        verify(notifier).notifyJobResult(argThat {
-            error != null && error!!.contains("boom") && fitScore == 0
-        })
-    }
+    // (Per-job Discord/Telegram messaging moved to the Notifier service — see NotifierTest there.)
 
     // ── EMAIL_RAW claims (scan/scrape happen in the Processor) ──────────────────
 
@@ -259,7 +154,7 @@ class ProcessorCommandHandlerTest {
             val pipeline = mock<ProcessingPipeline>()
             val ingestion = mock<IngestionPipeline>()
 
-            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, mock(), ingestion) }
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
             val posted = CountDownLatch(1)
 
             whenever(bridge.claim()).doReturn(emailClaim()).doAnswer { processorThread.interrupt(); null }
@@ -286,7 +181,7 @@ class ProcessorCommandHandlerTest {
             val children = listOf(ingested(isJobPosting = true), ingested(isJobPosting = true))
             val childRecord = fakeRecord()
 
-            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, mock(), ingestion) }
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
             val posted = CountDownLatch(1)
 
             whenever(bridge.claim()).doReturn(emailClaim()).doAnswer { processorThread.interrupt(); null }
@@ -310,7 +205,7 @@ class ProcessorCommandHandlerTest {
             val pipeline = mock<ProcessingPipeline>()
             val ingestion = mock<IngestionPipeline>()
 
-            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, mock(), ingestion) }
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
             val posted = CountDownLatch(1)
 
             whenever(bridge.claim()).doReturn(emailClaim()).doAnswer { processorThread.interrupt(); null }
@@ -334,7 +229,7 @@ class ProcessorCommandHandlerTest {
             val ingestion = mock<IngestionPipeline>()
 
             val badClaim = ClaimDto(jobId = "job-bad", type = WorkItemType.EMAIL_RAW, email = null)
-            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, mock(), ingestion) }
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
             val posted = CountDownLatch(1)
 
             whenever(bridge.claim()).doReturn(badClaim).doAnswer { processorThread.interrupt(); null }

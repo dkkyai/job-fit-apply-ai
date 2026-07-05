@@ -160,11 +160,12 @@ npm run dev                     # http://localhost:3001
 
 | Process | Runs as | Command | Schedule |
 |---|---|---|---|
-| `db` / `bridge` / `frontend` / `markserv` / `poller` | Docker Compose | `make up` (`restart: unless-stopped`) | continuous |
+| `db` / `bridge` / `frontend` / `markserv` / `poller` / `jsearch` / `notifier` | Docker Compose | `make up` (`restart: unless-stopped`) | continuous |
 | Tailscale Serve (`:8765`,`:3030`,`:8081`) | host `tailscaled` | `scripts/setup-tailscale-serve.sh` | persisted across reboot |
 | `jd-processor` | PM2 (always-on) | pipeline `--processor` (LLM pipeline, no Gmail) | continuous |
 | `jobfit-poller` | Docker Compose | poller `--poll` (Gmail intake + write-back) | continuous |
-| JSearch ingestion | cron | `run_jsearch.sh` (`--jsearch`) | daily 5 AM |
+| `jobfit-jsearch` | Docker Compose | jsearch `--once` (JSearch API intake) | daily (self-gated) |
+| `jobfit-notifier` | Docker Compose | notifier `--poll` (Discord/Telegram from the completed-event stream) | continuous |
 
 The containers and worker must be up before the cron jobs fire — run `make doctor` to confirm.
 

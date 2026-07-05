@@ -84,6 +84,11 @@ data class ResultRequest(
     val output_path: String?      = null,
     val has_cover_letter: Boolean = false,
     val error: String?            = null,
+    // Processed-posting identity + report URL — persisted for completed-feed consumers (e.g. Notifier):
+    val company: String?          = null,
+    val role_title: String?       = null,
+    val job_url: String?          = null,
+    val artifact_url: String?     = null,          // markserv report URL (was previously dropped)
     // Gmail write-back payload (Poller acts on these via the completed feed):
     val terminal_label: String?   = null,          // label the Poller should apply to message_id
     val draft_text: String?       = null,          // LLM-generated recruiter reply (Processor makes it)
@@ -107,7 +112,11 @@ data class ClaimResponse(
     val jd_record: JsonElement,                   // raw stored payload (JdRecord or email)
 )
 
-/** One item from GET /api/jobs/completed — everything the Poller needs for Gmail write-back. */
+/**
+ * One item from GET /api/jobs/completed — a completed-job event. Carries the Gmail write-back
+ * payload (for the Poller) plus the processed-posting fields (for event-stream consumers like the
+ * Notifier): company / role_title / fit_score / pipeline_action / job_url / artifact_url.
+ */
 @Serializable
 data class CompletedJob(
     val job_id: String,
@@ -119,6 +128,13 @@ data class CompletedJob(
     val is_recruiter: Boolean    = false,
     val artifacts: ArtifactUrls? = null,
     val error: String?           = null,
+    // Processed-posting fields (for Notifier / analytics / other completed-feed consumers):
+    val company: String?         = null,
+    val role_title: String?      = null,
+    val fit_score: Int?          = null,
+    val pipeline_action: String? = null,
+    val job_url: String?         = null,
+    val artifact_url: String?    = null,
 )
 
 @Serializable
