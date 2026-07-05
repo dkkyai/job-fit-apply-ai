@@ -64,12 +64,16 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
     override fun call(prompt: String): String {
         val t0 = System.currentTimeMillis()
         try {
-            val raw = when (config.backend) {
-                LlmBackend.MLX_LOCAL          -> callMlxLocal(prompt)
-                LlmBackend.OLLAMA_LOCAL       -> callOllama(prompt, Config.OLLAMA_LOCAL_BASE_URL)
-                LlmBackend.OLLAMA_CLOUD -> callOllama(prompt, Config.OLLAMA_CLOUD_BASE_URL, Config.OLLAMA_API_KEY)
-                LlmBackend.DEEPSEEK_CLOUD -> callDeepSeekCloud(prompt)
-                LlmBackend.MINIMAX_CLOUD  -> callMinimaxCloud(prompt)
+            // Gate on the physical resource: local backends (oMLX + Ollama-local) share one
+            // permit so they never thrash the host GPU; cloud backends draw from a larger pool.
+            val raw = LlmGate.withPermit(config.backend) {
+                when (config.backend) {
+                    LlmBackend.MLX_LOCAL          -> callMlxLocal(prompt)
+                    LlmBackend.OLLAMA_LOCAL       -> callOllama(prompt, Config.OLLAMA_LOCAL_BASE_URL)
+                    LlmBackend.OLLAMA_CLOUD -> callOllama(prompt, Config.OLLAMA_CLOUD_BASE_URL, Config.OLLAMA_API_KEY)
+                    LlmBackend.DEEPSEEK_CLOUD -> callDeepSeekCloud(prompt)
+                    LlmBackend.MINIMAX_CLOUD  -> callMinimaxCloud(prompt)
+                }
             }
             return stripReasoning(raw)
         } finally {

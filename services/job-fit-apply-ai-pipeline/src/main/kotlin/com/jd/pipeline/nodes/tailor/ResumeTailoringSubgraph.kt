@@ -59,7 +59,7 @@ class ResumeTailoringSubgraph(
         if (jdWordCount < 50) {
             System.err.println("[tailor_subgraph] WARN: jdText too sparse ($jdWordCount non-URL words) — rendering untailored profile")
             writeUntailoredHtml(outputDir, profile)
-            return input.copy(outputPath = outputPath)
+            return input.copy(outputPath = outputPath, tailoringDegradedNodes = listOf("all (untailored — JD too sparse)"))
         }
 
         // ── Initialise TailorState ─────────────────────────────────────────────
@@ -75,44 +75,21 @@ class ResumeTailoringSubgraph(
             jdStructured = input.jdStructured  // pre-extracted by score_fit; skips JdExtractionNode LLM call
         )
 
-        // ── Sequential execution — early exit on node error ────────────────────
-        state = jdExtraction.process(state)
-        if (state.error.isNotEmpty()) {
-            System.err.println("[tailor_subgraph] ERROR (jd_extraction): ${state.error}")
-            return input.copy(outputPath = outputPath, error = state.error)
-        }
-
-        state = gapAnalysis.process(state)
-        if (state.error.isNotEmpty()) {
-            System.err.println("[tailor_subgraph] ERROR (gap_analysis): ${state.error}")
-            return input.copy(outputPath = outputPath, error = state.error)
-        }
-
-        state = summaryRewrite.process(state)
-        if (state.error.isNotEmpty()) {
-            System.err.println("[tailor_subgraph] ERROR (summary_rewrite): ${state.error}")
-            return input.copy(outputPath = outputPath, error = state.error)
-        }
-
-        state = bulletRewrite.process(state)
-        if (state.error.isNotEmpty()) {
-            System.err.println("[tailor_subgraph] ERROR (bullet_rewrite): ${state.error}")
-            return input.copy(outputPath = outputPath, error = state.error)
-        }
-
-        state = skillsRestructure.process(state)
-        if (state.error.isNotEmpty()) {
-            // Non-fatal: render with the untailored skill buckets and skip ats_scoring
-            System.err.println("[tailor_subgraph] WARN (skills_restructure): ${state.error} — proceeding without restructured skills")
-            state = state.copy(error = "")
-        }
+        // ── Sequential execution — a content-node failure is NON-FATAL ─────────
+        // A flaky local-LLM step (e.g. bullet_rewrite) must NOT abandon the whole report.
+        // We keep the base/untailored content for the failed section and still render the
+        // resume → PDF → report, so artifact_url is always populated. buildTailoredProfile
+        // falls back to the base profile for any tailored field a failed node left null.
+        // [degraded] records which nodes fell back → surfaced in report.md.
+        val degraded = mutableListOf<String>()
+        state = runNode("jd_extraction", state, degraded) { jdExtraction.process(it) }
+        state = runNode("gap_analysis", state, degraded) { gapAnalysis.process(it) }
+        state = runNode("summary_rewrite", state, degraded) { summaryRewrite.process(it) }
+        state = runNode("bullet_rewrite", state, degraded) { bulletRewrite.process(it) }
+        state = runNode("skills_restructure", state, degraded) { skillsRestructure.process(it) }
 
         if (state.restructuredSkills != null) {
-            state = atsScoring.process(state)
-        }
-        if (state.error.isNotEmpty()) {
-            System.err.println("[tailor_subgraph] ERROR (ats_scoring): ${state.error}")
-            return input.copy(outputPath = outputPath, error = state.error)
+            state = runNode("ats_scoring", state, degraded) { atsScoring.process(it) }
         }
 
         // ── Optional refinement pass driven by the ATS feedback ───────────────
@@ -128,14 +105,45 @@ class ResumeTailoringSubgraph(
             Files.writeString(outputDir.resolve("tailored_resume.html"), html)
             println("[tailor_subgraph] tailored_resume.html written to $outputDir")
 
-            println("[tailor_subgraph] Complete — ATS score: ${state.atsScore?.overallScore} → $outputPath")
+            if (degraded.isNotEmpty()) {
+                println("[tailor_subgraph] Complete (short-circuited — fell back on: ${degraded.joinToString(", ")}) → $outputPath")
+            } else {
+                println("[tailor_subgraph] Complete — ATS score: ${state.atsScore?.overallScore} → $outputPath")
+            }
 
-            input.copy(outputPath = outputPath)
+            input.copy(outputPath = outputPath, tailoringDegradedNodes = degraded)
         } catch (e: Exception) {
             val msg = "tailor_subgraph: render_resume_html failed: ${e.message}"
             System.err.println("[tailor_subgraph] ERROR: $msg")
-            input.copy(outputPath = outputPath, error = msg)
+            input.copy(outputPath = outputPath, error = msg, tailoringDegradedNodes = degraded)
         }
+    }
+
+    /**
+     * Run one tailoring node non-fatally: a thrown exception or a node-reported error is
+     * logged and swallowed (error cleared) so the subgraph continues and still produces a
+     * partially-tailored resume + report instead of abandoning it. On failure the base
+     * content for that section is kept (buildTailoredProfile falls back to the profile).
+     */
+    private fun runNode(
+        name: String,
+        state: TailorState,
+        degraded: MutableList<String>,
+        block: (TailorState) -> TailorState,
+    ): TailorState {
+        val next = try {
+            block(state)
+        } catch (e: Exception) {
+            System.err.println("[tailor_subgraph] WARN ($name): threw ${e.message} — keeping base content, continuing")
+            degraded.add(name)
+            return state
+        }
+        if (next.error.isNotEmpty()) {
+            System.err.println("[tailor_subgraph] WARN ($name): ${next.error} — keeping base content, continuing")
+            degraded.add(name)
+            return next.copy(error = "")
+        }
+        return next
     }
 
     /**

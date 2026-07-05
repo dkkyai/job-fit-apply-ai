@@ -1,8 +1,10 @@
 package com.jd.pipeline.pipeline
 
 import com.jd.pipeline.nodes.CheckDuplicateNode
+import com.jd.pipeline.nodes.DraftReplyComposer
 import com.jd.pipeline.nodes.Node
 import com.jd.pipeline.source.IngestionSource
+import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.source.JdRecord
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
@@ -13,7 +15,9 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @DisplayName("ProcessingPipelineTest")
@@ -159,6 +163,53 @@ class ProcessingPipelineTest {
         // The duplicate guard (line 72) excludes recruiters, so a duplicate recruiter
         // email still proceeds through score + tailor.
         assertTrue(tailorCalled, "duplicate recruiter email must still be scored and tailored")
+    }
+
+    private fun nonRecruiterEmailRecord() = minimalRecord().copy(
+        intakeMeta = IntakeContext.Email(
+            emailId = "e9", from = "jobs@board.com", subject = "Role", rawBody = "b", htmlBody = "",
+            isRecruiter = false, isDigest = false, isInlineDigest = false,
+        ),
+    )
+
+    /** Wire a TAILOR pipeline that reaches the write-back step, with hermetic (no-LLM) nodes. */
+    private fun tailorPipeline(tempDir: Path, composer: DraftReplyComposer): ProcessingPipeline {
+        val pipeline = ProcessingPipeline(draftComposer = composer)
+        injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
+        injectNode(pipeline, "scoreFit", Node { state -> state.copy(pipelineAction = PipelineAction.TAILOR, fitScore = 90f) })
+        injectNode(pipeline, "tailorSubgraph", Node { state -> state.copy(outputPath = tempDir.toString(), artifactUrl = "https://a/x") })
+        injectNode(pipeline, "generateCoverLetter", Node { state -> state })
+        injectNode(pipeline, "renderResumePdf", Node { state -> state })
+        injectNode(pipeline, "addArtifactUrl", Node { state -> state.copy(outputPath = tempDir.toString(), artifactUrl = "https://a/x") })
+        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+        return pipeline
+    }
+
+    @Test
+    @DisplayName("processed job result carries JD_Processed label + messageId, no draft")
+    fun resultCarriesWritebackFieldsForProcessedJob(@TempDir tempDir: Path) {
+        // Composer would throw if invoked — proves a non-recruiter job never composes a draft.
+        val pipeline = tailorPipeline(tempDir, DraftReplyComposer(generate = { error("must not compose") }))
+
+        val result = pipeline.invoke(nonRecruiterEmailRecord())
+
+        assertEquals(TerminalLabel.JD_PROCESSED, result.terminalLabel)
+        assertEquals("e9", result.messageId)
+        assertFalse(result.isRecruiter)
+        assertNull(result.draftText)
+    }
+
+    @Test
+    @DisplayName("recruiter job result carries the composed draft + Recruiter label")
+    fun resultCarriesDraftAndRecruiterLabel(@TempDir tempDir: Path) {
+        val pipeline = tailorPipeline(tempDir, DraftReplyComposer(generate = { "DRAFT BODY" }))
+
+        val result = pipeline.invoke(recruiterRecord())
+
+        assertEquals("DRAFT BODY", result.draftText)
+        assertTrue(result.isRecruiter)
+        assertEquals(TerminalLabel.RECRUITER, result.terminalLabel)
+        assertEquals("e1", result.messageId)
     }
 
     @Test

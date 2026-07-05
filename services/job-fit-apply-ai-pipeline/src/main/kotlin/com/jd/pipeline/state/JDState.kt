@@ -77,6 +77,8 @@ data class JDState(
     val outputPath: String = "",
     val artifactUrl: String = "",
     val metadataUrl: String = "",
+    // Tailoring nodes that failed and fell back to base content (empty = fully generated).
+    val tailoringDegradedNodes: List<String> = emptyList(),
     val coverLetter: String = "",
 
     // ── HTML pipeline output ──────────────────────────────────────────────────
@@ -84,7 +86,6 @@ data class JDState(
 
     // ── Supabase tracking output ──────────────────────────────────────────────
     val trackId: Int? = null,
-    val trackUrl: String = "",
     val isSupabaseTracked: Boolean = false,
     val isDuplicate: Boolean = false,
     val duplicateId: Int? = null,
@@ -101,7 +102,10 @@ data class JDState(
     val skippedReason: String = "",
     val isChromeSessionExpired: Boolean = false,
     val isRecruiterResponseRequired: Boolean = false,
-    val draftId: String = ""
+    val draftId: String = "",
+    // Recruiter reply body, generated Gmail-free by the Processor. The Poller delivers it
+    // (creates the Gmail draft) via the bridge completed feed. Empty when not a recruiter reply.
+    val draftText: String = ""
 ) {
     companion object {
         private val MAPPER = ObjectMapper().registerKotlinModule()

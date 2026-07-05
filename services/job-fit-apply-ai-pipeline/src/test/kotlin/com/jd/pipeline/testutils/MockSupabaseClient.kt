@@ -89,7 +89,7 @@ class MockSupabaseClient : SupabaseGateway {
         }
     }
 
-    fun query(table: String, filters: Map<String, String>, select: String = "*", limit: Int = 10): List<JsonNode> {
+    override fun query(table: String, filters: Map<String, String>, select: String, limit: Int): List<JsonNode> {
         if (shouldFailQuery) throw RuntimeException(failMessage)
         queryCalls.add(table to filters)
 
@@ -117,6 +117,16 @@ class MockSupabaseClient : SupabaseGateway {
         }
 
         return filtered.take(limit).map { mapper.valueToTree(it) }
+    }
+
+    override fun delete(table: String, filterCol: String, filterVal: String) {
+        val targetList = when (table) {
+            "jobs" -> jobs
+            "resume_artifacts" -> resumeArtifacts
+            "tracks" -> tracks
+            else -> return
+        }
+        targetList.removeAll { it[filterCol]?.toString() == filterVal }
     }
 
     fun getJobCount() = jobs.size

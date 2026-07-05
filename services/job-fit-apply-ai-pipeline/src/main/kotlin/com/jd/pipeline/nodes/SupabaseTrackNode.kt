@@ -1,8 +1,7 @@
 package com.jd.pipeline.nodes
 
-import com.jd.pipeline.client.SupabaseClient
+import com.jd.pipeline.client.GatewayProvider
 import com.jd.pipeline.client.SupabaseGateway
-import com.jd.pipeline.config.Config
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.state.emailIntake
@@ -16,7 +15,7 @@ import com.jd.pipeline.state.emailIntake
  * trackId for downstream reference.
  */
 class SupabaseTrackNode(
-    private val supabase: SupabaseGateway = SupabaseClient
+    private val supabase: SupabaseGateway = GatewayProvider.active
 ) : Node<JDState> {
 
     override fun process(input: JDState): JDState {
@@ -31,13 +30,11 @@ class SupabaseTrackNode(
             val row = supabase.insert("tracks", record)
             val id = row.path("id").asInt(0).takeIf { it > 0 }
 
-            val trackUrl = "${Config.SUPABASE_PROJECT_URL}/editor?schema=public&table=tracks"
             println("[supabase_track] Tracked successfully (id=${id ?: "unknown"})")
 
             input.copy(
                 isSupabaseTracked = true,
-                trackId = id,
-                trackUrl = trackUrl
+                trackId = id
             )
         } catch (e: Exception) {
             System.err.println("[supabase_track] ERROR: ${e.message}")

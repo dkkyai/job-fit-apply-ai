@@ -22,4 +22,10 @@ data class ProcessingResult(
     val hasCoverLetter: Boolean,
     val error: String? = null,
     val artifactUrl: String? = null,
+    // Gmail write-back — the Poller acts on these via the bridge completed feed.
+    // (serialized snake_case → terminal_label / draft_text / is_recruiter / message_id)
+    val terminalLabel: String? = null,
+    val draftText: String? = null,
+    val isRecruiter: Boolean = false,
+    val messageId: String? = null,
 )

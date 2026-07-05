@@ -21,6 +21,18 @@ object Config {
     val LANGSMITH_API_KEY: String = get("LANGSMITH_API_KEY", "")
     val SUPABASE_PROJECT_URL: String = get("SUPABASE_PROJECT_URL", "")
     val SUPABASE_SERVICE_ROLE_KEY: String = get("SUPABASE_SERVICE_ROLE_KEY", get("SUPABASE_KEY", ""))
+
+    // LLM concurrency gate (per physical resource). Local backends (oMLX + Ollama-local)
+    // share ONE permit; cloud backends get a larger pool. See client/LlmGate.kt.
+    val LOCAL_LLM_MAX_CONCURRENCY: Int = get("LOCAL_LLM_MAX_CONCURRENCY", "1").toInt()
+    val CLOUD_LLM_MAX_CONCURRENCY: Int = get("CLOUD_LLM_MAX_CONCURRENCY", "4").toInt()
+
+    // Database backend selection (Supabase → self-hosted Postgres migration).
+    //   DB_BACKEND=supabase → SupabaseClient (REST/PostgREST, default)
+    //   DB_BACKEND=postgres → PostgresGateway (direct JDBC to the container)
+    val DB_BACKEND: String = get("DB_BACKEND", "supabase")
+    // libpq-style URL; containers use host "db", host apps use "localhost".
+    val DATABASE_URL: String = get("DATABASE_URL", "postgresql://jobfit:jobfit@localhost:5432/jobfit")
     val MINIMAX_API_KEY: String = get("MINIMAX_API_KEY", "")
     val GOOGLE_API_KEY: String = get("GOOGLE_API_KEY", "")
     val DEEPSEEK_API_KEY: String = get("DEEPSEEK_API_KEY", "")
@@ -88,11 +100,7 @@ object Config {
     // Re-opened positions after the window expires are treated as new.
     val DUPLICATE_WINDOW_DAYS: Int = get("DUPLICATE_WINDOW_DAYS", "30").toInt()
 
-    // ── Gmail ────────────────────────────────────────────────────────────────────
-    val GMAIL_CREDENTIALS_FILE: String = get("GMAIL_CREDENTIALS_FILE", "gmail_credentials.json")
-    val GMAIL_TOKEN_FILE: String = get("GMAIL_TOKEN_FILE", "tokens/gmail_token.json")
-    val GMAIL_MAX_EMAILS: Int = get("GMAIL_MAX_EMAILS", "3").toInt()
-    val GMAIL_SEARCH_QUERY: String = get("GMAIL_SEARCH_QUERY", "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:JD_Processing -label:JD_Error")
+    // Gmail intake/auth moved to the Poller service (Phase 1) — no Gmail config here.
 
     // ── Skills paths ─────────────────────────────────────────────────────────
     val SKILLS_DIR: Path = PROJECT_DIR.resolve("src/main/resources/skills")

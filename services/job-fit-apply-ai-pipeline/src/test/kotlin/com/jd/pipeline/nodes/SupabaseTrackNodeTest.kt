@@ -107,7 +107,6 @@ class SupabaseTrackNodeTest {
         // Tracking succeeded against the mock.
         assertTrue(result.isSupabaseTracked)
         assertNotNull(result.trackId)
-        assertTrue(result.trackUrl.isNotEmpty())
 
         // The node mapped state fields into a single insert on the tracks table.
         assertEquals(1, supabase.insertCalls.size)
