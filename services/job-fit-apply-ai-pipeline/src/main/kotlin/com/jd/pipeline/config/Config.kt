@@ -36,7 +36,6 @@ object Config {
     val MINIMAX_API_KEY: String = get("MINIMAX_API_KEY", "")
     val GOOGLE_API_KEY: String = get("GOOGLE_API_KEY", "")
     val DEEPSEEK_API_KEY: String = get("DEEPSEEK_API_KEY", "")
-    val JSEARCH_API_KEY: String = get("JSEARCH_API_KEY", "")
 
     // ── oMLX (local MLX inference, OpenAI-compatible) ──────────────────────────────
     // Default backend for no-suffix model strings. Served by oMLX on this host.

@@ -1,7 +1,5 @@
 package com.jd.pipeline.cli.commands
 
-import com.jd.pipeline.cli.BatchNotificationService
-import com.jd.pipeline.cli.ScoredJob
 import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.ClaimDto
 import com.jd.pipeline.client.WorkItemType
@@ -26,11 +24,11 @@ object ProcessorCommandHandler {
     fun run(
         bridge: BridgeClient = BridgeClient(),
         pipeline: ProcessingPipeline = ProcessingPipeline(),
-        notificationService: BatchNotificationService = BatchNotificationService(),
         ingestion: IngestionPipeline = IngestionPipeline(),
     ) {
+        // Messaging (Discord/Telegram) is now a separate Notifier service that consumes the bridge's
+        // completed-event stream. The Processor just posts results.
         println("[processor] Starting — polling ${System.getenv("JD_BRIDGE_URL") ?: "http://127.0.0.1:8765"}")
-        notificationService.logConfigStatus()
 
         while (true) {
             val claimed = try {
@@ -77,6 +75,10 @@ object ProcessorCommandHandler {
                     outputPath     = null,
                     hasCoverLetter = false,
                     error          = e.message,
+                    // Carry identity so the completed-event (JD_Error) still shows what failed.
+                    company        = jdRecord.company,
+                    roleTitle      = jdRecord.roleTitle,
+                    jobUrl         = jdRecord.jobUrl,
                 )
             }
 
@@ -104,16 +106,6 @@ object ProcessorCommandHandler {
             com.jd.pipeline.utils.RunReport.record(
                 claimed.jobId, jdRecord, result, System.currentTimeMillis() - jobStartedAt,
             )
-
-            notificationService.notifyJobResult(ScoredJob(
-                company        = jdRecord.company ?: "",
-                roleTitle      = jdRecord.roleTitle ?: "",
-                fitScore       = result.fitScore,
-                pipelineAction = result.pipelineAction,
-                error          = result.error,
-                artifactUrl    = result.artifactUrl?.takeIf { it.isNotBlank() },
-                jobUrl         = jdRecord.jobUrl?.takeIf { it.isNotBlank() },
-            ))
         }
     }
 

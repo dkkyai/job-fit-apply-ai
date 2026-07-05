@@ -23,10 +23,10 @@ overwritten the next time the skill executes.
 | `SCAN_MODEL`             | ScanEmailNode, LlmDigestStrategy                                | 0.0  | yes   | no          | 200–400               |
 | `SCRAPE_MODEL`           | ScrapeJdNode (defaults to SCAN_MODEL)                           | 0.0  | yes   | no          | 300–600               |
 | `SCORE_MODEL`            | ScoreFitNode, JdExtractionNode, GapAnalysisNode, AtsScoringNode | 0.0  | yes   | no          | 400–900               |
-| `RESUME_REASONING_MODEL` | SummaryRewriteNode, BulletRewriteNode                           | 0.4  | mixed | qwen3 /no_think | 300–800           |
+| `RESUME_REASONING_MODEL` | SummaryRewriteNode, BulletRewriteNode                           | 0.25 | mixed | qwen3 /no_think | 300–800           |
 | `SKILLS_MODEL`           | SkillsRestructureNode (defaults to RESUME_REASONING_MODEL)      | 0.2  | yes   | no          | 200–500               |
 | `COVER_LETTER_MODEL`     | GenerateCoverLetterNode                                         | 0.4  | no    | no          | 300–600               |
-| `DRAFT_REPLY_MODEL`      | CreateDraftReplyNode                                            | 0.3  | no    | no          | 100–200               |
+| `DRAFT_REPLY_MODEL`      | DraftReplyComposer                                             | 0.3  | no    | no          | 100–200               |
 | `RESUME_GEN_MODEL`       | GenerateResumeHtmlNode                                          | 0.0  | no    | no          | 1500–4000             |
 | `PROFILE_GEN_MODEL`      | GenerateCandidateProfileNode (defaults to RESUME_GEN_MODEL)     | 0.0  | yes   | no          | 200–800               |
 
@@ -49,8 +49,10 @@ overwritten the next time the skill executes.
 
 - **RESUME_REASONING_MODEL**: Rewrites professional summary (4 sentences, ATS
   phrases, no fabrication) and experience bullets (preserve all metrics,
-  strong action verb, weave JD keywords). Creative task at temp=0.4; prose
-  quality and constraint-following are the key metrics. Thinking mode preferred.
+  strong action verb, weave JD keywords). Creative task at temp=0.25 (lowered
+  from 0.4 in `reasoningClient` to cut drift/fabrication on dense-local models);
+  prose quality and constraint-following are the key metrics. Thinking is OFF by
+  default on local (`RESUME_REASONING_THINKING=false` → `/no_think` for qwen3).
 
 - **SKILLS_MODEL**: Reorders and groups the skills section so JD-matched
   skills appear first. Categorises by group (Languages, Frameworks, Cloud,
@@ -64,8 +66,9 @@ overwritten the next time the skill executes.
   placeholders) are the key metrics; speed is secondary.
 
 - **DRAFT_REPLY_MODEL**: Short professional email reply to a recruiter
-  attaching the tailored resume. ~150 words, temp=0.3, prose. Speed matters;
-  deep reasoning does not.
+  attaching the tailored resume. ~150 words, temp=0.3, prose (jsonMode=false).
+  Speed matters; deep reasoning does not. Driven by `DraftReplyComposer` (the
+  LLM/templating half of the former `CreateDraftReplyNode`, since split).
 
 - **RESUME_GEN_MODEL**: Converts a DOCX or PDF resume into styled HTML by filling
   the project's base_resume.html template. Input: template HTML + plain-text source;
@@ -216,17 +219,22 @@ ENV_LLM_TUNER_SKILL.md updated: N changes.   (or "unchanged.")
 
 If nothing changed, print `Self-Scan: pipeline unchanged.` and skip to Section D.
 
-## Self-Scan Changelog
-- [MATCH]   SCAN_MODEL: ScanEmailNode, LlmDigestStrategy (No config updates, added LlmDigestStrategy node description to Section A registry)
-- [MATCH]   SCRAPE_MODEL: ScrapeJdNode
-- [MATCH]   SCORE_MODEL: ScoreFitNode, JdExtractionNode, GapAnalysisNode, AtsScoringNode
-- [MATCH]   RESUME_REASONING_MODEL: SummaryRewriteNode, BulletRewriteNode (No config updates, updated registry thinking setting to yes (Ollama))
-- [MATCH]   SKILLS_MODEL: SkillsRestructureNode
-- [MATCH]   COVER_LETTER_MODEL: GenerateCoverLetterNode
-- [MATCH]   DRAFT_REPLY_MODEL: CreateDraftReplyNode
-- [MATCH]   RESUME_GEN_MODEL: GenerateResumeHtmlNode
-- [MATCH]   PROFILE_GEN_MODEL: GenerateCandidateProfileNode
-ENV_LLM_TUNER_SKILL.md updated: 2 registry description changes.
+## Self-Scan Changelog (2026-07-05 run, Opus — deep re-scan)
+- [MATCH]   SCAN_MODEL: ScanEmailNode, LlmDigestStrategy (fromModelString, temp 0.0, jsonMode true)
+- [MATCH]   SCRAPE_MODEL: ScrapeJdNode (fromModelString, temp 0.0, jsonMode true)
+- [MATCH]   SCORE_MODEL: ScoreFitNode, JdExtractionNode, GapAnalysisNode, AtsScoringNode (orchestrationClient, temp 0.0)
+- [CHANGED] RESUME_REASONING_MODEL: temp 0.4 → 0.25 in Section A table + per-node desc
+            (reasoningClient LlmClient.kt:321 lowered to cut drift/fabrication on dense-local)
+- [MATCH]   SKILLS_MODEL: SkillsRestructureNode (skillsClient, temp 0.2, jsonMode true)
+- [MATCH]   COVER_LETTER_MODEL: GenerateCoverLetterNode (fromModelString, temp 0.4, jsonMode false)
+- [CHANGED] DRAFT_REPLY_MODEL: node class CreateDraftReplyNode → DraftReplyComposer
+            (node split; DraftReplyComposer is "the LLM/templating half of the old CreateDraftReplyNode")
+- [MATCH]   RESUME_GEN_MODEL: GenerateResumeHtmlNode (fromModelString, temp 0.0, jsonMode false)
+- [MATCH]   PROFILE_GEN_MODEL: GenerateCandidateProfileNode (fromModelString, temp 0.0, jsonMode true)
+Backend enum (MLX_LOCAL, OLLAMA_LOCAL, OLLAMA_CLOUD, DEEPSEEK_CLOUD, MINIMAX_CLOUD) and
+backendFor() routing verified unchanged vs the routing-rules table.
+NOTE: the prior (Sonnet) run marked all vars MATCH and missed both CHANGED items above.
+ENV_LLM_TUNER_SKILL.md updated: 2 changes (RESUME_REASONING temp, DRAFT_REPLY node name).
 
 
 ---
@@ -396,14 +404,21 @@ After writing all four files, print:
 ```
 | Config Var               | .env.quality | .env.local-quality | .env.local-good-enough | .env.recommended |
 |--------------------------|--------------|--------------------|------------------------|------------------|
-| SCAN_MODEL               | deepseek-v4-flash:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
-| SCRAPE_MODEL             | deepseek-v4-flash:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
-| SCORE_MODEL              | kimi-k2.6:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
-| RESUME_REASONING_MODEL   | kimi-k2.6:ollama-cloud | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | mlx-community--Qwen3.6-27B-4bit |
-| SKILLS_MODEL             | deepseek-v4-flash:ollama-cloud | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | mlx-community--Qwen3.6-27B-4bit |
+| SCAN_MODEL               | deepseek-v4-flash:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.5-9B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
+| SCRAPE_MODEL             | deepseek-v4-flash:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.5-9B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
+| SCORE_MODEL              | glm-5.1:ollama-cloud | DeepSeek-R1-Distill-Qwen-32B-4bit | Qwen3.6-35B-A3B-OptiQ-4bit | glm-5.1:ollama-cloud |
+| RESUME_REASONING_MODEL   | kimi-k2.6:ollama-cloud | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | Qwen3.6-35B-A3B-OptiQ-4bit (MoE, quality tradeoff) | kimi-k2.6:ollama-cloud |
+| SKILLS_MODEL             | deepseek-v4-flash:ollama-cloud | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | Qwen3.6-35B-A3B-OptiQ-4bit (MoE, quality tradeoff) | **mlx-community--Qwen3.6-27B-4bit (DENSE)** |
 | COVER_LETTER_MODEL       | kimi-k2.6:ollama-cloud | gemma-4-12B-it-qat-4bit | gemma-4-12B-it-qat-4bit | gemma-4-12B-it-qat-4bit |
-| DRAFT_REPLY_MODEL        | deepseek-v4-flash:ollama-cloud | gemma-4-12B-it-qat-4bit | gemma-4-12B-it-qat-4bit | gemma-4-12B-it-qat-4bit |
-| Est. full-pipeline time  | ~154s        | ~734s              | ~173s                  | ~190s            |
+| DRAFT_REPLY_MODEL        | deepseek-v4-flash:ollama-cloud | gemma-4-12B-it-qat-4bit | Qwen3.5-9B-OptiQ-4bit | gemma-4-12B-it-qat-4bit |
+| RESUME_GEN_MODEL         | glm-5.1:ollama-cloud | Qwen3-Coder-30B-A3B-…-dwq-v2 | Qwen3-Coder-30B-A3B-…-dwq-v2 | Qwen3-Coder-30B-A3B-…-dwq-v2 |
+| PROFILE_GEN_MODEL        | deepseek-v4-flash:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.5-9B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
+| Est. hot-path time       | ~58s         | ~138s              | ~92s                   | ~103s            |
+
+Hot-path = SCAN→SCRAPE→SCORE→RESUME_REASONING→SKILLS→COVER_LETTER→DRAFT_REPLY (one job reaching
+the tailoring subgraph); excludes RESUME_GEN/PROFILE_GEN (off-hot-path, `--resume-gen`/`--init-profile`).
+gemma-4-12B local timings use the corrected ~13.5 tok/s VLM-engine rate (live-measured 2026-07-05),
+not the old ~19 tok/s tiny-prompt figure.
 ```
 
 The last row is the sum of all node estimates for one job reaching the

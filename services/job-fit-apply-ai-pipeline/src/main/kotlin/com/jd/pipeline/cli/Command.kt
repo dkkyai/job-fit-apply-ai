@@ -11,7 +11,6 @@ sealed class Command {
     data class ResumeGen(val path: String) : Command()
     data class InitProfile(val path: String) : Command()
     object SignedIn : Command()
-    object JSearch : Command()
     /** Long-running Processor loop: claim work items from the bridge and process them (no Gmail). */
     object Processor : Command()
     /** Send a pipeline-timeout alert to Discord/Telegram. Invoked by run_jd_pipeline.sh. */

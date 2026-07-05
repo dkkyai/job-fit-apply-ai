@@ -26,8 +26,6 @@ class CommandParserTest {
     @Test
     fun testSupabaseFlag() = assertEquals(Command.TestSupabase, parse("--test-supabase"))
     @Test
-    fun jsearchFlag() = assertEquals(Command.JSearch, parse("--jsearch"))
-    @Test
     fun signedInFlag() = assertEquals(Command.SignedIn, parse("--signed-in"))
 
     @Test
@@ -122,13 +120,8 @@ class CommandParserTest {
     }
 
     @Test
-    fun priorityOrder_signedInOverJSearch() {
-        assertEquals(Command.SignedIn, parse("--jsearch", "--signed-in"))
-    }
-
-    @Test
-    fun priorityOrder_jSearchOverProcessor() {
-        assertEquals(Command.JSearch, parse("--processor", "--jsearch"))
+    fun priorityOrder_signedInOverProcessor() {
+        assertEquals(Command.SignedIn, parse("--processor", "--signed-in"))
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

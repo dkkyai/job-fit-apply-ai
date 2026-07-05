@@ -207,7 +207,14 @@ fun Routing.configureRoutes() {
     get("/api/jobs/completed") {
         val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0L
         val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 200) ?: 50
-        call.respond(completedJobs(since, limit))
+        // all=true → full event stream (ignores writeback_done) for cursor consumers like the Notifier.
+        val all = call.request.queryParameters["all"]?.toBooleanStrictOrNull() ?: false
+        call.respond(completedJobs(since, limit, all))
+    }
+
+    // Current max completed_seq — cursor consumers seed here on cold start to skip history.
+    get("/api/jobs/completed/head") {
+        call.respond(mapOf("max_seq" to latestCompletedSeq()))
     }
 
     post("/api/jobs/{job_id}/writeback-done") {

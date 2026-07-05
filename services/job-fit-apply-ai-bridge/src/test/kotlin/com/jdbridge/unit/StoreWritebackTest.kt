@@ -86,4 +86,42 @@ class StoreWritebackTest {
         assertTrue(pending !in feedIds, "pending jobs must not be in the feed")
         assertTrue(acked !in feedIds, "acknowledged (writeback_done) jobs must not be in the feed")
     }
+
+    @Test
+    fun `all=true includes acknowledged jobs -- full event stream, default excludes them`() = runTest {
+        val acked = enqueue("{}", null, "a2"); completeSkip(acked); markWritebackDone(acked)
+
+        assertTrue(acked !in completedJobs(0).map { it.job_id }.toSet(), "default feed hides acked jobs")
+        assertTrue(acked in completedJobs(0, all = true).map { it.job_id }.toSet(),
+            "all=true is the full event stream — acked jobs still visible to cursor consumers")
+    }
+
+    @Test
+    fun `event fields (company, role, fit, action, urls) round-trip through the feed`() = runTest {
+        val id = enqueue("{}", null, "ev1")
+        recordResult(id, ResultRequest(
+            pipeline_action = "tailor", fit_score = 88,
+            company = "Acme", role_title = "Staff SDET",
+            job_url = "https://acme.co/job", artifact_url = "http://markserv/report/report.md",
+        ))
+        val job = completedJobs(0).single { it.job_id == id }
+        assertEquals("Acme", job.company)
+        assertEquals("Staff SDET", job.role_title)
+        assertEquals(88, job.fit_score)
+        assertEquals("tailor", job.pipeline_action)
+        assertEquals("https://acme.co/job", job.job_url)
+        assertEquals("http://markserv/report/report.md", job.artifact_url)
+    }
+
+    @Test
+    fun `result job_url overrides a null enqueue value (EMAIL_RAW scraped later)`() = runTest {
+        val id = enqueue("{}", null, "ev2", type = WorkItemType.EMAIL_RAW, messageId = "m9")  // job_url null at enqueue
+        recordResult(id, ResultRequest(
+            pipeline_action = "tailor", fit_score = 70,
+            company = "Beta", role_title = "QA", job_url = "https://beta.co/scraped",
+        ))
+        val job = completedJobs(0).single { it.job_id == id }
+        assertEquals("https://beta.co/scraped", job.job_url)
+        assertEquals("Beta", job.company)
+    }
 }

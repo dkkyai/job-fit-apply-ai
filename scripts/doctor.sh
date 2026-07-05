@@ -48,6 +48,16 @@ if running jobfit-poller; then
     ok "poller (jobfit-poller) healthy — Gmail intake + write-back"
   else warn "poller container up but not healthy (loops stalled?  →  docker logs jobfit-poller)"; fi
 else bad "poller (jobfit-poller) not running  →  make up"; fi
+if running jobfit-jsearch; then
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' jobfit-jsearch 2>/dev/null)" = "healthy" ]; then
+    ok "jsearch (jobfit-jsearch) healthy — daily JSearch API intake"
+  else warn "jsearch container up but not healthy (needs JSEARCH_API_KEY?  →  docker logs jobfit-jsearch)"; fi
+else warn "jsearch (jobfit-jsearch) not running  →  set JSEARCH_API_KEY in .env, then make up"; fi
+if running jobfit-notifier; then
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' jobfit-notifier 2>/dev/null)" = "healthy" ]; then
+    ok "notifier (jobfit-notifier) healthy — Discord/Telegram from the completed-event stream"
+  else warn "notifier container up but not healthy  →  docker logs jobfit-notifier"; fi
+else warn "notifier (jobfit-notifier) not running  →  make up"; fi
 
 hdr "Postgres data"
 CNT="$(docker exec jobfit-db psql -U "${POSTGRES_USER:-jobfit}" -d "${POSTGRES_DB:-jobfit}" -tAc 'SELECT count(*) FROM tracks;' 2>/dev/null || true)"

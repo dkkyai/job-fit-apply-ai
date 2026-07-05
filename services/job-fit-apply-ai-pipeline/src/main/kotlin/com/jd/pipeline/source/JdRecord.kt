@@ -22,6 +22,11 @@ data class ProcessingResult(
     val hasCoverLetter: Boolean,
     val error: String? = null,
     val artifactUrl: String? = null,
+    // Processed-posting identity — persisted by the bridge for completed-feed consumers (Notifier).
+    // (serialized snake_case → company / role_title / job_url / artifact_url)
+    val company: String? = null,
+    val roleTitle: String? = null,
+    val jobUrl: String? = null,
     // Gmail write-back — the Poller acts on these via the bridge completed feed.
     // (serialized snake_case → terminal_label / draft_text / is_recruiter / message_id)
     val terminalLabel: String? = null,
