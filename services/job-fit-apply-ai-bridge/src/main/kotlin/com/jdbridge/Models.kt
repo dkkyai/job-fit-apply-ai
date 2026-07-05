@@ -45,8 +45,9 @@ data class ErrorResponse(val detail: String)
 
 /** Discriminates queued items: a raw email needing scan/scrape vs a pre-scraped JD. */
 object WorkItemType {
-    const val EMAIL_RAW  = "EMAIL_RAW"    // raw email from the Poller — Processor scans/scrapes it
-    const val JD_SCRAPED = "JD_SCRAPED"   // pre-structured JdRecord (extension / JSearch / digest child)
+    const val EMAIL_RAW   = "EMAIL_RAW"    // raw email from the Poller — Processor scans/scrapes it
+    const val JD_SCRAPED  = "JD_SCRAPED"   // pre-structured JdRecord (JSearch / digest child)
+    const val JD_PAGE_RAW = "JD_PAGE_RAW"  // raw captured web-page content from the extension — Processor LLM-extracts it
 }
 
 // ── Inbound ───────────────────────────────────────────────────────────────────
@@ -61,6 +62,19 @@ data class SubmitJobRequest(
     val source: String?          = null,          // "EMAIL" | "JSEARCH" | "MANUAL"
     val idempotency_key: String? = null,
     val intake_meta: JsonElement? = null,          // opaque — stored verbatim
+)
+
+/**
+ * Raw captured web-page content submitted by the browser extension. The user is already
+ * authenticated in their browser, so this sidesteps the auth walls that block server-side
+ * scraping; the Processor LLM-extracts the JD from [text] server-side (see JD_PAGE_RAW).
+ */
+@Serializable
+data class SubmitPageCaptureRequest(
+    val url: String,
+    val text: String,
+    val title: String           = "",
+    val idempotency_key: String? = null,          // defaults to url
 )
 
 /** Raw email submitted by the Poller; the Processor does scan + scrape server-side. */

@@ -21,6 +21,7 @@ object MetadataUtils {
         is IntakeContext.Email -> "email"
         is IntakeContext.Api -> "api"
         is IntakeContext.Synthetic -> "synthetic"
+        is IntakeContext.WebCapture -> "extension"
         null -> "unknown"
     }
 

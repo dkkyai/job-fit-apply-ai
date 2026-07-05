@@ -75,6 +75,33 @@ fun Routing.configureRoutes() {
         call.respond(HttpStatusCode.Accepted, SubmitJobResponse(jobId, JobStatus.PENDING.value))
     }
 
+    // ── Submit raw page capture (browser extension → Processor LLM-extracts it) ─
+
+    post("/api/pages") {
+        val body = call.receive<SubmitPageCaptureRequest>()
+        if (body.text.length < 200) {
+            call.respond(
+                HttpStatusCode.UnprocessableEntity,
+                ErrorResponse("captured page text must be at least 200 characters"),
+            )
+            return@post
+        }
+        val key = body.idempotency_key ?: body.url
+        val existing = findActiveDuplicate(body.url, key)
+        if (existing != null) {
+            call.respond(HttpStatusCode.OK, SubmitJobResponse(existing, JobStatus.PENDING.value, deduped = true))
+            return@post
+        }
+        val jobId = enqueue(
+            jdJson         = Json.encodeToString(body),
+            jobUrl         = body.url,
+            idempotencyKey = key,
+            type           = WorkItemType.JD_PAGE_RAW,
+        )
+        log.info("Page capture enqueued: $jobId (${body.title.ifBlank { body.url }})")
+        call.respond(HttpStatusCode.Accepted, SubmitJobResponse(jobId, JobStatus.PENDING.value))
+    }
+
     // ── Submit job (batch) ────────────────────────────────────────────────────
 
     post("/api/jobs/batch") {

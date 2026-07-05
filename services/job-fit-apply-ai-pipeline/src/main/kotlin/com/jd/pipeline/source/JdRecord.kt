@@ -1,6 +1,6 @@
 package com.jd.pipeline.source
 
-enum class IngestionSource { EMAIL, JSEARCH, MANUAL }
+enum class IngestionSource { EMAIL, JSEARCH, MANUAL, EXTENSION }
 
 data class JdRecord(
     val jdText: String,

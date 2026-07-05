@@ -7,6 +7,7 @@ import com.jd.pipeline.pipeline.EmailDisposition
 import com.jd.pipeline.pipeline.EmailResolution
 import com.jd.pipeline.pipeline.IngestionPipeline
 import com.jd.pipeline.pipeline.ProcessingPipeline
+import com.jd.pipeline.source.IngestionSource
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.source.JdRecord
 import com.jd.pipeline.source.ProcessingResult
@@ -45,19 +46,28 @@ object ProcessorCommandHandler {
             }
 
             // Work-item branch: EMAIL_RAW is scanned/scraped here (digest children re-enqueued);
-            // JD_SCRAPED (extension / JSearch / digest child) goes straight to processing.
+            // JD_PAGE_RAW (browser extension) is LLM-extracted from captured page text here;
+            // JD_SCRAPED (JSearch / digest child) goes straight to processing.
             val jdRecord: JdRecord
-            if (claimed.type == WorkItemType.EMAIL_RAW) {
-                val resolved = resolveEmail(claimed, bridge, ingestion)
-                if (resolved == null) continue   // terminal (digest/non-job/error) already completed
-                jdRecord = resolved
-            } else {
-                val rec = claimed.jdRecord
-                if (rec == null) {
-                    System.err.println("[processor] claim ${claimed.jobId} (${claimed.type}) has no jd_record — skipping")
-                    continue
+            when (claimed.type) {
+                WorkItemType.EMAIL_RAW -> {
+                    val resolved = resolveEmail(claimed, bridge, ingestion)
+                    if (resolved == null) continue   // terminal (digest/non-job/error) already completed
+                    jdRecord = resolved
                 }
-                jdRecord = rec
+                WorkItemType.JD_PAGE_RAW -> {
+                    val resolved = resolvePageCapture(claimed, bridge, ingestion)
+                    if (resolved == null) continue   // not a job / extraction failed — already completed
+                    jdRecord = resolved
+                }
+                else -> {
+                    val rec = claimed.jdRecord
+                    if (rec == null) {
+                        System.err.println("[processor] claim ${claimed.jobId} (${claimed.type}) has no jd_record — skipping")
+                        continue
+                    }
+                    jdRecord = rec
+                }
             }
 
             println("[processor] Processing job ${claimed.jobId} — ${jdRecord.roleTitle} @ ${jdRecord.company}")
@@ -156,6 +166,53 @@ object ProcessorCommandHandler {
             EmailDisposition.Process ->
                 ingestion.toJdRecord(ingState, idempotencyKey = email.messageId)
         }
+    }
+
+    /**
+     * LLM-extract a JD from a claimed raw page capture into a [JdRecord] to process. The page was
+     * rendered in the user's authenticated browser, so [ScrapeJdNode] skips fetching and extracts
+     * straight from the captured text. Returns null when the page isn't a job posting or extraction
+     * fails — in which case the bridge job has already been completed via postResult (a SKIP).
+     */
+    private fun resolvePageCapture(claimed: ClaimDto, bridge: BridgeClient, ingestion: IngestionPipeline): JdRecord? {
+        val cap = claimed.pageCapture
+        if (cap == null) {
+            bridge.postResult(claimed.jobId, skipResult("JD_PAGE_RAW claim missing page payload"))
+            return null
+        }
+        val state = JDState(
+            intake       = IntakeContext.WebCapture(url = cap.url, title = cap.title),
+            jobUrl       = cap.url,
+            capturedText = cap.text,
+        )
+        val extracted = try {
+            ingestion.scrapeNode.process(state)   // dual-mode: extracts from capturedText, no fetch
+        } catch (e: Exception) {
+            System.err.println("[processor] page extraction failed for ${claimed.jobId}: ${e.message}")
+            bridge.postResult(claimed.jobId, skipResult("extraction: ${e.message}"))
+            return null
+        }
+
+        // The scrape prompt has no explicit is-job flag, so gate on the load-bearing jd_text:
+        // if the LLM couldn't extract a usable JD, treat the page as "not a job posting".
+        if (extracted.error.isNotBlank() || extracted.jdText.length < 150) {
+            bridge.postResult(
+                claimed.jobId,
+                skipResult("This page doesn't look like a job posting (no JD could be extracted)"),
+            )
+            return null
+        }
+
+        return JdRecord(
+            jdText         = extracted.jdText,
+            company        = extracted.company.ifBlank { null },
+            roleTitle      = extracted.roleTitle.ifBlank { null },
+            location       = extracted.location.ifBlank { null },
+            jobUrl         = extracted.jobUrl.ifBlank { null },
+            source         = IngestionSource.EXTENSION,
+            idempotencyKey = cap.url,
+            intakeMeta     = extracted.intake,
+        )
     }
 
     private fun skipResult(error: String?): ProcessingResult = ProcessingResult(
