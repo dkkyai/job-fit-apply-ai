@@ -139,6 +139,27 @@ Local models run on **oMLX** (MLX format). MacBook Max 64 GB memory budget (leav
   model meeting all three; full TAILOR run ~10 min/job. Cover-letter/draft prose is single-pass and does
   well on `gemma-4-12B-it-qat-4bit` (multimodal but those prompts are short, so the VLM engine is tolerable).
 
+- **CLOUD picks for RESUME_REASONING have a FOURTH constraint the local rule doesn't surface — max OUTPUT
+  tokens (verified 2026-07-05 via `--test-resume` + isolated Ollama Cloud screening).** `bullet_rewrite` is
+  the pipeline's single LARGEST-output call: it returns a JSON *array* of RoleRewrite (≈8 roles × ~4–5
+  rewritten bullets = **~25k–34k output tokens**). Cloud models silently TRUNCATE it if their generation cap
+  is too low, or waste the budget thinking. Measured on the real node + a faithful array-shaped probe:
+  | Cloud model         | done_reason | out tokens | result |
+  |---------------------|-------------|------------|--------|
+  | `deepseek-v4-pro`   | stop        | ~26k       | ✅ full 8-role array, real run: 33 bullets, ATS 74→**86** after refine |
+  | `deepseek-v4-flash` | stop        | ~34k       | ✅ full array (rank 66 → lower quality; 1M ctx; fallback) |
+  | `glm-5.1`           | **length**  | 32768 cap  | ❌ over-thinks, burns the whole 32k budget → returns EMPTY content |
+  | `kimi-k2.6`         | **length**  | 16384 cap  | ❌ hard 16k cap → truncated JSON → node nulls tailoredBullets AND cascades to null ATS |
+  A truncated `bullet_rewrite` doesn't just lose bullets — it nulls `tailoredBullets`, which cascades to a
+  null ATS score and disables the ATS refinement pass (the whole point of the tailor subgraph). So for the
+  CLOUD RESUME_REASONING pick: **verify the model completes this array with `done_reason=stop` (not `length`),
+  and prefer a model that doesn't over-think.** Top LMArena rank is NOT sufficient — glm-5.1 (rank 22) and
+  kimi-k2.6 (rank 34) both FAIL this node despite outranking deepseek-v4-pro (rank 38), which is why
+  `deepseek-v4-pro:ollama-cloud` is the chosen cloud RESUME_REASONING model. NOTE: `LlmClient.callOllama`
+  sets no `num_predict`, so these caps are the models'/Ollama-Cloud defaults, not ours — raising an explicit
+  cap might rescue kimi but NOT glm-5.1 (it emits no JSON at all). glm-5.1 stays fine for SCORE/RESUME_GEN
+  (smaller outputs).
+
 oMLX/MLX token-generation speeds on M-series Max (tokens/sec, 4-bit):
 | Model class            | 4-bit | 8-bit |
 |------------------------|-------|-------|
@@ -304,13 +325,28 @@ Cross-reference catalogue capabilities and live leaderboard scores against the
 node requirements in Section A. For each config variable, identify 2–3
 candidates and note the quality delta between them.
 
+**For RESUME_REASONING specifically, leaderboard rank is NOT sufficient — screen the
+max-output-token behaviour on the bullet_rewrite array (see Section B's cloud-cap table).**
+A candidate must complete the ~25k–34k-token 8-role array with `done_reason=stop`, not
+`length`. A quick screen: POST an 8-role/5-bullet `format:json` array request to the model
+and check `done_reason` + that the content parses. Reject any that truncate (kimi-k2.6) or
+over-think to empty (glm-5.1), regardless of Elo.
+
 ### D.5 — Estimate wall-clock time and select winners
 
 Use Section B's speed table and Section A's typical output token counts to
 estimate wall-clock time per node per candidate. Then select the winning model
 per config var per output file using:
 
-- `.env.quality`: best cloud model, cost no object. Approved providers only.
+- `.env.quality`: the best we can possibly do — best cloud model per node, cost AND
+  model-count no object. Approved providers only. **NOT limited by the 3-model subscription
+  cap** — this is an aspirational reference, so pick the single best model for each node's
+  actual demand even if the result uses more distinct cloud models than a live subscription
+  can load at once. Default to the highest-Arena-Elo model for every node and deviate only
+  where a node has a disqualifying constraint (e.g. RESUME_REASONING needs a high output-token
+  cap; SCRAPE needs a huge context window; prose nodes may prefer a dedicated writer). Note in
+  the file header when the distinct-cloud-model count exceeds 3 (so the reader knows it is not
+  directly runnable under the cap — .env.recommended is the runnable ≤3 profile).
 - `.env.local-llm-quality`: best installed oMLX model ≤56 GB. For RESUME_REASONING + SKILLS
   pick a **dense, non-multimodal, ≥27B** text model (`mlx-community--Qwen3.6-27B-4bit`) — NOT a
   multimodal model (any `gemma-4-*` → VLM engine → hangs/timeout on real prompts) and NOT a sub-27B
@@ -322,6 +358,19 @@ per config var per output file using:
 - `.env.recommended`: best everyday mix — cloud for high-value nodes
   (SCORE, RESUME_REASONING), local for cheaper nodes; optimise
   quality/cost/speed.
+  **HARD CONSTRAINT — ≤3 distinct Ollama Cloud models.** The Ollama Cloud subscription
+  only permits **3 different models loaded at a time**, so `.env.recommended` must use
+  **at most 3 distinct `:ollama-cloud` model names** across ALL nine vars (a model reused
+  on multiple nodes counts once). Before writing the file, list the distinct cloud model
+  names and confirm the count is ≤3; if a 4th is tempting, either reuse an already-selected
+  cloud model or push that node to local. NOTE for the user's live `.env`: `RUN_ANALYZER_MODEL`
+  (not a tuner var) is often also a cloud model — if set, it consumes one of the 3 slots, so
+  a `.env.recommended` that uses 2 cloud models + a cloud RUN_ANALYZER is exactly at the cap.
+  Prefer leaving ≥1 slot free. This ≤3-distinct-cloud-model cap applies ONLY to
+  `.env.recommended` (the everyday runnable profile). `.env.quality` is EXEMPT — it is the
+  aspirational best-possible reference and may use as many distinct cloud models as the
+  best-per-node choices require (it just flags in its header when it exceeds 3). The
+  local-only files have no cloud models, so the cap is moot for them.
 
 ---
 
@@ -404,15 +453,16 @@ After writing all four files, print:
 ```
 | Config Var               | .env.quality | .env.local-quality | .env.local-good-enough | .env.recommended |
 |--------------------------|--------------|--------------------|------------------------|------------------|
-| SCAN_MODEL               | deepseek-v4-flash:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.5-9B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
-| SCRAPE_MODEL             | deepseek-v4-flash:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.5-9B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
+| SCAN_MODEL               | glm-5.1:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.5-9B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
+| SCRAPE_MODEL             | deepseek-v4-flash:ollama-cloud (1M ctx) | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.5-9B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
 | SCORE_MODEL              | glm-5.1:ollama-cloud | DeepSeek-R1-Distill-Qwen-32B-4bit | Qwen3.6-35B-A3B-OptiQ-4bit | glm-5.1:ollama-cloud |
-| RESUME_REASONING_MODEL   | kimi-k2.6:ollama-cloud | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | Qwen3.6-35B-A3B-OptiQ-4bit (MoE, quality tradeoff) | kimi-k2.6:ollama-cloud |
-| SKILLS_MODEL             | deepseek-v4-flash:ollama-cloud | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | Qwen3.6-35B-A3B-OptiQ-4bit (MoE, quality tradeoff) | **mlx-community--Qwen3.6-27B-4bit (DENSE)** |
+| RESUME_REASONING_MODEL   | deepseek-v4-pro:ollama-cloud (kimi/glm TRUNCATE) | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | Qwen3.6-35B-A3B-OptiQ-4bit (MoE, quality tradeoff) | deepseek-v4-pro:ollama-cloud |
+| SKILLS_MODEL             | glm-5.1:ollama-cloud | **mlx-community--Qwen3.6-27B-4bit (DENSE)** | Qwen3.6-35B-A3B-OptiQ-4bit (MoE, quality tradeoff) | **mlx-community--Qwen3.6-27B-4bit (DENSE)** |
 | COVER_LETTER_MODEL       | kimi-k2.6:ollama-cloud | gemma-4-12B-it-qat-4bit | gemma-4-12B-it-qat-4bit | gemma-4-12B-it-qat-4bit |
-| DRAFT_REPLY_MODEL        | deepseek-v4-flash:ollama-cloud | gemma-4-12B-it-qat-4bit | Qwen3.5-9B-OptiQ-4bit | gemma-4-12B-it-qat-4bit |
+| DRAFT_REPLY_MODEL        | kimi-k2.6:ollama-cloud | gemma-4-12B-it-qat-4bit | Qwen3.5-9B-OptiQ-4bit | gemma-4-12B-it-qat-4bit |
 | RESUME_GEN_MODEL         | glm-5.1:ollama-cloud | Qwen3-Coder-30B-A3B-…-dwq-v2 | Qwen3-Coder-30B-A3B-…-dwq-v2 | Qwen3-Coder-30B-A3B-…-dwq-v2 |
-| PROFILE_GEN_MODEL        | deepseek-v4-flash:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.5-9B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
+| PROFILE_GEN_MODEL        | glm-5.1:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.5-9B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
+| Distinct cloud models    | 4 (glm-5.1, deepseek-v4-pro, deepseek-v4-flash, kimi-k2.6) — exceeds 3-model cap by design | 0 | 0 | 2 (glm-5.1, deepseek-v4-pro) |
 | Est. hot-path time       | ~58s         | ~138s              | ~92s                   | ~103s            |
 
 Hot-path = SCAN→SCRAPE→SCORE→RESUME_REASONING→SKILLS→COVER_LETTER→DRAFT_REPLY (one job reaching
