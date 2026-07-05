@@ -109,6 +109,13 @@ class ScrapeJdNode(
             return input
         }
 
+        // Browser-extension path: the page was already rendered in the user's authenticated
+        // session, so skip fetching/auth-gating entirely and extract from the captured text.
+        if (input.capturedText.isNotBlank()) {
+            log("[scrape_jd] Using captured page text (${input.capturedText.length} chars) for $jobUrl — no fetch")
+            return parseJobPage(input, jobUrl, input.capturedText).copy(scrapePath = "captured")
+        }
+
         val host = extractHost(jobUrl)
 
         // ── Batch-skip checks (one attempt per domain per batch) ─────────────

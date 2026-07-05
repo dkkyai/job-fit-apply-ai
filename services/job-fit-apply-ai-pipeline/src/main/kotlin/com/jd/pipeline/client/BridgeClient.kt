@@ -133,8 +133,9 @@ data class JobStatusDto(
 
 /** Work-item type discriminator (mirrors the bridge's WorkItemType — DTOs duplicated per service). */
 object WorkItemType {
-    const val EMAIL_RAW  = "EMAIL_RAW"    // raw email — the Processor scans/scrapes it
-    const val JD_SCRAPED = "JD_SCRAPED"   // pre-structured JdRecord (extension / JSearch / digest child)
+    const val EMAIL_RAW   = "EMAIL_RAW"    // raw email — the Processor scans/scrapes it
+    const val JD_SCRAPED  = "JD_SCRAPED"   // pre-structured JdRecord (JSearch / digest child)
+    const val JD_PAGE_RAW = "JD_PAGE_RAW"  // raw captured web-page content — the Processor LLM-extracts it
 }
 
 /** A raw email claimed from the queue (payload of an EMAIL_RAW item). */
@@ -147,11 +148,19 @@ data class ClaimedEmail(
     val isRecruiterHint: Boolean = false,
 )
 
+/** Raw captured page content claimed from the queue (payload of a JD_PAGE_RAW item). */
+data class ClaimedPageCapture(
+    val url: String,
+    val text: String,
+    val title: String = "",
+)
+
 data class ClaimDto(
     val jobId: String,
     val type: String = WorkItemType.JD_SCRAPED,
-    val jdRecord: JdRecord? = null,   // set for JD_SCRAPED
-    val email: ClaimedEmail? = null,  // set for EMAIL_RAW
+    val jdRecord: JdRecord? = null,               // set for JD_SCRAPED
+    val email: ClaimedEmail? = null,              // set for EMAIL_RAW
+    val pageCapture: ClaimedPageCapture? = null,  // set for JD_PAGE_RAW
 )
 
 /** Parse a /api/queue/claim response body into a [ClaimDto], branching on the work-item type. */
@@ -161,9 +170,12 @@ internal fun parseClaimTree(tree: com.fasterxml.jackson.databind.JsonNode): Clai
     val type = tree.get("type")?.asText() ?: WorkItemType.JD_SCRAPED
     val payload = tree.get("jd_record")
         ?: throw RuntimeException("claim response missing jd_record")
-    return if (type == WorkItemType.EMAIL_RAW) {
-        ClaimDto(jobId = jobId, type = type, email = mapper.treeToValue(payload, ClaimedEmail::class.java))
-    } else {
-        ClaimDto(jobId = jobId, type = type, jdRecord = mapper.treeToValue(payload, JdRecord::class.java))
+    return when (type) {
+        WorkItemType.EMAIL_RAW ->
+            ClaimDto(jobId = jobId, type = type, email = mapper.treeToValue(payload, ClaimedEmail::class.java))
+        WorkItemType.JD_PAGE_RAW ->
+            ClaimDto(jobId = jobId, type = type, pageCapture = mapper.treeToValue(payload, ClaimedPageCapture::class.java))
+        else ->
+            ClaimDto(jobId = jobId, type = type, jdRecord = mapper.treeToValue(payload, JdRecord::class.java))
     }
 }

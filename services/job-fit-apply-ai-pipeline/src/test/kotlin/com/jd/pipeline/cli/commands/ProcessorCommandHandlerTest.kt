@@ -4,6 +4,7 @@ import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.ClaimDto
 import com.jd.pipeline.client.ClaimedEmail
 import com.jd.pipeline.client.WorkItemType
+import com.jd.pipeline.nodes.ScrapeJdNode
 import com.jd.pipeline.pipeline.IngestionPipeline
 import com.jd.pipeline.pipeline.ProcessingPipeline
 import com.jd.pipeline.source.IngestionSource
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argThat
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.eq
@@ -27,6 +29,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 @DisplayName("ProcessorCommandHandlerTest")
@@ -241,6 +244,103 @@ class ProcessorCommandHandlerTest {
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a skip within 5s")
             verify(bridge).postResult(eq("job-bad"), argThat { error != null && error!!.contains("missing email payload") })
             verify(ingestion, never()).invoke(any())
+            verify(pipeline, never()).invoke(any())
+        }
+    }
+
+    // ── JD_PAGE_RAW claims (browser-extension captures — LLM-extracted here) ────
+
+    @Nested
+    @DisplayName("JD_PAGE_RAW claims")
+    inner class PageCaptureClaims {
+
+        private fun pageClaim() = ClaimDto(
+            jobId       = "job-page",
+            type        = WorkItemType.JD_PAGE_RAW,
+            pageCapture = com.jd.pipeline.client.ClaimedPageCapture(
+                url = "https://linkedin.com/jobs/view/123", text = "raw page text".repeat(50), title = "Staff SDET",
+            ),
+        )
+
+        /** A JDState as the dual-mode ScrapeJdNode would return after extraction. */
+        private fun extracted(jdText: String, error: String = "") = JDState(
+            jobUrl = "https://linkedin.com/jobs/view/123",
+            company = "Acme", roleTitle = "Staff SDET", location = "Remote",
+            jdText = jdText, isJobPosting = jdText.isNotBlank(), error = error,
+        )
+
+        @Test
+        @DisplayName("extracts a captured page and processes it as an EXTENSION-sourced JdRecord")
+        fun extractsAndProcesses() {
+            val bridge = mock<BridgeClient>()
+            val pipeline = mock<ProcessingPipeline>()
+            val ingestion = mock<IngestionPipeline>()
+            val scrapeNode = mock<ScrapeJdNode>()
+
+            whenever(ingestion.scrapeNode).doReturn(scrapeNode)
+            whenever(scrapeNode.process(any())).doReturn(extracted("x".repeat(300)))
+
+            val recordCaptor = argumentCaptor<JdRecord>()
+            whenever(pipeline.invoke(recordCaptor.capture())).doReturn(successResult())
+
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
+            val posted = CountDownLatch(1)
+            whenever(bridge.claim()).doReturn(pageClaim()).doAnswer { processorThread.interrupt(); null }
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+
+            processorThread.isDaemon = true
+            processorThread.start()
+            assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post result within 5s")
+
+            verify(bridge).postResult(eq("job-page"), any())
+            val record = recordCaptor.firstValue
+            assertEquals(IngestionSource.EXTENSION, record.source)
+            assertEquals("https://linkedin.com/jobs/view/123", record.idempotencyKey)
+            assertEquals("Acme", record.company)
+        }
+
+        @Test
+        @DisplayName("skips (no processing) when extraction yields no usable JD")
+        fun skipsWhenNoJdExtracted() {
+            val bridge = mock<BridgeClient>()
+            val pipeline = mock<ProcessingPipeline>()
+            val ingestion = mock<IngestionPipeline>()
+            val scrapeNode = mock<ScrapeJdNode>()
+
+            whenever(ingestion.scrapeNode).doReturn(scrapeNode)
+            whenever(scrapeNode.process(any())).doReturn(extracted(jdText = "", error = "scrape_jd: empty"))
+
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
+            val posted = CountDownLatch(1)
+            whenever(bridge.claim()).doReturn(pageClaim()).doAnswer { processorThread.interrupt(); null }
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+
+            processorThread.isDaemon = true
+            processorThread.start()
+            assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a skip within 5s")
+
+            verify(bridge).postResult(eq("job-page"), argThat { error != null && error!!.contains("job posting") })
+            verify(pipeline, never()).invoke(any())
+        }
+
+        @Test
+        @DisplayName("posts a skip when a JD_PAGE_RAW claim has no page payload")
+        fun skipsWhenPayloadMissing() {
+            val bridge = mock<BridgeClient>()
+            val pipeline = mock<ProcessingPipeline>()
+            val ingestion = mock<IngestionPipeline>()
+
+            val badClaim = ClaimDto(jobId = "job-bad-page", type = WorkItemType.JD_PAGE_RAW, pageCapture = null)
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
+            val posted = CountDownLatch(1)
+            whenever(bridge.claim()).doReturn(badClaim).doAnswer { processorThread.interrupt(); null }
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+
+            processorThread.isDaemon = true
+            processorThread.start()
+            assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a skip within 5s")
+
+            verify(bridge).postResult(eq("job-bad-page"), argThat { error != null && error!!.contains("missing page payload") })
             verify(pipeline, never()).invoke(any())
         }
     }

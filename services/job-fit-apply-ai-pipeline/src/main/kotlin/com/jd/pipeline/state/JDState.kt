@@ -27,6 +27,9 @@ data class JDState(
     val scrapeJdTuningOutputDir: String = "",
     val scrapeJdComparisonReport: String = "",
     val jobUrl: String = "",
+    // Pre-rendered page text supplied by the browser extension. When present, ScrapeJdNode
+    // skips fetching (no server-side auth needed) and LLM-extracts directly from this text.
+    val capturedText: String = "",
 
     // ── Scan node output ──────────────────────────────────────────────────────
     val isJobPosting: Boolean = false,
