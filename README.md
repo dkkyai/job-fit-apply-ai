@@ -8,32 +8,86 @@ The datastore and app tier — **Postgres, the HTTP bridge, the artifact/markdow
 
 ## Architecture
 
-```
-        Gmail Inbox  ·  Chrome extension (MV3)  ·  JSearch API
-                              │  submit JdRecord (HTTP)
-                              ▼
- ┌──────────── Docker Compose — tailnet-only via Tailscale Serve ─────────────┐
- │                                                                            │
- │   bridge (jobfit-bridge, Ktor)              db (jobfit-db, Postgres)       │
- │   127.0.0.1:8765                            127.0.0.1:5432                 │
- │   SQLite job queue + artifact API  ◄──JDBC──►  tracks / resume_tailoring   │
- │      ▲   │  claim()/result()                    ▲                          │
- │      │   └──────────────────────────────────────┘                         │
- │      │                     frontend (jobfit-frontend, nginx) 127.0.0.1:3030│
- │      │                     React dashboard → GET/POST bridge /api/tracks   │
- │      │                     markserv (jobfit-markserv) 127.0.0.1:8081       │
- │      │                     renders the pipeline output dir (report.md, …)  │
- └──────┼─────────────────────────────────────────────────────────────────────┘
-        │  http://127.0.0.1:8765  (worker polls the published loopback port)
-        ▼
- ┌──────────────────────────── Host (PM2 + launchd) ──────────────────────────┐
- │   jd-processor + jd-poller (Gmail: intake + write-back)                    │
- │   CheckDuplicate → ScoreFit → ResumeTailoringSubgraph (6 nodes)            │
- │   → GenerateCoverLetter → RenderResumePdf (Playwright)                     │
- │   → AddArtifactUrl → Track (→ Postgres) → postResult()                     │
- │                                                                            │
- │   depends on:  Chrome/CDP :9222  ·  MLX/oMLX :11436  ·  Ollama :11434       │
- └────────────────────────────────────────────────────────────────────────────┘
+> Rendered diagram: [`docs/architecture-diagram.md`](docs/architecture-diagram.md).
+
+```mermaid
+flowchart TB
+    %% ---------------- Intake sources ----------------
+    subgraph SRC["Intake sources"]
+        direction LR
+        GM["Gmail Inbox"]
+        EXT["Chrome Extension<br/>(MV3) — JD extraction"]
+        JS_API["JSearch API<br/>(RapidAPI)"]
+    end
+
+    %% ---------------- Docker Compose ----------------
+    subgraph DC["Docker Compose — tailnet-only via Tailscale Serve"]
+        direction TB
+
+        subgraph INTAKE["Intake services (containers)"]
+            direction LR
+            POLLER["poller (jobfit-poller)<br/>Gmail intake + write-back"]
+            JSEARCH["jsearch (jobfit-jsearch)<br/>JSearch intake · daily / self-gated"]
+        end
+
+        BRIDGE["bridge (jobfit-bridge) — Ktor · 127.0.0.1:8765<br/>SQLite job queue (claim/result) + artifact API<br/>+ Postgres-backed /api/tracks"]
+
+        DB[("db (jobfit-db)<br/>Postgres · :5432<br/>tracks / resume_tailoring")]
+
+        FRONT["frontend (jobfit-frontend)<br/>nginx · :3030 · React dashboard"]
+
+        MARK["markserv (jobfit-markserv)<br/>:8081 · renders output dir"]
+
+        NOTIFIER["notifier (jobfit-notifier)<br/>completed-event consumer"]
+    end
+
+    %% ---------------- Host worker ----------------
+    subgraph HOST["Host — PM2: jd-processor (no Gmail)"]
+        direction TB
+        N1["CheckDuplicate"] --> N2["ScoreFit"]
+        N2 --> N3["ResumeTailoringSubgraph (6 nodes):<br/>JdExtraction · GapAnalysis · SummaryRewrite<br/>BulletRewrite · SkillsRestructure · AtsScoring"]
+        N3 --> N4["GenerateCoverLetter"]
+        N4 --> N5["RenderResumePdf (Playwright)"]
+        N5 --> N6["AddArtifactUrl"] --> N7["Track → Postgres"] --> N8["postResult()"]
+    end
+
+    subgraph DEPS["Host dependencies"]
+        direction LR
+        CDP["Chrome / CDP :9222"]
+        MLX["MLX / oMLX :11436"]
+        OLL["Ollama :11434"]
+    end
+
+    %% ---------------- Edges ----------------
+    GM -->|IMAP/OAuth| POLLER
+    JS_API --> JSEARCH
+    EXT -->|submit JdRecord HTTP| BRIDGE
+    POLLER -->|submit JdRecord| BRIDGE
+    JSEARCH -->|submit JdRecord| BRIDGE
+
+    N1 <-->|"poll claim() / postResult()<br/>http://127.0.0.1:8765"| BRIDGE
+    N7 -->|JDBC| DB
+    POLLER -.->|"write-back: Gmail labels, recruiter draft"| GM
+
+    BRIDGE <-->|JDBC| DB
+    FRONT -->|GET/POST /api/tracks| BRIDGE
+    MARK -.->|reads output/ bind-mount| N7
+    BRIDGE -->|completed event stream| NOTIFIER
+    NOTIFIER -->|alerts| CHAT["Discord / Telegram"]
+
+    N3 --> MLX
+    N3 --> OLL
+    N1 --> CDP
+    N2 --> MLX
+
+    classDef container fill:#1f6feb22,stroke:#1f6feb;
+    classDef host fill:#8957e522,stroke:#8957e5;
+    classDef src fill:#23863622,stroke:#238636;
+    classDef store fill:#9e6a0322,stroke:#d29922;
+    class POLLER,JSEARCH,BRIDGE,FRONT,MARK,NOTIFIER container;
+    class N1,N2,N3,N4,N5,N6,N7,N8,CDP,MLX,OLL host;
+    class GM,EXT,JS_API src;
+    class DB store;
 ```
 
 **Containerized services** (all bind host loopback only; reach them on your tailnet via Tailscale Serve — see [`docs/tailscale-serve.md`](docs/tailscale-serve.md)):
@@ -45,7 +99,7 @@ The datastore and app tier — **Postgres, the HTTP bridge, the artifact/markdow
 | Dashboard (nginx) | `jobfit-frontend` | `127.0.0.1:3030` | `http://<tailscale-name>:3030` |
 | Artifact server (markserv) | `jobfit-markserv` | `127.0.0.1:8081` | `http://<tailscale-name>:8081` |
 
-**On the host:** `jd-worker` (PM2) plus the local model servers and Chrome/CDP. The worker reaches the bridge at `http://127.0.0.1:8765`; the browser/extension reach the bridge and dashboard over Tailscale.
+**On the host:** `jd-processor` (PM2) plus the local model servers and Chrome/CDP. Gmail intake + write-back now runs in the containerized `jobfit-poller`; the host processor no longer touches Gmail. The processor reaches the bridge at `http://127.0.0.1:8765`; the browser/extension reach the bridge and dashboard over Tailscale.
 
 ### Queue concurrency guards
 
