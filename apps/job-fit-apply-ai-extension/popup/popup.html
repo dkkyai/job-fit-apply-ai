@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>OpenClaw</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <title>Job Fit Apply AI</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
@@ -13,13 +12,13 @@
     <!-- Header -->
     <header class="header">
       <div class="logo">
-        <span class="logo-icon">🦞</span>
-        <span class="logo-text">OPENCLAW</span>
+        <span class="logo-icon">🎯</span>
+        <span class="logo-text">JOB FIT APPLY AI</span>
       </div>
       <div class="header-tag" id="site-badge">—</div>
     </header>
 
-    <!-- Job Card (hidden until a JD is detected / submitted) -->
+    <!-- Job Card (hidden until a capture is in flight / done) -->
     <section class="job-card" id="job-card">
       <div class="job-title" id="job-title">Untitled Role</div>
       <div class="job-meta" id="job-company">—</div>
@@ -27,9 +26,9 @@
 
     <!-- Pipeline status track -->
     <div class="pipeline" id="pipeline">
-      <div class="pipe-step" id="step-extract"  data-step="extracting">
+      <div class="pipe-step" id="step-capture"  data-step="capturing">
         <span class="pipe-dot"></span>
-        <span class="pipe-label">Extract</span>
+        <span class="pipe-label">Capture</span>
       </div>
       <div class="pipe-connector"></div>
       <div class="pipe-step" id="step-submit"   data-step="submitting">
@@ -53,26 +52,26 @@
 
     <!-- Idle / call-to-action -->
     <div class="cta-block" id="cta-idle">
-      <p class="cta-hint">Navigate to a job listing, then click below.</p>
+      <p class="cta-hint">Open the job posting you want, then capture it.</p>
       <button class="btn-primary" id="btn-generate">
-        <span class="btn-icon">⚡</span> Generate Resume &amp; Cover Letter
+        <span class="btn-icon">🎯</span> Capture this job page
       </button>
     </div>
 
     <!-- Error block -->
     <div class="error-block" id="error-block" hidden>
-      <div class="error-label">Error</div>
+      <div class="error-label">Couldn't finish</div>
       <div class="error-msg" id="error-msg">—</div>
       <button class="btn-reset" id="btn-retry">Try again</button>
     </div>
 
     <!-- Complete block -->
     <div class="done-block" id="done-block" hidden>
-      <div class="done-label">✓ Ready to download</div>
+      <div class="done-label">✓ Ready to download<span class="fit-badge" id="fit-badge" hidden></span></div>
       <div class="artifact-links" id="artifact-links">
         <!-- Injected by popup.js -->
       </div>
-      <button class="btn-reset" id="btn-reset">Start over</button>
+      <button class="btn-reset" id="btn-reset">Capture another</button>
     </div>
 
   </div>

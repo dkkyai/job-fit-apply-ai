@@ -3,18 +3,16 @@ import { render, screen, waitFor, fireEvent, act } from "@testing-library/react"
 import Index from "../Index";
 
 // ── Hoisted mocks (must be declared before vi.mock hoisting) ───────────────────
-const { mockFrom, mockSelect, mockOrder, mockUpdate, mockEq } = vi.hoisted(() => {
-  const mockOrder = vi.fn();
-  const mockSelect = vi.fn().mockReturnValue({ order: mockOrder });
-  const mockEq = vi.fn();
-  const mockUpdate = vi.fn().mockReturnValue({ eq: mockEq });
-  const mockFrom = vi.fn().mockReturnValue({ select: mockSelect, update: mockUpdate });
-  return { mockFrom, mockSelect, mockOrder, mockUpdate, mockEq };
-});
-
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: { from: mockFrom },
+const { mockFetchTracks, mockUpdateTrackStatus } = vi.hoisted(() => ({
+  mockFetchTracks: vi.fn(),
+  mockUpdateTrackStatus: vi.fn(),
 }));
+
+// Preserve the real STATUS_OPTIONS/types; only stub the two data functions.
+vi.mock("@/lib/api", async (importActual) => {
+  const actual = await importActual<typeof import("@/lib/api")>();
+  return { ...actual, fetchTracks: mockFetchTracks, updateTrackStatus: mockUpdateTrackStatus };
+});
 
 vi.mock("@/hooks/use-toast", () => ({
   toast: vi.fn(),
@@ -40,12 +38,9 @@ const makeTrack = (overrides: Record<string, unknown> = {}) => ({
 
 type Track = ReturnType<typeof makeTrack>;
 
-function setupSupabaseMock(data: Track[], error: { message: string } | null = null) {
-  mockOrder.mockResolvedValue({ data, error });
-  mockSelect.mockReturnValue({ order: mockOrder });
-  mockFrom.mockReturnValue({ select: mockSelect, update: mockUpdate });
-  mockUpdate.mockReturnValue({ eq: mockEq });
-  mockEq.mockResolvedValue({ error: null });
+function setupApiMock(data: Track[]) {
+  mockFetchTracks.mockResolvedValue(data);
+  mockUpdateTrackStatus.mockResolvedValue(undefined);
 }
 
 beforeEach(() => {
@@ -67,7 +62,7 @@ beforeEach(() => {
 describe("Index Page", () => {
   describe("rendering", () => {
     it("renders header title", async () => {
-      setupSupabaseMock([]);
+      setupApiMock([]);
       render(<Index />);
       await waitFor(() => {
         expect(screen.getByText("Job Tracker Backlog")).toBeInTheDocument();
@@ -75,16 +70,14 @@ describe("Index Page", () => {
     });
 
     it("shows loading text initially", () => {
-      mockOrder.mockReturnValue(new Promise(() => {}));
-      mockSelect.mockReturnValue({ order: mockOrder });
-      mockFrom.mockReturnValue({ select: mockSelect });
+      mockFetchTracks.mockReturnValue(new Promise(() => {})); // never resolves
 
       render(<Index />);
       expect(screen.getByText(/Loading applications/i)).toBeInTheDocument();
     });
 
     it("renders status chips for all statuses", async () => {
-      setupSupabaseMock([]);
+      setupApiMock([]);
       render(<Index />);
       // Chips have the form "backlog (0)" — match that specific pattern
       await waitFor(() => {
@@ -95,7 +88,7 @@ describe("Index Page", () => {
     });
 
     it("shows singular count for one application", async () => {
-      setupSupabaseMock([makeTrack({ fit_score: 80 })]);
+      setupApiMock([makeTrack({ fit_score: 80 })]);
       render(<Index />);
       await waitFor(() => {
         expect(screen.getByText(/1 application tracked/i)).toBeInTheDocument();
@@ -103,7 +96,7 @@ describe("Index Page", () => {
     });
 
     it("uses plural form for multiple applications", async () => {
-      setupSupabaseMock([
+      setupApiMock([
         makeTrack({ id: 1, fit_score: 80 }),
         makeTrack({ id: 2, fit_score: 75 }),
       ]);
@@ -113,10 +106,8 @@ describe("Index Page", () => {
       });
     });
 
-    it("displays Supabase error message", async () => {
-      mockOrder.mockResolvedValue({ data: null, error: { message: "DB connection failed" } });
-      mockSelect.mockReturnValue({ order: mockOrder });
-      mockFrom.mockReturnValue({ select: mockSelect });
+    it("displays API error message", async () => {
+      mockFetchTracks.mockRejectedValue(new Error("DB connection failed"));
 
       render(<Index />);
       await waitFor(() => {
@@ -125,7 +116,7 @@ describe("Index Page", () => {
     });
 
     it("renders company and role after data loads", async () => {
-      setupSupabaseMock([makeTrack({ company: "TestCo", role_title: "QA Lead" })]);
+      setupApiMock([makeTrack({ company: "TestCo", role_title: "QA Lead" })]);
       render(<Index />);
       await waitFor(() => {
         expect(screen.getByText("TestCo")).toBeInTheDocument();
@@ -134,7 +125,7 @@ describe("Index Page", () => {
     });
 
     it("renders tech stack badges (up to 3) and overflow badge", async () => {
-      setupSupabaseMock([
+      setupApiMock([
         makeTrack({ tech_stack: ["React", "Node", "Postgres", "Redis"] }),
       ]);
       render(<Index />);
@@ -147,7 +138,7 @@ describe("Index Page", () => {
     });
 
     it("renders job URL link when present", async () => {
-      setupSupabaseMock([makeTrack({ job_url: "https://jobs.example.com/123" })]);
+      setupApiMock([makeTrack({ job_url: "https://jobs.example.com/123" })]);
       render(<Index />);
       await waitFor(() => {
         const links = document.querySelectorAll('a[href="https://jobs.example.com/123"]');
@@ -164,7 +155,7 @@ describe("Index Page", () => {
     ];
 
     it("shows only tracks at or above the default threshold (60)", async () => {
-      setupSupabaseMock(tracks);
+      setupApiMock(tracks);
       render(<Index />);
       await waitFor(() => {
         // 90 and 70 qualify; 40 does not
@@ -173,7 +164,7 @@ describe("Index Page", () => {
     });
 
     it("excludes tracks with null fit_score", async () => {
-      setupSupabaseMock([
+      setupApiMock([
         makeTrack({ id: 1, fit_score: null }),
         makeTrack({ id: 2, fit_score: 80 }),
       ]);
@@ -184,7 +175,7 @@ describe("Index Page", () => {
     });
 
     it("clicking a fit preset button updates the threshold", async () => {
-      setupSupabaseMock(tracks);
+      setupApiMock(tracks);
       render(<Index />);
 
       await waitFor(() => screen.getByText(/2 applications tracked/i));
@@ -198,7 +189,7 @@ describe("Index Page", () => {
     });
 
     it("clicking '0' preset shows all tracks", async () => {
-      setupSupabaseMock(tracks);
+      setupApiMock(tracks);
       render(<Index />);
 
       await waitFor(() => screen.getByText(/2 applications tracked/i));
@@ -225,7 +216,7 @@ describe("Index Page", () => {
         created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
       });
 
-      setupSupabaseMock([old, recent]);
+      setupApiMock([old, recent]);
       render(<Index />);
 
       await waitFor(() => {
@@ -239,7 +230,7 @@ describe("Index Page", () => {
         fit_score: 80,
         created_at: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
       });
-      setupSupabaseMock([old]);
+      setupApiMock([old]);
       render(<Index />);
 
       await waitFor(() => screen.getByText(/0 applications tracked/i));
@@ -255,7 +246,7 @@ describe("Index Page", () => {
 
   describe("sorting", () => {
     it("clicking a column header twice toggles sort direction without breaking render", async () => {
-      setupSupabaseMock([
+      setupApiMock([
         makeTrack({ id: 1, company: "Zebra Inc", fit_score: 90 }),
         makeTrack({ id: 2, company: "Alpha Corp", fit_score: 70 }),
       ]);
@@ -274,7 +265,7 @@ describe("Index Page", () => {
 
   describe("status display", () => {
     it("non-duplicate rows do not carry opacity-50", async () => {
-      setupSupabaseMock([makeTrack({ duplicate: false, fit_score: 80 })]);
+      setupApiMock([makeTrack({ duplicate: false, fit_score: 80 })]);
       render(<Index />);
 
       await waitFor(() => screen.getByText("Acme Corp"));
@@ -285,20 +276,20 @@ describe("Index Page", () => {
 
   describe("fit score display", () => {
     it("renders high-scoring badge (>=85)", async () => {
-      setupSupabaseMock([makeTrack({ fit_score: 90 })]);
+      setupApiMock([makeTrack({ fit_score: 90 })]);
       render(<Index />);
       // "90" appears as both a preset button and the score badge — verify at least one exists
       await waitFor(() => expect(screen.getAllByText("90").length).toBeGreaterThan(0));
     });
 
     it("renders medium-scoring badge (70-84)", async () => {
-      setupSupabaseMock([makeTrack({ fit_score: 75 })]);
+      setupApiMock([makeTrack({ fit_score: 75 })]);
       render(<Index />);
       await waitFor(() => expect(screen.getByText("75")).toBeInTheDocument());
     });
 
     it("null fit_score rows are excluded by default threshold", async () => {
-      setupSupabaseMock([makeTrack({ id: 1, fit_score: null })]);
+      setupApiMock([makeTrack({ id: 1, fit_score: null })]);
       render(<Index />);
       await waitFor(() =>
         expect(screen.getByText(/0 applications tracked/i)).toBeInTheDocument()
@@ -308,13 +299,13 @@ describe("Index Page", () => {
 
   describe("location display", () => {
     it("shows em-dash when location is null", async () => {
-      setupSupabaseMock([makeTrack({ location: null })]);
+      setupApiMock([makeTrack({ location: null })]);
       render(<Index />);
       await waitFor(() => expect(screen.getByText("—")).toBeInTheDocument());
     });
 
     it("does not render remote_policy when value is 'unknown'", async () => {
-      setupSupabaseMock([makeTrack({ remote_policy: "unknown" })]);
+      setupApiMock([makeTrack({ remote_policy: "unknown" })]);
       render(<Index />);
       await waitFor(() => screen.getByText("Acme Corp"));
       expect(screen.queryByText("unknown")).not.toBeInTheDocument();

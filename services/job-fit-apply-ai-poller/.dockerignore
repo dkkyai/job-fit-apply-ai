@@ -1,0 +1,9 @@
+build/
+.gradle/
+.env
+.env.*
+!.env.example
+tokens/
+.idea/
+*.log
+.DS_Store
