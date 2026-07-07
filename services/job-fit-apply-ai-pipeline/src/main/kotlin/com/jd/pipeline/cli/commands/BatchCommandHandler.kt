@@ -48,10 +48,7 @@ object BatchCommandHandler {
                 val company: String,
                 val roleTitle: String,
             )
-            // Pre-pipeline state (key) → post-pipeline ingState + submissions.
-            // ingState carries the digest flags set by the pipeline; emailState does not.
-            data class ProcessedEmail(val ingState: JDState, val submissions: List<Submission>)
-            val emailSubmissions = mutableMapOf<JDState, ProcessedEmail>()
+            val emailSubmissions = mutableMapOf<JDState, List<Submission>>()
 
             for (emailState in emails) {
                 val subject = emailState.emailIntake?.subject?.take(60) ?: ""
@@ -103,7 +100,7 @@ object BatchCommandHandler {
                     }
                 }
 
-                emailSubmissions[emailState] = ProcessedEmail(ingState, submissions)
+                emailSubmissions[emailState] = submissions
             }
 
             // ── Polling pass ──────────────────────────────────────────────────
@@ -113,12 +110,12 @@ object BatchCommandHandler {
             var duplicate = 0
             val collectedJobs = mutableListOf<ScoredJob>()
 
-            for ((emailState, processed) in emailSubmissions) {
-                val (ingState, submissions) = processed
-                val isDigestEmail = ingState.isDigest || ingState.isInlineDigest
+            for ((emailState, submissions) in emailSubmissions) {
+                val isDigestEmail = (emailState.emailIntake?.isDigest == true) ||
+                                    (emailState.emailIntake?.isInlineDigest == true)
 
                 if (submissions.isEmpty()) {
-                    labelingService.applyLabeling(ingState, client)
+                    labelingService.applyLabeling(emailState, client)
                     continue
                 }
 
@@ -155,8 +152,7 @@ object BatchCommandHandler {
                 }
 
                 // Apply terminal label based on aggregate result.
-                // Use ingState (not emailState) so digest flags are preserved.
-                val labelState = ingState.copy(
+                val labelState = emailState.copy(
                     isJobPosting            = true,
                     error                   = if (anyError) "One or more jobs failed" else "",
                     isRecruiterResponseRequired = draftCreated,
