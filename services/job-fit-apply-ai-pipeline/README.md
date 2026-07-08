@@ -29,7 +29,7 @@ After cloning, one command populates every personalised file from your existing 
 
 Your résumé is authored as structured YAML — see `src/main/resources/resume/resume.template.yaml` for the shape (demographics, summary, experience with categorised bullets, projects, education, labelled skill groups).
 
-`--init-profile` installs your résumé as `resume.yaml`, scaffolds a slim `config/candidate_profile.yaml` (the preferences + scoring aids a résumé can't supply: visa, comp, work arrangement, target title, core strengths, …), opens `$EDITOR` to fill in the `__TODO__` fields, then renders `generated_resume.html` (deterministically, no LLM) and `TAILOR_SKILL.md`.
+`--init-profile` installs your résumé as `resume.yaml`, scaffolds a slim `config/candidate_profile.yaml` (the preferences + scoring aids a résumé can't supply: visa, comp, work arrangement, target title, core strengths, …), opens `$EDITOR` to fill in the `__TODO__` fields, then renders `generated_resume.html` (deterministically, no LLM).
 
 > You don't need Gmail or Supabase configured to run `--init-profile`. Those layers come in once you want to drive the pipeline from real email or persist scored jobs.
 
@@ -80,11 +80,12 @@ flowchart TD
 
     subgraph Tailor ["ResumeTailoringSubgraph"]
         direction TB
-        T1["JdExtractionNode\n(skip if score_fit extracted)"] --> T2["GapAnalysisNode"]
+        T1["JdExtractionNode\n(JD → JdRequirements)"] --> T2["GapAnalysisNode\n(supported / unsupported)"]
         T2 --> T3["SummaryRewriteNode"]
         T3 --> T4["BulletRewriteNode"]
-        T4 --> T5["SkillsRestructureNode"]
-        T5 --> T6["AtsScoringNode"]
+        T4 --> T5["BulletReorderNode\n(deterministic)"]
+        T5 --> T6["SkillsRestructureNode"]
+        T6 --> T7["AtsValidationNode\n(coverage + integrity)"]
     end
 
     Tailor --> TailorErrQ{"Error?"}
@@ -111,10 +112,10 @@ For every tailored job, `ResumeTailoringSubgraph` writes to `output/<timestamp>_
 | `tailored_resume.html` | Tailored HTML rendered from your `TailoredProfile` |
 | `<AUTHOR_NAME>_<Role>.pdf` | PDF rendered from `tailored_resume.html` via Playwright |
 | `tailored_summary.txt` | Rewritten professional summary |
-| `tailored_bullets.txt` | Original → rewritten bullet pairs with alignment scores |
-| `restructured_skills.txt` | Plain-text skills section ready to copy |
-| `ats_score.txt` | ATS scorecard (overall + 5 sub-scores, remaining gaps, top improvements) |
-| `gap_analysis.json` | Machine-readable skills gap table |
+| `tailored_bullets.txt` | Original → rewritten bullet pairs with must-have hits + quantified/seniority flags |
+| `restructured_skills.txt` | JD-relevance-ordered skill groups (+ skills dropped for this role) |
+| `ats_report.txt` | Validation report: must-have coverage %, missing/unreachable terms, integrity leaks, sub-scores, improvements |
+| `gap_analysis.json` | Machine-readable supported / unsupported / missing-but-supported partition |
 | `cover_letter.txt` | Tailored cover letter |
 | `score_fit.txt` | Fit score, reasoning, strengths, gaps |
 
@@ -140,9 +141,8 @@ What it does:
 2. Installs it as the canonical `src/main/resources/resume/resume.yaml`.
 3. Scaffolds `config/candidate_profile.yaml` from `candidate_profile.template.yaml` and opens it in your `$EDITOR` so you can fill in the preference + scoring-aid `__TODO__` fields a résumé cannot supply (visa, target compensation, work arrangement, target title, core strengths). Save and exit when done. Everything derivable from the résumé — `years_experience` (from the dates), languages, and domain expertise (from the skill groups) — is computed automatically, not stored here.
 4. Renders `src/main/resources/resume/generated_resume.html` **deterministically** from the merged profile (no LLM).
-5. Renders `src/main/resources/skills/TAILOR_SKILL.md` from `TAILOR_SKILL.template.md` + a candidate-context block built from your profile.
 
-The personal files (`resume.yaml`, `candidate_profile.yaml`, `generated_resume.html`, `TAILOR_SKILL.md`) are **gitignored** — your personal data never gets committed.
+The personal files (`resume.yaml`, `candidate_profile.yaml`, `generated_resume.html`) are **gitignored** — your personal data never gets committed.
 
 > **Backups:** any pre-existing copy of a generated file is moved aside with a timestamped `.bak` suffix before being overwritten.
 
@@ -183,7 +183,7 @@ All node-level model variables default to `qwen3.5:9b-q4_K_M`. Override per node
 | `SCRAPE_MODEL` (defaults to `SCAN_MODEL`) | `ScrapeJdNode` — job-page structured extraction |
 | `SCORE_MODEL` | `ScoreFitNode` — combined fit scoring + JD structure extraction |
 | `RESUME_REASONING_MODEL` | `SummaryRewriteNode`, `BulletRewriteNode` — creative rewriting |
-| `SKILLS_MODEL` (defaults to `RESUME_REASONING_MODEL`) | `JdExtractionNode`, `GapAnalysisNode`, `SkillsRestructureNode`, `AtsScoringNode` |
+| `SKILLS_MODEL` (defaults to `RESUME_REASONING_MODEL`) | `SkillsRestructureNode` (JdExtraction/GapAnalysis/AtsValidation use `SCORE_MODEL`; `BulletReorderNode` is deterministic — no LLM) |
 | `COVER_LETTER_MODEL` | `GenerateCoverLetterNode` |
 | `DRAFT_REPLY_MODEL` | `CreateDraftReply` |
 
@@ -292,12 +292,13 @@ Prompt files live in `src/main/resources/skills/` and are loaded at runtime — 
 | `SCAN_SKILL.md` | `ScanEmailNode` | Email classification and field extraction |
 | `SCRAPE_SKILL.md` | `ScrapeJdNode` | Job-page structured extraction (prefers schema.org `JobPosting` JSON-LD when the page embeds it) |
 | `SCORE_SKILL.md` | `ScoreFitNode` | Combined fit scoring + JD structure extraction (runtime-templated via `{{CANDIDATE_PROFILE}}`) |
-| `JD_EXTRACTION_SKILL.md` | `JdExtractionNode` | JD structure extraction (fallback when score_fit parse fails) |
-| `GAP_ANALYSIS_SKILL.md` | `GapAnalysisNode` | Skills gap table + keyword coverage score |
-| `SUMMARY_REWRITE_SKILL.md` | `SummaryRewriteNode` | Professional summary rewrite |
-| `BULLET_REWRITE_SKILL.md` | `BulletRewriteNode` | Per-role ATS-aligned bullet rewrite |
-| `SKILLS_RESTRUCTURE_SKILL.md` | `SkillsRestructureNode` | Reorder and group skills into JD-aligned categories |
-| `ATS_SCORING_SKILL.md` | `AtsScoringNode` | Composite ATS score |
+| `tailor/RESUME_RUBRIC.md` | all tailor nodes | Shared ATS / recruiter-skim / HM-depth / integrity rules, prepended to every tailor prompt |
+| `tailor/JD_EXTRACTION_SKILL.md` | `JdExtractionNode` | JD → structured requirement set (must-have vs nice-to-have, exact-match terms, JD groupings) |
+| `tailor/GAP_ANALYSIS_SKILL.md` | `GapAnalysisNode` | Supported / unsupported / missing-but-supported partition with quoted evidence |
+| `tailor/SUMMARY_REWRITE_SKILL.md` | `SummaryRewriteNode` | Target-title-framed summary rewrite |
+| `tailor/BULLET_REWRITE_SKILL.md` | `BulletRewriteNode` | Per-role bullet + category rewrite with reorder metadata |
+| `tailor/SKILLS_RESTRUCTURE_SKILL.md` | `SkillsRestructureNode` | JD-relevance-ordered skill groups, verbatim must-haves, drop noise |
+| `tailor/ATS_VALIDATION_SKILL.md` | `AtsValidationNode` | Qualitative sub-scores + concrete improvements (coverage is computed in code) |
 | `DRAFT_REPLY_SKILL.md` | `CreateDraftReply` | Recruiter reply draft |
 
 ## Running
@@ -452,13 +453,15 @@ src/main/kotlin/com/jd/pipeline/
 │   ├── AddArtifactUrlNode.kt          # Attach artifact URL to state
 │   ├── SupabaseTrackNode.kt           # Insert/update job record
 │   └── tailor/
-│       ├── ResumeTailoringSubgraph.kt # 6-node subgraph entry
+│       ├── ResumeTailoringSubgraph.kt # 7-stage subgraph entry
+│       ├── TailorRubric.kt            # Shared rubric loader (prepended to every prompt)
 │       ├── JdExtractionNode.kt
 │       ├── GapAnalysisNode.kt
 │       ├── SummaryRewriteNode.kt
 │       ├── BulletRewriteNode.kt
+│       ├── BulletReorderNode.kt       # Deterministic — no LLM
 │       ├── SkillsRestructureNode.kt
-│       └── AtsScoringNode.kt
+│       └── AtsValidationNode.kt
 ├── pipeline/
 │   ├── IngestionPipeline.kt           # scan → scrape → save
 │   └── ProcessingPipeline.kt          # duplicate → score → tailor → PDF → track
@@ -484,8 +487,7 @@ src/main/resources/
 │   └── generated_resume.html          # Gitignored — produced by --init-profile / --resume-gen
 └── skills/
     ├── *_SKILL.md                     # Committed prompt files, runtime-loaded
-    ├── TAILOR_SKILL.template.md       # Committed; rendered to TAILOR_SKILL.md by --init-profile
-    └── TAILOR_SKILL.md                # Gitignored — produced by --init-profile
+    └── tailor/                        # Tailoring prompts + shared RESUME_RUBRIC.md
 
 config/
 ├── candidate_profile.template.yaml    # Committed slim template (scoring aids + preferences)

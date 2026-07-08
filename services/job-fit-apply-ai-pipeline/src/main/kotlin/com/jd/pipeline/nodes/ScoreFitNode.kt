@@ -7,7 +7,7 @@ import com.jd.pipeline.client.LlmClient
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.models.EvidenceItem
 import com.jd.pipeline.models.CandidateProfile
-import com.jd.pipeline.nodes.tailor.JdStructured
+import com.jd.pipeline.models.JdStructured
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import java.nio.file.Files

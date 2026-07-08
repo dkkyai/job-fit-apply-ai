@@ -35,14 +35,14 @@ class GapAnalysisNodeTest {
         company = "Acme",
         roleTitle = "Eng",
         trackId = 1,
-        jdStructured = JdStructured(roleTitle = "Eng", seniority = "Sr", requiredSkills = listOf("Kotlin"))
+        jdRequirements = JdRequirements(targetTitle = "Staff SDET", mustHave = listOf("Kotlin", "Espresso"))
     )
 
     @Test
-    @DisplayName("returns error when jdStructured is null")
-    fun errorWhenJdStructuredNull() {
-        val result = GapAnalysisNode().process(baseState.copy(jdStructured = null))
-        assertTrue(result.error.contains("jdStructured is null"))
+    @DisplayName("returns error when jdRequirements is null")
+    fun errorWhenJdRequirementsNull() {
+        val result = GapAnalysisNode().process(baseState.copy(jdRequirements = null))
+        assertTrue(result.error.contains("jdRequirements is null"))
     }
 
     @Test
@@ -53,14 +53,15 @@ class GapAnalysisNodeTest {
     }
 
     @Test
-    @DisplayName("buildPrompt includes JD skills and candidate profile markdown")
+    @DisplayName("buildPrompt includes JD must-have terms and candidate profile markdown")
     fun buildPromptContent() {
         val node = GapAnalysisNode()
-        val m = GapAnalysisNode::class.java.getDeclaredMethod("buildPrompt", JdStructured::class.java, String::class.java)
+        val m = GapAnalysisNode::class.java.getDeclaredMethod("buildPrompt", JdRequirements::class.java, String::class.java)
         m.isAccessible = true
-        val prompt = m.invoke(node, baseState.jdStructured, "MARKDOWN_HERE") as String
-        assertTrue(prompt.contains("JD REQUIRED SKILLS:"))
-        assertTrue(prompt.contains("JD PREFERRED SKILLS:"))
+        val jd = baseState.jdRequirements!!
+        val prompt = m.invoke(node, jd, "MARKDOWN_HERE") as String
+        assertTrue(prompt.contains("MUST-HAVE TERMS"))
+        jd.mustHave.forEach { term -> assertTrue(prompt.contains(term), "expected prompt to contain must-have term: $term") }
         assertTrue(prompt.contains("MARKDOWN_HERE"))
     }
 
@@ -68,11 +69,25 @@ class GapAnalysisNodeTest {
     @DisplayName("strips JSON fences and parses LLM response")
     fun stripsFencesAndParses() {
         val json = """
-            {"skills_table":[],"keyword_coverage_score":85,"top_gaps":[],"top_strengths":[],"bullets_to_promote":[]}
+            ```json
+            {"supported":[{"term":"Kotlin","evidence":"built Kotlin frameworks"}],"unsupported":["Pact"],"missing_but_supported":[{"term":"Espresso","evidence":"maintained Espresso suites"}]}
+            ```
         """.trimIndent()
         val mockLlm = LlmCaller { json }
         val result = GapAnalysisNode(llm = mockLlm).process(baseState)
+        assertEquals("", result.error, "expected no error, got: ${result.error}")
         assertNotNull(result.gapAnalysis)
-        assertEquals(85, result.gapAnalysis!!.keywordCoverageScore)
+        assertEquals(listOf(EvidencedTerm("Kotlin", "built Kotlin frameworks")), result.gapAnalysis!!.supported)
+        assertEquals(listOf("Pact"), result.gapAnalysis!!.unsupported)
+        assertEquals(listOf(EvidencedTerm("Espresso", "maintained Espresso suites")), result.gapAnalysis!!.missingButSupported)
+    }
+
+    @Test
+    @DisplayName("returns error when the LLM returns an empty partition")
+    fun errorWhenEmptyPartition() {
+        val json = """{"supported":[],"unsupported":[],"missing_but_supported":[]}"""
+        val mockLlm = LlmCaller { json }
+        val result = GapAnalysisNode(llm = mockLlm).process(baseState)
+        assertTrue(result.error.contains("empty partition"))
     }
 }

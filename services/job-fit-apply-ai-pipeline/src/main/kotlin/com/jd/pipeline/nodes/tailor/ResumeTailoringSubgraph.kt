@@ -13,23 +13,29 @@ import java.nio.file.Path
 /**
  * ResumeTailoringSubgraph — the Node<JDState> entry point.
  *
- * Runs six sequential tailoring nodes on an internal [TailorState] (read
- * exclusively from `candidateProfile`, never from HTML), assembles a
+ * Runs seven sequential tailoring stages on an internal [TailorState], assembles a
  * [TailoredProfile] from the outputs, and renders it to
- * `output/<timestamp>/tailored_resume.html` via
- * [com.jd.pipeline.utils.ResumeHtmlRenderer].
+ * `output/<timestamp>/tailored_resume.html` via [ResumeHtmlRenderer].
  *
- * Pipeline:
- *   JdExtractionNode → GapAnalysisNode → SummaryRewriteNode
- *   → BulletRewriteNode → SkillsRestructureNode → AtsScoringNode
+ * Pipeline (A–G):
+ *   JdExtractionNode → GapAnalysisNode → SummaryRewriteNode → BulletRewriteNode
+ *   → BulletReorderNode (deterministic) → SkillsRestructureNode → AtsValidationNode
+ *
+ * The subgraph optimises for three ordered targets — ATS pass, recruiter skim,
+ * hiring-manager depth — under a hard integrity guardrail: gap analysis partitions the
+ * JD's terms into supported/unsupported, rewrites may only emphasise supported terms,
+ * and validation deterministically detects leaks. When the validation report is
+ * actionable (missing supported must-haves, leaked terms, doubled words, or a low
+ * score), one refinement pass re-runs the rewrite nodes with the concrete gap list.
  */
 class ResumeTailoringSubgraph(
     private val jdExtraction: JdExtractionNode        = JdExtractionNode(),
     private val gapAnalysis: GapAnalysisNode          = GapAnalysisNode(),
     private val summaryRewrite: SummaryRewriteNode    = SummaryRewriteNode(),
     private val bulletRewrite: BulletRewriteNode      = BulletRewriteNode(),
+    private val bulletReorder: BulletReorderNode      = BulletReorderNode(),
     private val skillsRestructure: SkillsRestructureNode = SkillsRestructureNode(),
-    private val atsScoring: AtsScoringNode            = AtsScoringNode(),
+    private val atsValidation: AtsValidationNode      = AtsValidationNode(),
 ) : Node<JDState> {
 
     private val mapper = ObjectMapper()
@@ -62,6 +68,8 @@ class ResumeTailoringSubgraph(
         }
 
         // ── Initialise TailorState ─────────────────────────────────────────────
+        // The subgraph always runs its own JD extraction (rich JdRequirements schema);
+        // score_fit's leaner JdStructured serves scoring only.
         var state = TailorState(
             jdText = input.jdText,
             candidateProfile = profile,
@@ -70,28 +78,32 @@ class ResumeTailoringSubgraph(
             gaps = input.gaps,
             company = input.company,
             roleTitle = input.roleTitle,
-            trackId = input.trackId ?: 0,
-            jdStructured = input.jdStructured  // pre-extracted by score_fit; skips JdExtractionNode LLM call
+            trackId = input.trackId ?: 0
         )
 
         // ── Sequential execution — a content-node failure is NON-FATAL ─────────
-        // A flaky local-LLM step (e.g. bullet_rewrite) must NOT abandon the whole report.
-        // We keep the base/untailored content for the failed section and still render the
-        // resume → PDF → report, so artifact_url is always populated. buildTailoredProfile
-        // falls back to the base profile for any tailored field a failed node left null.
-        // [degraded] records which nodes fell back → surfaced in report.md.
+        // A flaky local-LLM step must NOT abandon the whole report. We keep the base
+        // content for the failed section and still render the resume → PDF → report, so
+        // artifact_url is always populated. buildTailoredProfile falls back to the base
+        // profile for any tailored field a failed node left null. [degraded] records
+        // which nodes fell back → surfaced in report.md.
         val degraded = mutableListOf<String>()
         state = runNode("jd_extraction", state, degraded) { jdExtraction.process(it) }
         state = runNode("gap_analysis", state, degraded) { gapAnalysis.process(it) }
         state = runNode("summary_rewrite", state, degraded) { summaryRewrite.process(it) }
         state = runNode("bullet_rewrite", state, degraded) { bulletRewrite.process(it) }
+        if (state.tailoredCareerHistory != null) {
+            state = runNode("bullet_reorder", state, degraded) { bulletReorder.process(it) }
+        }
         state = runNode("skills_restructure", state, degraded) { skillsRestructure.process(it) }
 
-        if (state.restructuredSkills != null) {
-            state = runNode("ats_scoring", state, degraded) { atsScoring.process(it) }
+        // Validate whatever will render: needs the tailored bullets + skills. A degraded summary
+        // falls back to the base one, which the validator scores against (that is what renders).
+        if (state.tailoredCareerHistory != null && state.restructuredSkills != null) {
+            state = runNode("ats_validation", state, degraded) { atsValidation.process(it) }
         }
 
-        // ── Optional refinement pass driven by the ATS feedback ───────────────
+        // ── One refinement pass when the validation report is actionable ───────
         state = maybeRefine(state)
 
         // ── Save output files ──────────────────────────────────────────────────
@@ -107,7 +119,7 @@ class ResumeTailoringSubgraph(
             if (degraded.isNotEmpty()) {
                 println("[tailor_subgraph] Complete (short-circuited — fell back on: ${degraded.joinToString(", ")}) → $outputPath")
             } else {
-                println("[tailor_subgraph] Complete — ATS score: ${state.atsScore?.overallScore} → $outputPath")
+                println("[tailor_subgraph] Complete — coverage: ${state.atsReport?.mustHaveCoveragePct}%, overall: ${state.atsReport?.overallScore} → $outputPath")
             }
 
             input.copy(outputPath = outputPath, tailoringDegradedNodes = degraded)
@@ -146,31 +158,52 @@ class ResumeTailoringSubgraph(
     }
 
     /**
-     * One ATS-feedback-driven refinement pass. When the first pass scores below
-     * [Config.ATS_REFINE_THRESHOLD], summary and bullet rewrites re-run with the
-     * ATS feedback (remaining gaps + improvements) in their prompts, then re-score.
-     * Keeps whichever pass scored higher; any refinement error is non-fatal and
-     * falls back to the first-pass outputs.
+     * One validation-driven refinement pass. Triggers when the first report is actionable
+     * (missing supported must-haves, leaked unsupported terms, doubled words) or scores
+     * below [Config.ATS_REFINE_THRESHOLD]. The rewrite nodes re-run with the concrete gap
+     * list in their prompts (they read `state.atsReport`), then re-validate. Keeps
+     * whichever pass scored higher; any refinement error is non-fatal and falls back to
+     * the first-pass outputs.
      */
     private fun maybeRefine(initial: TailorState): TailorState {
-        val firstScore = initial.atsScore?.overallScore ?: return initial
-        if (!Config.ATS_REFINE_ENABLED || firstScore >= Config.ATS_REFINE_THRESHOLD) return initial
+        val report = initial.atsReport ?: return initial
+        if (!Config.ATS_REFINE_ENABLED) return initial
+        if (!report.needsRefinement && report.overallScore >= Config.ATS_REFINE_THRESHOLD) return initial
 
-        println("[tailor_subgraph] ATS score $firstScore < ${Config.ATS_REFINE_THRESHOLD} — running refinement pass")
-        var state = summaryRewrite.process(initial)
-        if (state.error.isEmpty()) state = bulletRewrite.process(state)
-        if (state.error.isEmpty()) state = atsScoring.process(state)
-        if (state.error.isNotEmpty()) {
-            System.err.println("[tailor_subgraph] WARN (refine): ${state.error} — keeping first-pass outputs")
-            return initial
+        println("[tailor_subgraph] Validation actionable (coverage=${report.mustHaveCoveragePct}%, " +
+            "missing=${report.missingTerms.size}, leaked=${report.leakedUnsupportedTerms.size}, " +
+            "overall=${report.overallScore}) — running refinement pass")
+
+        // Non-fatal per node (mirrors the main pass): a failed rewrite keeps the first-pass
+        // content for that section but does NOT abort the pass — so a summary that fails does
+        // not stop skills_restructure from re-running to remove a leaked term.
+        val stages: List<Pair<String, (TailorState) -> TailorState>> = listOf(
+            "summary_rewrite" to summaryRewrite::process,
+            "bullet_rewrite" to bulletRewrite::process,
+            "bullet_reorder" to bulletReorder::process,
+            "skills_restructure" to skillsRestructure::process,
+            "ats_validation" to atsValidation::process,
+        )
+        var state = initial
+        for ((name, run) in stages) {
+            state = try {
+                run(state).let { next ->
+                    if (next.error.isEmpty()) next
+                    else { System.err.println("[tailor_subgraph] WARN (refine/$name): ${next.error} — keeping prior content"); state }
+                }
+            } catch (e: Exception) {
+                System.err.println("[tailor_subgraph] WARN (refine/$name): threw ${e.message} — keeping prior content")
+                state
+            }
         }
 
-        val refinedScore = state.atsScore?.overallScore ?: 0
-        return if (refinedScore >= firstScore) {
-            println("[tailor_subgraph] Refinement improved ATS score: $firstScore → $refinedScore")
+        val refined = state.atsReport ?: return initial
+        return if (refined.overallScore >= report.overallScore) {
+            println("[tailor_subgraph] Refinement improved: overall ${report.overallScore} → ${refined.overallScore}, " +
+                "coverage ${report.mustHaveCoveragePct}% → ${refined.mustHaveCoveragePct}%")
             state
         } else {
-            println("[tailor_subgraph] Refinement scored lower ($refinedScore < $firstScore) — keeping first pass")
+            println("[tailor_subgraph] Refinement scored lower (${refined.overallScore} < ${report.overallScore}) — keeping first pass")
             initial
         }
     }
@@ -208,78 +241,93 @@ class ResumeTailoringSubgraph(
     private fun saveOutputFiles(outputDir: Path, state: TailorState) {
         // tailored_summary.txt
         state.tailoredSummary?.let { summary ->
-            try {
-                Files.writeString(outputDir.resolve("tailored_summary.txt"), summary)
-            } catch (e: Exception) {
-                System.err.println("[tailor_subgraph] WARN: failed to save tailored_summary.txt: ${e.message}")
-            }
+            writeQuietly(outputDir.resolve("tailored_summary.txt"), summary)
         }
 
-        // tailored_bullets.txt — human-readable
+        // tailored_bullets.txt — human-readable rewrite diagnostics
         state.tailoredBullets?.let { bullets ->
-            try {
-                val content = buildString {
-                    bullets.forEach { b ->
-                        appendLine("ORIGINAL:  ${b.original}")
-                        appendLine("REWRITTEN: ${b.rewritten}")
-                        appendLine("ALIGNMENT: ${b.jdAlignmentScore}/100")
-                        appendLine()
-                    }
+            val content = buildString {
+                bullets.forEach { b ->
+                    appendLine("ORIGINAL:   ${b.original}")
+                    appendLine("REWRITTEN:  ${b.rewritten}")
+                    appendLine("MUST-HAVES: ${b.mustHaveHits.joinToString(", ").ifBlank { "(none)" }}")
+                    appendLine("QUANTIFIED: ${b.quantified}   SENIORITY SIGNAL: ${b.senioritySignal}")
+                    appendLine()
                 }
-                Files.writeString(outputDir.resolve("tailored_bullets.txt"), content)
-            } catch (e: Exception) {
-                System.err.println("[tailor_subgraph] WARN: failed to save tailored_bullets.txt: ${e.message}")
             }
+            writeQuietly(outputDir.resolve("tailored_bullets.txt"), content)
         }
 
-        // restructured_skills.txt
+        // restructured_skills.txt — human-readable render of the groups
         state.restructuredSkills?.let { skills ->
-            try {
-                Files.writeString(outputDir.resolve("restructured_skills.txt"), skills.restructuredText)
-            } catch (e: Exception) {
-                System.err.println("[tailor_subgraph] WARN: failed to save restructured_skills.txt: ${e.message}")
+            val content = buildString {
+                skills.groupedByCategory.forEach { (label, items) ->
+                    appendLine("$label: ${items.joinToString(", ")}")
+                }
+                if (skills.removedForThisRole.isNotEmpty()) {
+                    appendLine()
+                    appendLine("Removed for this role: ${skills.removedForThisRole.joinToString(", ")}")
+                }
             }
+            writeQuietly(outputDir.resolve("restructured_skills.txt"), content)
         }
 
-        // ats_score.txt — human-readable scorecard
-        state.atsScore?.let { score ->
-            try {
-                val content = buildString {
-                    appendLine("ATS Score Report")
-                    appendLine("================")
-                    appendLine("Overall Score:       ${score.overallScore}/100")
-                    appendLine("Keyword Match:       ${score.keywordMatch}/100")
-                    appendLine("Skill Coverage:      ${score.skillCoverage}/100")
-                    appendLine("Seniority Alignment: ${score.seniorityAlignment}/100")
-                    appendLine("Quantification:      ${score.quantification}/100")
-                    appendLine("Format Safety:       ${score.formatSafety}/100")
-                    if (score.remainingGaps.isNotEmpty()) {
-                        appendLine()
-                        appendLine("Remaining Gaps:")
-                        score.remainingGaps.forEach { appendLine("  - $it") }
-                    }
-                    if (score.top3Improvements.isNotEmpty()) {
-                        appendLine()
-                        appendLine("Top Improvements:")
-                        score.top3Improvements.forEach { appendLine("  - $it") }
-                    }
+        // ats_report.txt — the actionable validation scorecard
+        state.atsReport?.let { report ->
+            val content = buildString {
+                appendLine("ATS Validation Report")
+                appendLine("=====================")
+                appendLine("Overall Score:        ${report.overallScore}/100")
+                appendLine("Must-Have Coverage:   ${report.mustHaveCoveragePct}%")
+                appendLine("Seniority Alignment:  ${report.seniorityAlignment}/100")
+                appendLine("Quantification:       ${report.quantification}/100")
+                appendLine("Format Safety:        ${report.formatSafety}/100")
+                if (report.missingTerms.isNotEmpty()) {
+                    appendLine()
+                    appendLine("Supported must-haves NOT yet placed (actionable):")
+                    report.missingTerms.forEach { appendLine("  - $it") }
                 }
-                Files.writeString(outputDir.resolve("ats_score.txt"), content)
-            } catch (e: Exception) {
-                System.err.println("[tailor_subgraph] WARN: failed to save ats_score.txt: ${e.message}")
+                if (report.unreachableTerms.isNotEmpty()) {
+                    appendLine()
+                    appendLine("Must-haves the candidate cannot claim (no resume evidence):")
+                    report.unreachableTerms.forEach { appendLine("  - $it") }
+                }
+                if (report.leakedUnsupportedTerms.isNotEmpty()) {
+                    appendLine()
+                    appendLine("INTEGRITY: unsupported terms leaked into the output:")
+                    report.leakedUnsupportedTerms.forEach { appendLine("  - $it") }
+                }
+                if (report.doubledWords.isNotEmpty()) {
+                    appendLine()
+                    appendLine("Doubled words found: ${report.doubledWords.joinToString(", ")}")
+                }
+                if (report.topImprovements.isNotEmpty()) {
+                    appendLine()
+                    appendLine("Top improvements:")
+                    report.topImprovements.forEach { appendLine("  - $it") }
+                }
             }
+            writeQuietly(outputDir.resolve("ats_report.txt"), content)
         }
 
         // gap_analysis.json — machine-readable for downstream tooling
         state.gapAnalysis?.let { gap ->
             try {
-                Files.writeString(
+                writeQuietly(
                     outputDir.resolve("gap_analysis.json"),
                     mapper.writerWithDefaultPrettyPrinter().writeValueAsString(gap)
                 )
             } catch (e: Exception) {
-                System.err.println("[tailor_subgraph] WARN: failed to save gap_analysis.json: ${e.message}")
+                System.err.println("[tailor_subgraph] WARN: failed to serialise gap_analysis.json: ${e.message}")
             }
+        }
+    }
+
+    private fun writeQuietly(path: Path, content: String) {
+        try {
+            Files.writeString(path, content)
+        } catch (e: Exception) {
+            System.err.println("[tailor_subgraph] WARN: failed to save ${path.fileName}: ${e.message}")
         }
     }
 }

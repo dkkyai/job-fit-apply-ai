@@ -1,9 +1,5 @@
 package com.jd.pipeline.nodes
 
-import com.jd.pipeline.models.CandidateBackground
-import com.jd.pipeline.models.CandidateIdentity
-import com.jd.pipeline.models.CandidateProfile
-import com.jd.pipeline.models.SkillGroup
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -12,14 +8,12 @@ import java.nio.file.Path
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
-import kotlin.test.assertFalse
 
 /**
  * Unit tests for [GenerateCandidateProfileNode] (the LLM-free `--init-profile` node).
  *
- * Covers résumé-YAML parsing, the years-of-experience estimator, the `__TODO__`
- * detection + editor-pass loop over the YAML config, and the candidate-context
- * Markdown builder.
+ * Covers résumé-YAML parsing and the `__TODO__` detection + editor-pass loop over
+ * the YAML config.
  */
 @DisplayName("GenerateCandidateProfileNodeTest")
 class GenerateCandidateProfileNodeTest {
@@ -106,49 +100,7 @@ class GenerateCandidateProfileNodeTest {
         assertContains(fields, "visa_status")
     }
 
-    // ── candidate-context markdown ─────────────────────────────────────────────
-
-    @Test
-    @DisplayName("buildCandidateContext renders identity, target title, summary, and core strengths")
-    fun rendersCandidateContext() {
-        val ctx = node.buildCandidateContext(sampleProfile())
-        assertContains(ctx, "Jane Doe")
-        assertContains(ctx, "Senior SDET")
-        assertContains(ctx, "Top differentiator 1")
-        assertContains(ctx, "Healthcare")
-    }
-
-    @Test
-    @DisplayName("renderTailorSkill substitutes {{CANDIDATE_CONTEXT}} from the template")
-    fun rendersTailorSkill() {
-        val template = "# TAILOR_SKILL\n\n${GenerateCandidateProfileNode.CANDIDATE_CONTEXT_PLACEHOLDER}\n\n## Rules"
-        val out = template.replace(
-            GenerateCandidateProfileNode.CANDIDATE_CONTEXT_PLACEHOLDER,
-            node.buildCandidateContext(sampleProfile())
-        )
-        assertFalse(out.contains(GenerateCandidateProfileNode.CANDIDATE_CONTEXT_PLACEHOLDER), "placeholder must be removed")
-        assertContains(out, "Senior SDET")
-    }
-
     // ── fixtures ───────────────────────────────────────────────────────────────
-
-    private fun sampleProfile() = CandidateProfile(
-        identity = CandidateIdentity(
-            name = "Jane Doe", firstName = "Jane", lastName = "Doe",
-            email = "jane@example.com", phone = "555-1234", location = "Seattle, WA"
-        ),
-        background = CandidateBackground(
-            targetTitle = "Senior SDET",
-            yearsExperience = 10,
-            summary = "Senior SDET focused on mobile test infra.",
-            education = emptyList(),
-            careerHistory = emptyList(),
-            coreStrengths = listOf("Top differentiator 1", "Top differentiator 2"),
-            languages = listOf("Kotlin", "Swift"),
-            domainExpertise = listOf("Healthcare", "Retail")
-        ),
-        skills = listOf(SkillGroup("Primary Stack", listOf("Kotlin")))
-    )
 
     private fun sampleResumeYaml() = """
         demographics:

@@ -89,12 +89,19 @@ object Config {
 
     // ── Scoring thresholds ───────────────────────────────────────────────────────
     val FIT_THRESHOLD: Float = get("FIT_THRESHOLD", "50").toFloat()
-    // ATS refinement pass: when the tailored resume's ATS overall score lands below the
-    // threshold, the subgraph re-runs summary+bullet rewrites once with the ATS feedback in
-    // the prompts and keeps the better-scoring pass. Adds up to one extra summary/bullet/score
+    // ATS refinement pass: when the validation report is actionable (missing supported
+    // must-haves, leaked unsupported terms, doubled words) or the overall score lands below
+    // the threshold, the subgraph re-runs the rewrite nodes once with the concrete gap list
+    // in the prompts and keeps the better-scoring pass. Adds up to one extra rewrite/score
     // round per job (~several minutes on local models) — disable for latency-sensitive runs.
     val ATS_REFINE_ENABLED: Boolean = get("ATS_REFINE_ENABLED", "true").toBoolean()
     val ATS_REFINE_THRESHOLD: Int = get("ATS_REFINE_THRESHOLD", "80").toInt()
+    // Bullet caps applied by the deterministic reorder node (recruiter-skim readability):
+    // the most recent role keeps up to CAP_RECENT bullets, older roles CAP_OLDER. The
+    // lowest-scoring bullets are dropped whole — text is never truncated.
+    val TAILOR_BULLET_CAP_ENABLED: Boolean = get("TAILOR_BULLET_CAP_ENABLED", "true").toBoolean()
+    val TAILOR_BULLET_CAP_RECENT: Int = get("TAILOR_BULLET_CAP_RECENT", "6").toInt()
+    val TAILOR_BULLET_CAP_OLDER: Int = get("TAILOR_BULLET_CAP_OLDER", "3").toInt()
     // Duplicate detection: jobs seen within this window are considered duplicates.
     // Re-opened positions after the window expires are treated as new.
     val DUPLICATE_WINDOW_DAYS: Int = get("DUPLICATE_WINDOW_DAYS", "30").toInt()
@@ -106,13 +113,16 @@ object Config {
     val SCAN_SKILL: Path = SKILLS_DIR.resolve("SCAN_SKILL.md")
     val SCRAPE_SKILL: Path = SKILLS_DIR.resolve("SCRAPE_SKILL.md")
     val SCORE_SKILL: Path = SKILLS_DIR.resolve("SCORE_SKILL.md")
-    // Resume tailoring subgraph skill files
-    val JD_EXTRACTION_SKILL: Path = SKILLS_DIR.resolve("JD_EXTRACTION_SKILL.md")
-    val GAP_ANALYSIS_SKILL: Path = SKILLS_DIR.resolve("GAP_ANALYSIS_SKILL.md")
-    val SUMMARY_REWRITE_SKILL: Path = SKILLS_DIR.resolve("SUMMARY_REWRITE_SKILL.md")
-    val BULLET_REWRITE_SKILL: Path = SKILLS_DIR.resolve("BULLET_REWRITE_SKILL.md")
-    val SKILLS_RESTRUCTURE_SKILL: Path = SKILLS_DIR.resolve("SKILLS_RESTRUCTURE_SKILL.md")
-    val ATS_SCORING_SKILL: Path = SKILLS_DIR.resolve("ATS_SCORING_SKILL.md")
+    // Resume tailoring subgraph skill files — all under skills/tailor/, sharing one rubric
+    val TAILOR_SKILLS_DIR: Path = SKILLS_DIR.resolve("tailor")
+    /** Shared ATS/recruiter/HM-depth/integrity rules prepended to every tailor node prompt. */
+    val RESUME_RUBRIC: Path = TAILOR_SKILLS_DIR.resolve("RESUME_RUBRIC.md")
+    val JD_EXTRACTION_SKILL: Path = TAILOR_SKILLS_DIR.resolve("JD_EXTRACTION_SKILL.md")
+    val GAP_ANALYSIS_SKILL: Path = TAILOR_SKILLS_DIR.resolve("GAP_ANALYSIS_SKILL.md")
+    val SUMMARY_REWRITE_SKILL: Path = TAILOR_SKILLS_DIR.resolve("SUMMARY_REWRITE_SKILL.md")
+    val BULLET_REWRITE_SKILL: Path = TAILOR_SKILLS_DIR.resolve("BULLET_REWRITE_SKILL.md")
+    val SKILLS_RESTRUCTURE_SKILL: Path = TAILOR_SKILLS_DIR.resolve("SKILLS_RESTRUCTURE_SKILL.md")
+    val ATS_VALIDATION_SKILL: Path = TAILOR_SKILLS_DIR.resolve("ATS_VALIDATION_SKILL.md")
 
     // ── ScanEmailTuner assets ────────────────────────────────────────────────
     val SCAN_EMAIL_TUNER_DIR: Path = PROJECT_DIR.resolve("tuner").resolve("scan-email-tuner")
@@ -189,10 +199,6 @@ object Config {
     // profile is authored as structured YAML — so RESUME_GEN / PROFILE_GEN models are gone.
     /** Committed slim YAML template for `candidate_profile.yaml` (scoring aids + preferences). */
     val CANDIDATE_PROFILE_TEMPLATE_PATH: Path = PROJECT_DIR.resolve("config").resolve("candidate_profile.template.yaml")
-    /** Committed TAILOR_SKILL template with `{{CANDIDATE_CONTEXT}}` placeholder. */
-    val TAILOR_SKILL_TEMPLATE_PATH: Path = SKILLS_DIR.resolve("TAILOR_SKILL.template.md")
-    /** Rendered TAILOR_SKILL.md, gitignored — produced by `--init-profile`. */
-    val TAILOR_SKILL_PATH: Path = SKILLS_DIR.resolve("TAILOR_SKILL.md")
 
     // ── Digest LLM fallback ───────────────────────────────────────────────────────
     val DIGEST_LLM_FALLBACK_ENABLED: Boolean = get("DIGEST_LLM_FALLBACK_ENABLED", "true").toBoolean()

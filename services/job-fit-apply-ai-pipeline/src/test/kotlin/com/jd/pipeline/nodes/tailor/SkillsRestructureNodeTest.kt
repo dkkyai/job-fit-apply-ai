@@ -4,15 +4,13 @@ import com.jd.pipeline.client.LlmCaller
 import com.jd.pipeline.models.*
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
  * Non-LLM tests for [SkillsRestructureNode]:
- * validation, prompt construction, prerequisite checks, JSON fence stripping.
+ * output validation, prompt construction, prerequisite checks, JSON fence stripping.
  */
 @DisplayName("SkillsRestructureNodeTest")
 class SkillsRestructureNodeTest {
@@ -42,7 +40,20 @@ class SkillsRestructureNodeTest {
         )
     )
 
-    private fun makeState(jd: JdStructured? = JdStructured("Role", "Sr", listOf("Kotlin")), profile: CandidateProfile? = makeProfile()) = TailorState(
+    private fun makeState(
+        jd: JdRequirements? = JdRequirements(
+            targetTitle = "Staff Engineer",
+            mustHave = listOf("Kotlin", "Appium"),
+            niceToHave = listOf("Rust"),
+            exactMatchTerms = listOf("GitHub Actions"),
+            skillGroupings = listOf(JdSkillGroup("Languages", listOf("Kotlin", "Java")))
+        ),
+        gap: GapAnalysis? = GapAnalysis(
+            supported = listOf(EvidencedTerm("Kotlin", "Primary Stack lists Kotlin")),
+            unsupported = listOf("COBOL")
+        ),
+        profile: CandidateProfile? = makeProfile()
+    ) = TailorState(
         jdText = "jd",
         candidateProfile = profile,
         fitScore = 0f,
@@ -51,14 +62,36 @@ class SkillsRestructureNodeTest {
         company = "Acme",
         roleTitle = "Eng",
         trackId = 0,
-        jdStructured = jd
+        jdRequirements = jd,
+        gapAnalysis = gap
     )
 
+    /** Valid new-schema LLM response (no legacy restructured_text field). */
+    private fun validJson() = """
+        {
+          "grouped_by_category": {
+            "Languages": ["Kotlin", "Java"],
+            "Automation": ["Playwright"]
+          },
+          "jd_matched_skills": ["Kotlin", "Playwright"],
+          "removed_for_this_role": ["Mentoring"]
+        }
+    """.trimIndent()
+
+    // ── prerequisite guards ───────────────────────────────────────────────────
+
     @Test
-    @DisplayName("process returns error when jdStructured is null")
-    fun errorWhenJdStructuredNull() {
+    @DisplayName("process returns error when jdRequirements is null")
+    fun errorWhenJdRequirementsNull() {
         val result = node.process(makeState(jd = null))
-        assertTrue(result.error.contains("jdStructured is null"))
+        assertTrue(result.error.contains("jdRequirements is null"))
+    }
+
+    @Test
+    @DisplayName("process returns error when gapAnalysis is null")
+    fun errorWhenGapAnalysisNull() {
+        val result = node.process(makeState(gap = null))
+        assertTrue(result.error.contains("gapAnalysis is null"))
     }
 
     @Test
@@ -68,49 +101,39 @@ class SkillsRestructureNodeTest {
         assertTrue(result.error.contains("candidateProfile is null"))
     }
 
-    @Test
-    @DisplayName("validateNotExampleText throws on placeholder strings")
-    fun validateThrowsOnPlaceholders() {
-        listOf("skill1", "skill2", "skill3", "skill4", "<MostRelevantCategory>", "<jd_matched_skill>", "<placeholder>")
-            .forEach { tell ->
-                val ex = assertThrows<IllegalStateException> {
-                    validateNotExampleText("Some text with $tell inside")
-                }
-                assertTrue(ex.message!!.contains(tell, ignoreCase = true))
-            }
+    // ── prompt construction (captured through the mock LLM) ──────────────────
+
+    private fun capturePrompt(state: TailorState = makeState()): String {
+        var captured = ""
+        val mockNode = SkillsRestructureNode(llm = LlmCaller { prompt ->
+            captured = prompt
+            validJson()
+        })
+        mockNode.process(state)
+        return captured
     }
 
     @Test
-    @DisplayName("validateNotExampleText passes on legitimate text")
-    fun validatePassesOnLegitimateText() {
-        validateNotExampleText("Kotlin, Java, Spring Boot, Kubernetes, Docker")
-        // no exception
-    }
-
-    @Test
-    @DisplayName("buildPrompt includes all candidate skill buckets")
+    @DisplayName("prompt lists every candidate skill group as '- label: items'")
     fun promptIncludesSkillBuckets() {
-        val jd = JdStructured(roleTitle = "Staff", seniority = "Staff", requiredSkills = listOf("Kotlin"))
-        val profile = makeProfile()
-        val prompt = buildPrompt(jd, profile)
-        assertTrue(prompt.contains("Primary Stack"))
-        assertTrue(prompt.contains("Mobile Automation"))
-        assertTrue(prompt.contains("CI/CD Platforms"))
-        assertTrue(prompt.contains("Web & API Automation"))
-        assertTrue(prompt.contains("Infrastructure & Observability"))
-        assertTrue(prompt.contains("Leadership"))
+        val prompt = capturePrompt()
+        assertTrue(prompt.contains("CANDIDATE SKILLS BY GROUP"))
+        assertTrue(prompt.contains("- Primary Stack: Kotlin"))
+        assertTrue(prompt.contains("- Mobile Automation: Appium"))
+        assertTrue(prompt.contains("- CI/CD Platforms: GitHub Actions"))
+        assertTrue(prompt.contains("- Web & API Automation: Playwright"))
+        assertTrue(prompt.contains("- Infrastructure & Observability: K8s"))
+        assertTrue(prompt.contains("- Leadership: Mentoring"))
     }
 
     @Test
-    @DisplayName("buildPrompt includes JD required and preferred skills")
-    fun promptIncludesJdSkills() {
-        val jd = JdStructured(
-            roleTitle = "Eng", seniority = "Sr",
-            requiredSkills = listOf("Kotlin"), preferredSkills = listOf("Rust")
-        )
-        val prompt = buildPrompt(jd, makeProfile())
-        assertTrue(prompt.contains("JD REQUIRED SKILLS: Kotlin"))
-        assertTrue(prompt.contains("JD PREFERRED SKILLS: Rust"))
+    @DisplayName("prompt includes must-have terms, supported terms, and the JD's own skill groupings")
+    fun promptIncludesJdSections() {
+        val prompt = capturePrompt()
+        assertTrue(prompt.contains("MUST-HAVE TERMS"))
+        assertTrue(prompt.contains("SUPPORTED TERMS"))
+        assertTrue(prompt.contains("THE JD'S OWN SKILL GROUPINGS"))
+        assertTrue(prompt.contains("- Languages: Kotlin, Java"))
     }
 
     @Test
@@ -127,44 +150,48 @@ class SkillsRestructureNodeTest {
         }
     }
 
-    // ── Mock LLM: process() happy path ────────────────────────────────────────
+    // ── Mock LLM: process() paths ─────────────────────────────────────────────
 
     @Test
     @DisplayName("valid LLM response populates restructuredSkills on the state")
     fun validLlmResponsePopulatesSkills() {
-        val json = """
-            {
-              "restructured_text": "Kotlin | Java | Playwright | GitHub Actions",
-              "removed_for_this_role": [],
-              "jd_matched_skills": ["Kotlin", "Playwright"],
-              "grouped_by_category": {
-                "Languages": ["Kotlin", "Java"],
-                "Automation": ["Playwright"]
-              }
-            }
-        """.trimIndent()
-        val mockNode = SkillsRestructureNode(llm = LlmCaller { json })
+        val mockNode = SkillsRestructureNode(llm = LlmCaller { validJson() })
         val result = mockNode.process(makeState())
         assertNotNull(result.restructuredSkills)
-        assertEquals("Kotlin | Java | Playwright | GitHub Actions", result.restructuredSkills!!.restructuredText)
-        assertEquals(listOf("Kotlin", "Playwright"), result.restructuredSkills!!.jdMatchedSkills)
         assertEquals(2, result.restructuredSkills!!.groupedByCategory.size)
+        assertEquals(listOf("Kotlin", "Java"), result.restructuredSkills!!.groupedByCategory["Languages"])
+        assertEquals(listOf("Kotlin", "Playwright"), result.restructuredSkills!!.jdMatchedSkills)
+        assertEquals(listOf("Mentoring"), result.restructuredSkills!!.removedForThisRole)
     }
 
     @Test
-    @DisplayName("LLM returning placeholder text produces error state")
+    @DisplayName("LLM returning placeholder skills inside a group produces error state")
     fun placeholderTextProducesError() {
         val json = """
             {
-              "restructured_text": "skill1 | skill2 | skill3",
-              "removed_for_this_role": [],
+              "grouped_by_category": { "Languages": ["skill1", "skill2"] },
               "jd_matched_skills": [],
-              "grouped_by_category": {}
+              "removed_for_this_role": []
             }
         """.trimIndent()
         val mockNode = SkillsRestructureNode(llm = LlmCaller { json })
         val result = mockNode.process(makeState())
-        assertTrue(result.error.isNotBlank(), "Expected error for placeholder text")
+        assertTrue(result.error.contains("example/placeholder"), "Expected example/placeholder error, got: ${result.error}")
+    }
+
+    @Test
+    @DisplayName("LLM returning empty grouped_by_category produces error state")
+    fun emptyGroupsProduceError() {
+        val json = """
+            {
+              "grouped_by_category": {},
+              "jd_matched_skills": [],
+              "removed_for_this_role": []
+            }
+        """.trimIndent()
+        val mockNode = SkillsRestructureNode(llm = LlmCaller { json })
+        val result = mockNode.process(makeState())
+        assertTrue(result.error.contains("no skill groups"), "Expected no-skill-groups error, got: ${result.error}")
     }
 
     @Test
@@ -175,23 +202,7 @@ class SkillsRestructureNodeTest {
         assertTrue(result.error.isNotBlank())
     }
 
-    // ── reflection helpers to exercise internal methods ─────────────────────
-
-    private fun validateNotExampleText(text: String) {
-        val m = SkillsRestructureNode::class.java.getDeclaredMethod("validateNotExampleText", String::class.java)
-        m.isAccessible = true
-        try {
-            m.invoke(node, text)
-        } catch (e: java.lang.reflect.InvocationTargetException) {
-            throw e.targetException
-        }
-    }
-
-    private fun buildPrompt(jd: JdStructured, profile: CandidateProfile): String {
-        val m = SkillsRestructureNode::class.java.getDeclaredMethod("buildPrompt", JdStructured::class.java, CandidateProfile::class.java)
-        m.isAccessible = true
-        return m.invoke(node, jd, profile) as String
-    }
+    // ── reflection helper to exercise the private fence stripper ─────────────
 
     private fun invokeStripJsonFences(text: String): String {
         val m = SkillsRestructureNode::class.java.getDeclaredMethod("stripJsonFences", String::class.java)

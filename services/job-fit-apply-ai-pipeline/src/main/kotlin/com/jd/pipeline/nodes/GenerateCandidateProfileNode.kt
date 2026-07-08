@@ -24,8 +24,7 @@ import java.time.format.DateTimeFormatter
  *     + scoring aids a résumé can't supply (backing up any prior copy).
  *  4. Opens `$EDITOR` so the user replaces the `__TODO__` sentinels; refuses to proceed
  *     while any remain.
- *  5. Renders `generated_resume.html` (deterministically) + `TAILOR_SKILL.md` from the
- *     merged profile.
+ *  5. Renders `generated_resume.html` (deterministically) from the merged profile.
  */
 class GenerateCandidateProfileNode(
     private val openEditor: (Path) -> Unit = ::openEditorImpl
@@ -46,7 +45,6 @@ class GenerateCandidateProfileNode(
 
         val profile = ProfileLoader.merge(resume, finalConfig)
         renderGeneratedResume(profile)
-        renderTailorSkill(profile)
 
         printSummary(profile, profilePath)
         return profilePath
@@ -133,32 +131,6 @@ class GenerateCandidateProfileNode(
         println("[init_profile] Wrote $out")
     }
 
-    internal fun renderTailorSkill(profile: CandidateProfile) {
-        val out = Config.TAILOR_SKILL_PATH
-        backupIfExists(out)
-        val template = Files.readString(Config.TAILOR_SKILL_TEMPLATE_PATH)
-        Files.writeString(out, template.replace(CANDIDATE_CONTEXT_PLACEHOLDER, buildCandidateContext(profile)))
-        println("[init_profile] Wrote $out")
-    }
-
-    /** Markdown block dropped into TAILOR_SKILL.md's `{{CANDIDATE_CONTEXT}}` slot. */
-    internal fun buildCandidateContext(profile: CandidateProfile): String = buildString {
-        val name = profile.identity.fullName.ifBlank { "The candidate" }
-        val target = profile.background.targetTitle.trim().ifBlank { "(target role unspecified)" }
-        append("**$name** is targeting **$target** roles.\n\n")
-        if (profile.background.summary.isNotBlank()) {
-            append("**Summary:** ${profile.background.summary}\n\n")
-        }
-        if (profile.background.coreStrengths.isNotEmpty()) {
-            append("**Core differentiators to emphasise:**\n")
-            profile.background.coreStrengths.forEach { append("- $it\n") }
-            append("\n")
-        }
-        if (profile.background.domainExpertise.isNotEmpty()) {
-            append("**Domain expertise:** ${profile.background.domainExpertise.joinToString(", ")}\n")
-        }
-    }.trimEnd()
-
     // ── helpers ────────────────────────────────────────────────────────────────
 
     private fun backupIfExists(path: Path) {
@@ -174,7 +146,7 @@ class GenerateCandidateProfileNode(
     private fun printSummary(profile: CandidateProfile, profilePath: Path) {
         val skillCount = profile.skills.sumOf { it.items.size }
         println()
-        println("✓ Wrote $profilePath, ${Config.GENERATED_RESUME_HTML_PATH.fileName}, ${Config.TAILOR_SKILL_PATH.fileName}.")
+        println("✓ Wrote $profilePath and ${Config.GENERATED_RESUME_HTML_PATH.fileName}.")
         println("  - Name:           ${profile.identity.fullName}")
         println("  - Target title:   ${profile.background.targetTitle.trim()}")
         println("  - Career entries: ${profile.background.careerHistory.size}")
@@ -185,8 +157,6 @@ class GenerateCandidateProfileNode(
     }
 
     companion object {
-        const val CANDIDATE_CONTEXT_PLACEHOLDER = "{{CANDIDATE_CONTEXT}}"
-
         private fun openEditorImpl(path: Path) {
             val editor = System.getenv("VISUAL")
                 ?: System.getenv("EDITOR")

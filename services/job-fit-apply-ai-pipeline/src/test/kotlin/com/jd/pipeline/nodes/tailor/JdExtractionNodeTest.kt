@@ -1,7 +1,6 @@
 package com.jd.pipeline.nodes.tailor
 
 import com.jd.pipeline.client.LlmCaller
-import com.jd.pipeline.models.*
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -14,9 +13,6 @@ import kotlin.test.assertTrue
 @DisplayName("JdExtractionNodeTest")
 class JdExtractionNodeTest {
 
-    private val mapper = com.fasterxml.jackson.databind.ObjectMapper()
-        .registerModule(com.fasterxml.jackson.module.kotlin.KotlinModule.Builder().build())
-
     private val baseState = TailorState(
         jdText = "We need a Kotlin engineer...",
         candidateProfile = null,
@@ -25,19 +21,9 @@ class JdExtractionNodeTest {
         company = "Acme", roleTitle = "Engineer", trackId = 1
     )
 
-    private fun fullJson(roleTitle: String, seniority: String, requiredSkills: List<String>): String {
-        val skills = requiredSkills.joinToString(", ") { "\"$it\"" }
-        return """{"role_title":"$roleTitle","seniority":"$seniority","required_skills":[$skills],"preferred_skills":[],"domain_keywords":[],"ats_exact_phrases":[],"company_value_signals":[]}"""
-    }
-
-    @Test
-    @DisplayName("skips LLM call when jdStructured is already present")
-    fun skipsWhenAlreadyExtracted() {
-        val existing = JdStructured(roleTitle = "Sr Eng", seniority = "Sr", requiredSkills = listOf("Kotlin"))
-        val state = baseState.copy(jdStructured = existing)
-        val result = JdExtractionNode().process(state)
-        assertEquals(existing, result.jdStructured)
-        assertEquals("", result.error)
+    private fun fullJson(targetTitle: String, mustHave: List<String>): String {
+        val must = mustHave.joinToString(", ") { "\"$it\"" }
+        return """{"target_title":"$targetTitle","seniority_signals":[],"must_have":[$must],"nice_to_have":[],"exact_match_terms":[],"skill_groupings":[],"domain_keywords":[],"company_value_signals":[]}"""
     }
 
     @Test
@@ -49,16 +35,15 @@ class JdExtractionNodeTest {
     }
 
     @Test
-    @DisplayName("strips JSON fences and parses LLM response")
-    fun stripsJsonFencesAndParses() {
-        val json = fullJson("Staff", "Staff", listOf("Kotlin"))
+    @DisplayName("parses LLM response into jdRequirements")
+    fun parsesLlmResponse() {
+        val json = fullJson("Staff SDET", listOf("Kotlin", "Espresso"))
         val mockLlm = LlmCaller { json }
         val result = JdExtractionNode(llm = mockLlm).process(baseState)
         assertEquals("", result.error, "expected no error, got: ${result.error}")
-        assertNotNull(result.jdStructured, "expected jdStructured to be non-null")
-        assertEquals("Staff", result.jdStructured!!.roleTitle)
-        assertEquals("Staff", result.jdStructured!!.seniority)
-        assertEquals(listOf("Kotlin"), result.jdStructured!!.requiredSkills)
+        assertNotNull(result.jdRequirements, "expected jdRequirements to be non-null")
+        assertEquals("Staff SDET", result.jdRequirements!!.targetTitle)
+        assertEquals(listOf("Kotlin", "Espresso"), result.jdRequirements!!.mustHave)
     }
 
     @Test
@@ -66,13 +51,22 @@ class JdExtractionNodeTest {
     fun stripsMarkdownFences() {
         val json = """
             ```json
-            ${fullJson("Jr", "Junior", listOf("Java"))}
+            ${fullJson("Junior Engineer", listOf("Java"))}
             ```
         """.trimIndent()
         val mockLlm = LlmCaller { json }
         val result = JdExtractionNode(llm = mockLlm).process(baseState)
         assertEquals("", result.error, "expected no error, got: ${result.error}")
-        assertNotNull(result.jdStructured, "expected jdStructured to be non-null")
-        assertEquals("Jr", result.jdStructured!!.roleTitle)
+        assertNotNull(result.jdRequirements, "expected jdRequirements to be non-null")
+        assertEquals("Junior Engineer", result.jdRequirements!!.targetTitle)
+    }
+
+    @Test
+    @DisplayName("returns error when the LLM returns an empty requirement set")
+    fun errorWhenEmptyRequirementSet() {
+        val json = fullJson(targetTitle = "", mustHave = emptyList())
+        val mockLlm = LlmCaller { json }
+        val result = JdExtractionNode(llm = mockLlm).process(baseState)
+        assertTrue(result.error.contains("empty requirement set"))
     }
 }
