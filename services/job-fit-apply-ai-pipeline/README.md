@@ -24,12 +24,12 @@ The pipeline is split into two halves connected by the bridge job queue:
 After cloning, one command populates every personalised file from your existing resume:
 
 ```bash
-./gradlew run --args="--init-profile path/to/your_resume.pdf"
+./gradlew run --args="--init-profile path/to/resume.yaml"
 ```
 
-Supported formats: `.pdf`, `.docx`, `.html`, `.md`.
+Your résumé is authored as structured YAML — see `src/main/resources/resume/resume.template.yaml` for the shape (demographics, summary, experience with categorised bullets, projects, education, labelled skill groups).
 
-`--init-profile` parses your resume into a structured `config/candidate_profile.json`, opens `$EDITOR` so you can fill in the preference fields a resume can't supply (visa, comp, work arrangement, …), then renders `generated_resume.html` and `TAILOR_SKILL.md` from your profile.
+`--init-profile` installs your résumé as `resume.yaml`, scaffolds a slim `config/candidate_profile.yaml` (the preferences + scoring aids a résumé can't supply: visa, comp, work arrangement, target title, core strengths, …), opens `$EDITOR` to fill in the `__TODO__` fields, then renders `generated_resume.html` (deterministically, no LLM) and `TAILOR_SKILL.md`.
 
 > You don't need Gmail or Supabase configured to run `--init-profile`. Those layers come in once you want to drive the pipeline from real email or persist scored jobs.
 
@@ -131,18 +131,18 @@ For every tailored job, `ResumeTailoringSubgraph` writes to `output/<timestamp>_
 ## First-time setup: `--init-profile`
 
 ```bash
-./gradlew run --args="--init-profile path/to/your_resume.pdf"
+./gradlew run --args="--init-profile path/to/resume.yaml"
 ```
 
 What it does:
 
-1. Extracts text from the resume.
-2. Calls `PROFILE_GEN_MODEL` with `PROFILE_GEN_SKILL.md` to produce a draft `config/candidate_profile.json`.
-3. Opens the draft in your `$EDITOR` so you can fill in the ~14 preference fields a resume cannot supply (visa, target compensation, work arrangement, etc.). Save and exit when done.
-4. Renders `src/main/resources/resume/generated_resume.html` from `base_resume.template.html` + your profile.
+1. Validates your résumé YAML (`resume.yaml` shape — see `resume.template.yaml`).
+2. Installs it as the canonical `src/main/resources/resume/resume.yaml`.
+3. Scaffolds `config/candidate_profile.yaml` from `candidate_profile.template.yaml` and opens it in your `$EDITOR` so you can fill in the preference + scoring-aid `__TODO__` fields a résumé cannot supply (visa, target compensation, work arrangement, target title, core strengths). Save and exit when done. Everything derivable from the résumé — `years_experience` (from the dates), languages, and domain expertise (from the skill groups) — is computed automatically, not stored here.
+4. Renders `src/main/resources/resume/generated_resume.html` **deterministically** from the merged profile (no LLM).
 5. Renders `src/main/resources/skills/TAILOR_SKILL.md` from `TAILOR_SKILL.template.md` + a candidate-context block built from your profile.
 
-The three rendered files (`candidate_profile.json`, `generated_resume.html`, `TAILOR_SKILL.md`) are **gitignored** — your personal data never gets committed.
+The personal files (`resume.yaml`, `candidate_profile.yaml`, `generated_resume.html`, `TAILOR_SKILL.md`) are **gitignored** — your personal data never gets committed.
 
 > **Backups:** any pre-existing copy of a generated file is moved aside with a timestamped `.bak` suffix before being overwritten.
 
@@ -186,8 +186,8 @@ All node-level model variables default to `qwen3.5:9b-q4_K_M`. Override per node
 | `SKILLS_MODEL` (defaults to `RESUME_REASONING_MODEL`) | `JdExtractionNode`, `GapAnalysisNode`, `SkillsRestructureNode`, `AtsScoringNode` |
 | `COVER_LETTER_MODEL` | `GenerateCoverLetterNode` |
 | `DRAFT_REPLY_MODEL` | `CreateDraftReply` |
-| `RESUME_GEN_MODEL` | `GenerateResumeHtmlNode` — template + structured profile → HTML resume |
-| `PROFILE_GEN_MODEL` (defaults to `RESUME_GEN_MODEL`) | `GenerateCandidateProfileNode` — resume → `candidate_profile.json` |
+
+> Résumé HTML is now rendered deterministically from `resume.yaml` (no LLM), so the former `RESUME_GEN_MODEL` / `PROFILE_GEN_MODEL` are gone.
 
 ### Backend routing (`:cloud` and `:ollama-cloud` suffixes)
 
@@ -299,8 +299,6 @@ Prompt files live in `src/main/resources/skills/` and are loaded at runtime — 
 | `SKILLS_RESTRUCTURE_SKILL.md` | `SkillsRestructureNode` | Reorder and group skills into JD-aligned categories |
 | `ATS_SCORING_SKILL.md` | `AtsScoringNode` | Composite ATS score |
 | `DRAFT_REPLY_SKILL.md` | `CreateDraftReply` | Recruiter reply draft |
-| `RESUME_GEN_SKILL.md` | `GenerateResumeHtmlNode` | HTML resume generation from structured `TailoredProfile` |
-| `PROFILE_GEN_SKILL.md` | `GenerateCandidateProfileNode` | Resume → `candidate_profile.json` |
 
 ## Running
 
@@ -308,8 +306,8 @@ Prompt files live in `src/main/resources/skills/` and are loaded at runtime — 
 # Compile only
 ./gradlew compileKotlin
 
-# First time — populate your profile from a resume
-./gradlew run --args="--init-profile path/to/your_resume.pdf"
+# First time — populate your profile from a résumé YAML
+./gradlew run --args="--init-profile path/to/resume.yaml"
 
 # Batch mode (default: 3 emails from Gmail)
 ./gradlew run
@@ -336,8 +334,8 @@ Prompt files live in `src/main/resources/skills/` and are loaded at runtime — 
 ./gradlew run --args="--test-supabase"    # Supabase connectivity
 ./gradlew run --args="--test-gmail"       # Gmail auth + fetch
 
-# Generate an HTML resume from a DOCX or PDF source (no JD context)
-./gradlew run --args='--resume-gen /path/to/resume.docx'
+# Render an HTML resume from a résumé YAML deterministically (no JD context, no LLM)
+./gradlew run --args='--resume-gen src/main/resources/resume/resume.yaml'
 ```
 
 ### JSearch API mode
@@ -480,16 +478,18 @@ src/main/kotlin/com/jd/pipeline/
 
 src/main/resources/
 ├── resume/
-│   ├── base_resume.template.html      # Committed structural template
-│   └── generated_resume.html          # Gitignored — produced by --init-profile
+│   ├── resume.template.yaml           # Committed example résumé (structured YAML)
+│   ├── resume.yaml                    # Gitignored — your canonical résumé
+│   ├── base_resume.template.html      # Committed head+CSS skeleton (deterministic render)
+│   └── generated_resume.html          # Gitignored — produced by --init-profile / --resume-gen
 └── skills/
     ├── *_SKILL.md                     # Committed prompt files, runtime-loaded
     ├── TAILOR_SKILL.template.md       # Committed; rendered to TAILOR_SKILL.md by --init-profile
     └── TAILOR_SKILL.md                # Gitignored — produced by --init-profile
 
 config/
-├── candidate_profile.template.json    # Committed schema reference
-└── candidate_profile.json             # Gitignored — produced by --init-profile
+├── candidate_profile.template.yaml    # Committed slim template (scoring aids + preferences)
+└── candidate_profile.yaml             # Gitignored — produced by --init-profile
 
 tuner/
 ├── scan-email-tuner/                  # Dataset-driven tuners (skill + PROMPT + data-set)

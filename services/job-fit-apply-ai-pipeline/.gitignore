@@ -34,7 +34,8 @@ dkkytech_credentials.json
 output/
 
 # Personal data — populated by `--init-profile`. Templates ship in source.
-config/candidate_profile.json
+config/candidate_profile.yaml
+src/main/resources/resume/resume.yaml
 src/main/resources/resume/generated_resume.html
 src/main/resources/resume/*-generated.html
 src/main/resources/skills/TAILOR_SKILL.md

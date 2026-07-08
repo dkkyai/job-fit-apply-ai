@@ -290,10 +290,7 @@ class DraftReplyComposerTest {
             targetTitle = "SDET", yearsExperience = 10, education = emptyList(), careerHistory = emptyList(),
             coreStrengths = emptyList(), languages = emptyList(), domainExpertise = emptyList(),
         ),
-        skills = CandidateSkills(
-            primaryStack = emptyList(), mobileAutomation = emptyList(), ciCdPlatforms = emptyList(),
-            webApiAutomation = emptyList(), infrastructureObservability = emptyList(), leadershipAbilities = emptyList(),
-        ),
+        skills = emptyList(),
     )
 
     companion object {

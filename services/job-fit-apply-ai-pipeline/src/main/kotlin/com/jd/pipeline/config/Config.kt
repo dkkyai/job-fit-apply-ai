@@ -125,13 +125,22 @@ object Config {
     val SCRAPE_JD_URL_TUNER_SKILL: Path = SCRAPE_JD_URL_TUNER_DIR.resolve("SCRAPE_JD_URL_TUNER_SKILL.md")
 
     // ── Resume ───────────────────────────────────────────────────────────────────
-    /** Generic, committed HTML template used by `--init-profile` to render a personal resume. */
+    /** Canonical, candidate-authored résumé (structured YAML) — the source of all résumé content.
+     *  Gitignored (personal). Override with the RESUME_YAML_PATH env var to point elsewhere. */
+    val RESUME_YAML_PATH: Path = get("RESUME_YAML_PATH", "").let { override ->
+        if (override.isNotBlank()) Paths.get(override)
+        else PROJECT_DIR.resolve("src/main/resources/resume").resolve("resume.yaml")
+    }
+    /** Committed example résumé YAML — reference + `--init-profile` starting point. */
+    val RESUME_YAML_TEMPLATE_PATH: Path = PROJECT_DIR.resolve("src/main/resources/resume").resolve("resume.template.yaml")
+    /** Committed HTML head+CSS skeleton (with a `<!-- RESUME_BODY -->` sentinel) the deterministic renderer fills in. */
     val BASE_RESUME_TEMPLATE_PATH: Path = PROJECT_DIR.resolve("src/main/resources/resume").resolve("base_resume.template.html")
-    /** Personal HTML resume rendered from the candidate profile. Gitignored — produced by `--init-profile`. */
+    /** Personal HTML résumé rendered from resume.yaml. Gitignored — produced by `--init-profile` / `--resume-gen`. */
     val GENERATED_RESUME_HTML_PATH: Path = PROJECT_DIR.resolve("src/main/resources/resume").resolve("generated_resume.html")
 
     // ── User Profile ─────────────────────────────────────────────────────────────
-    val CANDIDATE_PROFILE_PATH: Path = PROJECT_DIR.resolve("config").resolve("candidate_profile.json")
+    /** Slim pipeline config (preferences + scoring aids). Gitignored — produced by `--init-profile`. */
+    val CANDIDATE_PROFILE_PATH: Path = PROJECT_DIR.resolve("config").resolve("candidate_profile.yaml")
 
     // ── Output ───────────────────────────────────────────────────────────────────
     val OUTPUT_DIR: Path = PROJECT_DIR.resolve("output")
@@ -175,19 +184,11 @@ object Config {
     val PLAYWRIGHT_FALLBACK_ON_THIN_CONTENT: Boolean = get("PLAYWRIGHT_FALLBACK_ON_THIN_CONTENT", "true").toBoolean()
     val PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH: Int = get("PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH", "500").toInt()
 
-    // ── Resume generation from DOCX/PDF ─────────────────────────────────────────
-    // Needs strong instruction-following to replicate HTML structure from a template,
-    // plus a longer context window for the full resume HTML — a capable prose model fits well.
-    // Best local (oMLX): gemma-4-12B-it-qat-4bit   Cloud: deepseek-v4-pro:ollama-cloud
-    val RESUME_GEN_MODEL: String = get("RESUME_GEN_MODEL", "gemma-4-12B-it-qat-4bit")
-    val RESUME_GEN_SKILL: Path = SKILLS_DIR.resolve("RESUME_GEN_SKILL.md")
-
-    // ── Candidate profile generation (--init-profile) ───────────────────────────
-    /** Model for parsing a resume into a structured candidate profile. Defaults to RESUME_GEN_MODEL. */
-    val PROFILE_GEN_MODEL: String = get("PROFILE_GEN_MODEL", RESUME_GEN_MODEL)
-    val PROFILE_GEN_SKILL: Path = SKILLS_DIR.resolve("PROFILE_GEN_SKILL.md")
-    /** Committed JSON template + schema reference for `candidate_profile.json`. */
-    val CANDIDATE_PROFILE_TEMPLATE_PATH: Path = PROJECT_DIR.resolve("config").resolve("candidate_profile.template.json")
+    // ── Candidate profile / résumé onboarding (--init-profile) ──────────────────
+    // Résumé HTML is now rendered deterministically from resume.yaml (no LLM), and the
+    // profile is authored as structured YAML — so RESUME_GEN / PROFILE_GEN models are gone.
+    /** Committed slim YAML template for `candidate_profile.yaml` (scoring aids + preferences). */
+    val CANDIDATE_PROFILE_TEMPLATE_PATH: Path = PROJECT_DIR.resolve("config").resolve("candidate_profile.template.yaml")
     /** Committed TAILOR_SKILL template with `{{CANDIDATE_CONTEXT}}` placeholder. */
     val TAILOR_SKILL_TEMPLATE_PATH: Path = SKILLS_DIR.resolve("TAILOR_SKILL.template.md")
     /** Rendered TAILOR_SKILL.md, gitignored — produced by `--init-profile`. */

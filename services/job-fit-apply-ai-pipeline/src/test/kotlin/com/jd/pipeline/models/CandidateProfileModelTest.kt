@@ -59,12 +59,23 @@ class CandidateProfileModelTest {
     }
 
     @Test
-    @DisplayName("EducationEntry.dateRange with null endDate renders as Present")
-    fun educationEntryDateRange() {
-        val entry = EducationEntry(
-            degree = "M.S.", school = "Stanford", location = null,
-            startDate = "2020", endDate = null
+    @DisplayName("EducationEntry.degreeLine joins degree and field with a pipe")
+    fun educationEntryDegreeLine() {
+        val withField = EducationEntry(
+            degree = "B.S.", fieldOfStudy = "Computer Engineering",
+            school = "Purdue", location = "West Lafayette, IN", year = "2005"
         )
-        assertEquals("2020 – Present", entry.dateRange)
+        assertEquals("B.S. | Computer Engineering", withField.degreeLine)
+
+        val withoutField = EducationEntry(degree = "M.S.", school = "Stanford", year = "2020")
+        assertEquals("M.S.", withoutField.degreeLine)
+    }
+
+    @Test
+    @DisplayName("Bullet carries a category label plus text")
+    fun bulletShape() {
+        val b = Bullet(category = "Leadership", text = "Led a team of 5.")
+        assertEquals("Leadership", b.category)
+        assertEquals("Led a team of 5.", b.text)
     }
 }

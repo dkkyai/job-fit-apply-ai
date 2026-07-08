@@ -1,0 +1,71 @@
+# Canonical résumé — the single source of all résumé content.
+# Copy this to resume.yaml (or pass it to `--init-profile`) and fill in your details.
+# The tailoring subgraph rewrites the summary / bullets / skill groups per job; the base
+# résumé is rendered to HTML deterministically by ResumeHtmlRenderer (no LLM).
+
+demographics:
+  first_name: Jane
+  last_name: Doe
+  email: jane.doe@example.com
+  phone: 555-123-4567
+  location: City, ST
+  postal_code: "00000"
+  linkedin_url: null
+  github_url: null
+  portfolio_url: null
+  website_url: null
+
+# One- to three-sentence professional summary; rewritten per-job by the tailoring subgraph.
+summary: >
+  Senior engineer with N years of experience building X, specialising in Y, targeting
+  Z roles.
+
+experience:
+  - role: Senior Widget Engineer
+    company: Acme Corp
+    location: City, ST
+    start: 2021-03
+    end: null            # null (or omit) renders as "Present"
+    bullets:
+      - category: Impact
+        text: >
+          Quantified accomplishment with scope and measurable impact — what you did,
+          the tool or method, and the result.
+      - category: Leadership
+        text: >
+          Add or remove bullets per role. Each bullet has a short bold category label
+          plus the accomplishment text.
+
+  - role: Widget Engineer
+    company: Beta LLC
+    location: City, ST
+    start: 2018-06
+    end: 2021-02
+    bullets:
+      - category: Delivery
+        text: >
+          One quantified accomplishment per bullet.
+
+# Render this section only when non-empty; otherwise omit entirely.
+projects: []
+
+education:
+  - degree: Bachelor of Science
+    field: Field of Study
+    school: School Name
+    location: City, ST
+    year: 2015
+
+# Each entry becomes one "<strong>Label:</strong> a · b · c" line in the Skills section.
+skills:
+  - label: Languages
+    items:
+      - Language A
+      - Language B
+  - label: Frameworks & Tools
+    items:
+      - Tool A
+      - Tool B
+  - label: Domain Expertise
+    items:
+      - Domain A

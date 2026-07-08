@@ -22,7 +22,7 @@ class SummaryRewriteNodeTest {
             education = emptyList(), careerHistory = emptyList(),
             coreStrengths = emptyList(), languages = emptyList(), domainExpertise = emptyList()
         ),
-        skills = CandidateSkills(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+        skills = emptyList()
     )
 
     private val baseState = TailorState(

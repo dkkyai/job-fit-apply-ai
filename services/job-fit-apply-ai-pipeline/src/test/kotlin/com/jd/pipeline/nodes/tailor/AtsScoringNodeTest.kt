@@ -19,10 +19,10 @@ class AtsScoringNodeTest {
         background = CandidateBackground(
             targetTitle = "Eng", yearsExperience = 5,
             summary = "", education = emptyList(),
-            careerHistory = listOf(CareerEntry("Eng", "Acme", "", "2020", null, listOf("B1"))),
+            careerHistory = listOf(CareerEntry("Eng", "Acme", "", "2020", null, listOf(Bullet("", "B1")))),
             coreStrengths = emptyList(), languages = emptyList(), domainExpertise = emptyList()
         ),
-        skills = CandidateSkills(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+        skills = emptyList()
     )
 
     private val baseState = TailorState(

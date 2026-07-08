@@ -36,20 +36,20 @@ class ResumeTailoringSubgraphProcessTest {
                     role = "Senior SDET", company = "Acme",
                     startDate = "2020-01", endDate = "2024-01",
                     location = "",
-                    bullets = listOf("Led mobile test framework."),
+                    bullets = listOf(Bullet("", "Led mobile test framework.")),
                 )
             ),
             coreStrengths = listOf("Mobile automation"),
             languages = emptyList(),
             domainExpertise = listOf("SDET")
         ),
-        skills = CandidateSkills(
-            primaryStack = listOf("Kotlin"),
-            mobileAutomation = listOf("Appium"),
-            ciCdPlatforms = listOf("GitHub Actions"),
-            webApiAutomation = listOf("Playwright"),
-            infrastructureObservability = listOf("K8s"),
-            leadershipAbilities = listOf("Mentoring")
+        skills = listOf(
+            SkillGroup("Primary Stack", listOf("Kotlin")),
+            SkillGroup("Mobile Automation", listOf("Appium")),
+            SkillGroup("CI/CD Platforms", listOf("GitHub Actions")),
+            SkillGroup("Web & API Automation", listOf("Playwright")),
+            SkillGroup("Infrastructure & Observability", listOf("K8s")),
+            SkillGroup("Leadership", listOf("Mentoring"))
         )
     )
 
@@ -120,19 +120,17 @@ class ResumeTailoringSubgraphProcessTest {
         @DisplayName("renders untailored profile and returns without calling tailor nodes")
         fun sparseJdSkipsTailorNodes(@TempDir tempDir: Path) {
             val mockJdExt = mock<JdExtractionNode>()
-            val mockHtmlNode = mock<GenerateResumeHtmlNode>()
-            whenever(mockHtmlNode.renderFromProfile(any())).thenReturn("<html>resume</html>")
-            val subgraph = ResumeTailoringSubgraph(
-                jdExtraction = mockJdExt,
-                resumeHtmlNode = mockHtmlNode,
-            )
+            val subgraph = ResumeTailoringSubgraph(jdExtraction = mockJdExt)
             val sparse = "short jd text"
             val input = tailorInput(jdText = sparse).copy(
                 outputPath = tempDir.toString()
             )
             subgraph.process(input)
             verify(mockJdExt, never()).process(any())
-            verify(mockHtmlNode).renderFromProfile(any())
+            assertTrue(
+                java.nio.file.Files.exists(tempDir.resolve("tailored_resume.html")),
+                "untailored resume HTML should still be written for a sparse JD",
+            )
         }
     }
 
@@ -148,10 +146,6 @@ class ResumeTailoringSubgraphProcessTest {
         @DisplayName("all six tailor nodes are called in sequence")
         fun allNodesCalledInSequence(@TempDir tempDir: Path) {
             val calls = mutableListOf<String>()
-
-            fun trackingNode(name: String) = JdExtractionNode::class.java.let {
-                // We return mock nodes that log their call order and pass state through
-            }
 
             val jdExt  = mock<JdExtractionNode>().apply {
                 whenever(process(any())).doAnswer { inv ->
@@ -204,10 +198,6 @@ class ResumeTailoringSubgraphProcessTest {
                     )
                 }
             }
-            val htmlNd = mock<GenerateResumeHtmlNode>().apply {
-                whenever(renderFromProfile(any())).doReturn("<html>tailored</html>")
-            }
-
             val subgraph = ResumeTailoringSubgraph(
                 jdExtraction    = jdExt,
                 gapAnalysis     = gapAn,
@@ -215,7 +205,6 @@ class ResumeTailoringSubgraphProcessTest {
                 bulletRewrite   = bulRew,
                 skillsRestructure = sklRst,
                 atsScoring      = atsSc,
-                resumeHtmlNode  = htmlNd,
             )
             val result = subgraph.process(tailorInput(tempDir = tempDir))
 
@@ -240,13 +229,12 @@ class ResumeTailoringSubgraphProcessTest {
             val bulRew = mock<BulletRewriteNode>().apply { whenever(process(any())).doAnswer { it.arguments[0] as TailorState } }
             val sklRst = mock<SkillsRestructureNode>().apply { whenever(process(any())).doAnswer { it.arguments[0] as TailorState } }
             val atsSc  = mock<AtsScoringNode>()
-            val htmlNd = mock<GenerateResumeHtmlNode>().apply { whenever(renderFromProfile(any())).doReturn("<html/>") }
 
-            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc, htmlNd)
+            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc)
             val result = subgraph.process(tailorInput(tempDir = tempDir))
 
             verify(gapAn).process(any())              // later nodes still run despite the jd_extraction error
-            verify(htmlNd).renderFromProfile(any())   // and it still renders
+            assertTrue(java.nio.file.Files.exists(tempDir.resolve("tailored_resume.html")))   // and it still renders
             assertTrue(result.error.isBlank(), "jd_extraction failure must be non-fatal: ${result.error}")
         }
 
@@ -273,15 +261,14 @@ class ResumeTailoringSubgraphProcessTest {
                 }
             }
             val atsSc  = mock<AtsScoringNode>()
-            val htmlNd = mock<GenerateResumeHtmlNode>().apply { whenever(renderFromProfile(any())).doReturn("<html/>") }
 
-            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc, htmlNd)
+            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc)
             val result = subgraph.process(tailorInput(tempDir = tempDir))
 
             // atsScoring must NOT be called when restructuredSkills is null
             verify(atsSc, never()).process(any())
             // Pipeline continues and renders HTML
-            verify(htmlNd).renderFromProfile(any())
+            assertTrue(java.nio.file.Files.exists(tempDir.resolve("tailored_resume.html")))
             assertTrue(result.error.isBlank(), "Non-fatal skills error should not propagate: ${result.error}")
         }
     }
@@ -305,14 +292,12 @@ class ResumeTailoringSubgraphProcessTest {
             }
             val sklRst = mock<SkillsRestructureNode>().apply { whenever(process(any())).doAnswer(pass) }
             val atsSc  = mock<AtsScoringNode>()
-            val htmlNd = mock<GenerateResumeHtmlNode>().apply { whenever(renderFromProfile(any())).doReturn("<html/>") }
 
-            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc, htmlNd)
+            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc)
             val result = subgraph.process(tailorInput(tempDir = tempDir))
 
             assertTrue(result.error.isBlank(), "bullet_rewrite failure must not abort the subgraph: ${result.error}")
             assertEquals(tempDir.toString(), result.outputPath)
-            verify(htmlNd).renderFromProfile(any())   // render happened despite the failure
             assertTrue(
                 java.nio.file.Files.exists(tempDir.resolve("tailored_resume.html")),
                 "resume HTML should still be written so artifact_url is populated",
@@ -329,13 +314,12 @@ class ResumeTailoringSubgraphProcessTest {
             val bulRew = mock<BulletRewriteNode>().apply { whenever(process(any())).doAnswer(pass) }
             val sklRst = mock<SkillsRestructureNode>().apply { whenever(process(any())).doAnswer(pass) }
             val atsSc  = mock<AtsScoringNode>()
-            val htmlNd = mock<GenerateResumeHtmlNode>().apply { whenever(renderFromProfile(any())).doReturn("<html/>") }
 
-            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc, htmlNd)
+            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc)
             val result = subgraph.process(tailorInput(tempDir = tempDir))
 
             assertTrue(result.error.isBlank(), "a thrown node error must not abort the subgraph: ${result.error}")
-            verify(htmlNd).renderFromProfile(any())
+            assertTrue(java.nio.file.Files.exists(tempDir.resolve("tailored_resume.html")))
             assertEquals(listOf("summary_rewrite"), result.tailoringDegradedNodes)
         }
 
@@ -348,9 +332,8 @@ class ResumeTailoringSubgraphProcessTest {
             val bulRew = mock<BulletRewriteNode>().apply { whenever(process(any())).doAnswer(pass) }
             val sklRst = mock<SkillsRestructureNode>().apply { whenever(process(any())).doAnswer(pass) }
             val atsSc  = mock<AtsScoringNode>().apply { whenever(process(any())).doAnswer(pass) }
-            val htmlNd = mock<GenerateResumeHtmlNode>().apply { whenever(renderFromProfile(any())).doReturn("<html/>") }
 
-            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc, htmlNd)
+            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc)
             val result = subgraph.process(tailorInput(tempDir = tempDir))
 
             assertTrue(result.tailoringDegradedNodes.isEmpty(), "clean run should record no degraded nodes: ${result.tailoringDegradedNodes}")
@@ -366,9 +349,8 @@ class ResumeTailoringSubgraphProcessTest {
             val bulRew = mock<BulletRewriteNode>().apply { whenever(process(any())).doAnswer(fail) }
             val sklRst = mock<SkillsRestructureNode>().apply { whenever(process(any())).doAnswer(pass) }
             val atsSc  = mock<AtsScoringNode>()
-            val htmlNd = mock<GenerateResumeHtmlNode>().apply { whenever(renderFromProfile(any())).doReturn("<html/>") }
 
-            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc, htmlNd)
+            val subgraph = ResumeTailoringSubgraph(jdExt, gapAn, sumRew, bulRew, sklRst, atsSc)
             val result = subgraph.process(tailorInput(tempDir = tempDir))
 
             assertTrue(result.tailoringDegradedNodes.containsAll(listOf("summary_rewrite", "bullet_rewrite")),
@@ -378,8 +360,7 @@ class ResumeTailoringSubgraphProcessTest {
         @Test
         @DisplayName("sparse JD marks the resume as untailored (degraded)")
         fun sparseJdMarksUntailored(@TempDir tempDir: Path) {
-            val htmlNd = mock<GenerateResumeHtmlNode>().apply { whenever(renderFromProfile(any())).doReturn("<html/>") }
-            val subgraph = ResumeTailoringSubgraph(resumeHtmlNode = htmlNd)
+            val subgraph = ResumeTailoringSubgraph()
             val input = tailorInput(jdText = "short jd text").copy(outputPath = tempDir.toString())
 
             val result = subgraph.process(input)

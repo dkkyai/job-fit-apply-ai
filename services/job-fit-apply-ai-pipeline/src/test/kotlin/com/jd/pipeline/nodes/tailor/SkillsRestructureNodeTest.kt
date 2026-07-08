@@ -32,13 +32,13 @@ class SkillsRestructureNodeTest {
             languages = emptyList(),
             domainExpertise = listOf("SaaS")
         ),
-        skills = CandidateSkills(
-            primaryStack = listOf("Kotlin"),
-            mobileAutomation = listOf("Appium"),
-            ciCdPlatforms = listOf("GitHub Actions"),
-            webApiAutomation = listOf("Playwright"),
-            infrastructureObservability = listOf("K8s"),
-            leadershipAbilities = listOf("Mentoring")
+        skills = listOf(
+            SkillGroup("Primary Stack", listOf("Kotlin")),
+            SkillGroup("Mobile Automation", listOf("Appium")),
+            SkillGroup("CI/CD Platforms", listOf("GitHub Actions")),
+            SkillGroup("Web & API Automation", listOf("Playwright")),
+            SkillGroup("Infrastructure & Observability", listOf("K8s")),
+            SkillGroup("Leadership", listOf("Mentoring"))
         )
     )
 
@@ -93,11 +93,11 @@ class SkillsRestructureNodeTest {
         val jd = JdStructured(roleTitle = "Staff", seniority = "Staff", requiredSkills = listOf("Kotlin"))
         val profile = makeProfile()
         val prompt = buildPrompt(jd, profile)
-        assertTrue(prompt.contains("Primary stack"))
-        assertTrue(prompt.contains("Mobile automation"))
-        assertTrue(prompt.contains("CI/CD platforms"))
-        assertTrue(prompt.contains("Web & API automation"))
-        assertTrue(prompt.contains("Infrastructure & observability"))
+        assertTrue(prompt.contains("Primary Stack"))
+        assertTrue(prompt.contains("Mobile Automation"))
+        assertTrue(prompt.contains("CI/CD Platforms"))
+        assertTrue(prompt.contains("Web & API Automation"))
+        assertTrue(prompt.contains("Infrastructure & Observability"))
         assertTrue(prompt.contains("Leadership"))
     }
 

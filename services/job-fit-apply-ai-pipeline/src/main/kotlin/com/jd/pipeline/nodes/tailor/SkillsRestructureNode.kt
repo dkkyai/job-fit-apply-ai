@@ -40,18 +40,9 @@ class SkillsRestructureNode(
             else DEFAULT_PROMPT
         } catch (_: Exception) { DEFAULT_PROMPT }
 
-        val sk = profile.skills
-        val skillBuckets = buildString {
-            fun appendBucket(label: String, items: List<String>) {
-                if (items.isNotEmpty()) appendLine("- $label: ${items.joinToString(", ")}")
-            }
-            appendBucket("Primary stack", sk.primaryStack)
-            appendBucket("Mobile automation", sk.mobileAutomation)
-            appendBucket("CI/CD platforms", sk.ciCdPlatforms)
-            appendBucket("Web & API automation", sk.webApiAutomation)
-            appendBucket("Infrastructure & observability", sk.infrastructureObservability)
-            appendBucket("Leadership", sk.leadershipAbilities)
-        }.trimEnd()
+        val skillBuckets = profile.skills
+            .filter { it.items.isNotEmpty() }
+            .joinToString("\n") { "- ${it.label}: ${it.items.joinToString(", ")}" }
 
         val coreStrengths = profile.background.coreStrengths.joinToString("; ")
         val domain = profile.background.domainExpertise.joinToString(", ")

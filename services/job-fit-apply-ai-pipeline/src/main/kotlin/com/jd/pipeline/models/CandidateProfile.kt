@@ -1,18 +1,25 @@
 package com.jd.pipeline.models
 
+import com.fasterxml.jackson.annotation.JsonAlias
 import com.fasterxml.jackson.annotation.JsonProperty
 
 /**
  * CandidateProfile — all static, candidate-supplied information used across the pipeline.
  *
- * Loaded once at startup from [Config.CANDIDATE_PROFILE_PATH] and threaded through
+ * Assembled once at startup by [ProfileLoader] from two YAML files and threaded through
  * [com.jd.pipeline.state.JDState.candidateProfile] so every node has access without
- * reloading the file.
+ * reloading:
+ *  - `resume.yaml` (canonical résumé) → identity, summary, education, career history, skills, projects
+ *  - `candidate_profile.yaml` (slim config) → target title, years of experience, core strengths,
+ *    languages, domain expertise, and recruiter preferences
+ *
+ * The in-memory shape below is the single contract every downstream node reads
+ * (Score Fit, Resume Tailoring, Cover Letter, PDF render), regardless of on-disk layout.
  *
  * ## Sections
- * - **identity:** name and contact — used by Draft Reply sign-off and Resume Gen
+ * - **identity:** name and contact — used by Draft Reply sign-off and the résumé contact line
  * - **background:** career history — used by Score Fit for rubric-accurate scoring
- * - **skills:** strength/technology lists — used by Score Fit and Resume Tailoring
+ * - **skills:** labelled skill groups — used by Score Fit and Resume Tailoring
  * - **preferences:** recruiter pre-screening answers — used by Draft Reply
  */
 data class CandidateProfile(
@@ -22,8 +29,9 @@ data class CandidateProfile(
     @JsonProperty("background")
     val background: CandidateBackground,
 
+    /** Labelled skill groups (e.g. "Core", "Programming Languages & Frameworks"). */
     @JsonProperty("skills")
-    val skills: CandidateSkills,
+    val skills: List<SkillGroup>,
 
     @JsonProperty("preferences")
     val preferences: CandidatePreferences = CandidatePreferences(),
@@ -34,7 +42,7 @@ data class CandidateProfile(
 )
 
 /**
- * Identity fields used by Draft Reply sign-off, Resume Gen contact line, and PDF filenames.
+ * Identity fields used by Draft Reply sign-off, the résumé contact line, and PDF filenames.
  */
 data class CandidateIdentity(
     @JsonProperty("name")
@@ -121,24 +129,45 @@ data class CareerEntry(
     @JsonProperty("location")
     val location: String = "",
 
+    /** Start date (`YYYY-MM` or `YYYY`). `start` in résumé YAML. */
     @JsonProperty("start_date")
+    @JsonAlias("start")
     val startDate: String,
 
-    /** End date; `null` represents an active/current role (rendered as "Present"). */
+    /** End date; `null`/blank represents an active/current role (rendered as "Present"). `end` in résumé YAML. */
     @JsonProperty("end_date")
+    @JsonAlias("end")
     val endDate: String? = null,
 
     @JsonProperty("bullets")
-    val bullets: List<String>
+    val bullets: List<Bullet> = emptyList()
 ) {
     /** Convenience for rendering "start – end" with "Present" for active roles. */
     val dateRange: String
-        get() = "$startDate – ${endDate ?: "Present"}"
+        get() = "$startDate – ${endDate?.takeIf { it.isNotBlank() } ?: "Present"}"
 }
+
+/**
+ * A single résumé bullet: a short bold category label plus the accomplishment text.
+ * Rendered as `<li><strong>{category}:</strong> {text}</li>`. The category is JD-alignable —
+ * the tailoring subgraph may rewrite both the label and the text per job.
+ */
+data class Bullet(
+    @JsonProperty("category")
+    val category: String = "",
+
+    @JsonProperty("text")
+    val text: String
+)
 
 data class EducationEntry(
     @JsonProperty("degree")
     val degree: String,
+
+    /** Field of study, e.g. "Computer Engineering". Rendered as "Degree | Field".
+     *  Named `fieldOfStudy` because `field` is reserved inside property accessors. */
+    @JsonProperty("field")
+    val fieldOfStudy: String = "",
 
     @JsonProperty("school")
     val school: String,
@@ -146,38 +175,24 @@ data class EducationEntry(
     @JsonProperty("location")
     val location: String? = null,
 
-    @JsonProperty("start_date")
-    val startDate: String,
-
-    /** End date; `null` represents an in-progress degree (rendered as "Present"). */
-    @JsonProperty("end_date")
-    val endDate: String? = null
+    /** Graduation year (or range). Kept as a string so "2005" or "2003–2005" both round-trip. */
+    @JsonProperty("year")
+    val year: String = ""
 ) {
-    val dateRange: String
-        get() = "$startDate – ${endDate ?: "Present"}"
+    /** "Degree | Field" when a field is present, otherwise just the degree. */
+    val degreeLine: String
+        get() = if (fieldOfStudy.isNotBlank()) "$degree | $fieldOfStudy" else degree
 }
 
 /**
- * Technology and skill lists — used by Score Fit and Resume Tailoring nodes.
- * Represents what the candidate _actually has_, not what any single JD wants.
+ * A labelled skill group, e.g. `{label: "Core", items: [Android, Kotlin, ...]}`.
+ * Groups flow straight through to the rendered Skills section and fold into the
+ * tailored `skillGroups` map produced by SkillsRestructureNode.
  */
-data class CandidateSkills(
-    @JsonProperty("primary_stack")
-    val primaryStack: List<String>,
+data class SkillGroup(
+    @JsonProperty("label")
+    val label: String,
 
-    @JsonProperty("mobile_automation")
-    val mobileAutomation: List<String>,
-
-    @JsonProperty("ci_cd_platforms")
-    val ciCdPlatforms: List<String>,
-
-    @JsonProperty("web_api_automation")
-    val webApiAutomation: List<String>,
-
-    @JsonProperty("infrastructure_observability")
-    val infrastructureObservability: List<String>,
-
-    @JsonProperty("leadership_abilities")
-    val leadershipAbilities: List<String>
+    @JsonProperty("items")
+    val items: List<String> = emptyList()
 )
-

@@ -1,6 +1,9 @@
 package com.jd.pipeline.nodes
 
-import org.jsoup.Jsoup
+import com.jd.pipeline.models.CandidateBackground
+import com.jd.pipeline.models.CandidateIdentity
+import com.jd.pipeline.models.CandidateProfile
+import com.jd.pipeline.models.SkillGroup
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -10,103 +13,105 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
- * Unit tests for [GenerateCandidateProfileNode].
+ * Unit tests for [GenerateCandidateProfileNode] (the LLM-free `--init-profile` node).
  *
- * Skips the LLM step entirely — covers format extraction, the `__TODO__`
- * detection regex, the editor-pass loop, the candidate-context Markdown
- * builder, and the date-stamped backup helper.
+ * Covers résumé-YAML parsing, the years-of-experience estimator, the `__TODO__`
+ * detection + editor-pass loop over the YAML config, and the candidate-context
+ * Markdown builder.
  */
 @DisplayName("GenerateCandidateProfileNodeTest")
 class GenerateCandidateProfileNodeTest {
 
     private val node = GenerateCandidateProfileNode()
 
-    @Test
-    @DisplayName("extractText handles HTML via Jsoup, stripping tags")
-    fun extractsHtml(@TempDir tempDir: Path) {
-        val html = "<html><body><h1>Jane Doe</h1><p>Senior SDET</p></body></html>"
-        val htmlPath = tempDir.resolve("resume.html")
-        Files.writeString(htmlPath, html)
+    // ── résumé YAML parsing ────────────────────────────────────────────────────
 
-        val text = node.extractText(htmlPath)
-        assertContains(text, "Jane Doe")
-        assertContains(text, "Senior SDET")
-        assertFalse(text.contains("<h1>"), "tags should be stripped")
+    @Test
+    @DisplayName("parseResume reads demographics, experience (with categorised bullets), and skill groups")
+    fun parsesResumeYaml(@TempDir tempDir: Path) {
+        val path = tempDir.resolve("resume.yaml")
+        Files.writeString(path, sampleResumeYaml())
+
+        val resume = node.parseResume(path)
+
+        assertEquals("Jane Doe", resume.demographics.fullName)
+        assertEquals(1, resume.experience.size)
+        assertEquals("SDET", resume.experience[0].role)
+        assertEquals("Impact", resume.experience[0].bullets[0].category)
+        assertEquals("Built things.", resume.experience[0].bullets[0].text)
+        assertEquals("Core", resume.skills[0].label)
+        assertContains(resume.skills[0].items, "Kotlin")
     }
 
     @Test
-    @DisplayName("extractText reads .md files verbatim")
-    fun extractsMarkdown(@TempDir tempDir: Path) {
-        val md = "# Jane Doe\n\nSenior SDET with 10 years of experience."
-        val mdPath = tempDir.resolve("resume.md")
-        Files.writeString(mdPath, md)
-
-        val text = node.extractText(mdPath)
-        assertEquals(md, text)
+    @DisplayName("parseResume throws a clear error on malformed YAML")
+    fun rejectsMalformedResume(@TempDir tempDir: Path) {
+        val path = tempDir.resolve("resume.yaml")
+        Files.writeString(path, "experience:\n  - role: [unterminated")
+        val ex = assertFails { node.parseResume(path) }
+        assertContains(ex.message ?: "", "Failed to parse résumé YAML")
     }
 
-    @Test
-    @DisplayName("extractText rejects unsupported formats with a clear error")
-    fun rejectsUnsupportedFormat(@TempDir tempDir: Path) {
-        val txtPath = tempDir.resolve("resume.rtf")
-        Files.writeString(txtPath, "rich text")
-
-        val ex = assertFails { node.extractText(txtPath) }
-        assertContains(ex.message ?: "", ".pdf, .docx, .html, or .md")
-    }
+    // ── editor pass over candidate_profile.yaml ────────────────────────────────
 
     @Test
     @DisplayName("interactiveEdit short-circuits when no __TODO__ markers remain")
     fun shortCircuitsWhenClean(@TempDir tempDir: Path) {
-        val profilePath = tempDir.resolve("candidate_profile.json")
-        Files.writeString(profilePath, validCandidateProfileJson())
+        val path = tempDir.resolve("candidate_profile.yaml")
+        Files.writeString(path, profileConfigYaml())
 
         var editorCalls = 0
-        val nodeNoEditor = GenerateCandidateProfileNode(openEditor = { editorCalls++ })
+        val n = GenerateCandidateProfileNode(openEditor = { editorCalls++ })
+        val config = n.interactiveEdit(path)
 
-        val profile = nodeNoEditor.interactiveEdit(profilePath)
-        assertEquals(0, editorCalls, "editor must not be invoked when draft is already clean")
-        assertEquals("Jane Doe", profile.identity.fullName)
+        assertEquals(0, editorCalls, "editor must not be invoked when the config is already clean")
+        assertEquals("US Citizen", config.preferences.visaStatus)
+        assertEquals("Senior SDET", config.scoring.targetTitle)
     }
 
     @Test
-    @DisplayName("interactiveEdit invokes editor when __TODO__ markers are present")
+    @DisplayName("interactiveEdit invokes the editor when __TODO__ markers are present")
     fun invokesEditor(@TempDir tempDir: Path) {
-        val profilePath = tempDir.resolve("candidate_profile.json")
-        Files.writeString(profilePath, validCandidateProfileJson(withTodoVisaStatus = true))
+        val path = tempDir.resolve("candidate_profile.yaml")
+        Files.writeString(path, profileConfigYaml(withTodoVisa = true))
 
         var editorCalls = 0
-        val nodeWithFakeEditor = GenerateCandidateProfileNode(openEditor = {
+        val n = GenerateCandidateProfileNode(openEditor = {
             editorCalls++
-            // Simulate the user editing out the __TODO__ marker.
-            Files.writeString(profilePath, validCandidateProfileJson(withTodoVisaStatus = false))
+            Files.writeString(path, profileConfigYaml(withTodoVisa = false)) // user resolves the __TODO__
         })
+        val config = n.interactiveEdit(path)
 
-        val profile = nodeWithFakeEditor.interactiveEdit(profilePath)
         assertEquals(1, editorCalls)
-        assertEquals("US Citizen", profile.preferences.visaStatus)
+        assertEquals("US Citizen", config.preferences.visaStatus)
     }
 
     @Test
-    @DisplayName("interactiveEdit hard-fails if __TODO__ markers remain after editor closes")
+    @DisplayName("interactiveEdit hard-fails if __TODO__ markers remain after the editor closes")
     fun rejectsRemainingTodos(@TempDir tempDir: Path) {
-        val profilePath = tempDir.resolve("candidate_profile.json")
-        Files.writeString(profilePath, validCandidateProfileJson(withTodoVisaStatus = true))
+        val path = tempDir.resolve("candidate_profile.yaml")
+        Files.writeString(path, profileConfigYaml(withTodoVisa = true))
 
-        val nodeNoOpEditor = GenerateCandidateProfileNode(openEditor = { /* user changed nothing */ })
-
-        val ex = assertFails { nodeNoOpEditor.interactiveEdit(profilePath) }
+        val n = GenerateCandidateProfileNode(openEditor = { /* user changed nothing */ })
+        val ex = assertFails { n.interactiveEdit(path) }
         assertContains(ex.message ?: "", "unresolved __TODO__")
     }
 
     @Test
+    @DisplayName("findTodoFields returns the keys of every line still holding a __TODO__ sentinel")
+    fun findsTodoFields() {
+        val fields = node.findTodoFields(profileConfigYaml(withTodoVisa = true))
+        assertContains(fields, "visa_status")
+    }
+
+    // ── candidate-context markdown ─────────────────────────────────────────────
+
+    @Test
     @DisplayName("buildCandidateContext renders identity, target title, summary, and core strengths")
     fun rendersCandidateContext() {
-        val profile = sampleProfile()
-        val ctx = node.buildCandidateContext(profile)
+        val ctx = node.buildCandidateContext(sampleProfile())
         assertContains(ctx, "Jane Doe")
         assertContains(ctx, "Senior SDET")
         assertContains(ctx, "Top differentiator 1")
@@ -115,11 +120,8 @@ class GenerateCandidateProfileNodeTest {
 
     @Test
     @DisplayName("renderTailorSkill substitutes {{CANDIDATE_CONTEXT}} from the template")
-    fun rendersTailorSkill(@TempDir tempDir: Path) {
-        val templatePath = tempDir.resolve("TAILOR_SKILL.template.md")
-        val template = "# TAILOR_SKILL\n\n## Candidate Context\n\n${GenerateCandidateProfileNode.CANDIDATE_CONTEXT_PLACEHOLDER}\n\n## Rules\n- one"
-        Files.writeString(templatePath, template)
-
+    fun rendersTailorSkill() {
+        val template = "# TAILOR_SKILL\n\n${GenerateCandidateProfileNode.CANDIDATE_CONTEXT_PLACEHOLDER}\n\n## Rules"
         val out = template.replace(
             GenerateCandidateProfileNode.CANDIDATE_CONTEXT_PLACEHOLDER,
             node.buildCandidateContext(sampleProfile())
@@ -128,14 +130,14 @@ class GenerateCandidateProfileNodeTest {
         assertContains(out, "Senior SDET")
     }
 
-    // ── helpers ──────────────────────────────────────────────────────────────
+    // ── fixtures ───────────────────────────────────────────────────────────────
 
-    private fun sampleProfile() = com.jd.pipeline.models.CandidateProfile(
-        identity = com.jd.pipeline.models.CandidateIdentity(
+    private fun sampleProfile() = CandidateProfile(
+        identity = CandidateIdentity(
             name = "Jane Doe", firstName = "Jane", lastName = "Doe",
             email = "jane@example.com", phone = "555-1234", location = "Seattle, WA"
         ),
-        background = com.jd.pipeline.models.CandidateBackground(
+        background = CandidateBackground(
             targetTitle = "Senior SDET",
             yearsExperience = 10,
             summary = "Senior SDET focused on mobile test infra.",
@@ -145,59 +147,48 @@ class GenerateCandidateProfileNodeTest {
             languages = listOf("Kotlin", "Swift"),
             domainExpertise = listOf("Healthcare", "Retail")
         ),
-        skills = com.jd.pipeline.models.CandidateSkills(
-            primaryStack = listOf("Kotlin"),
-            mobileAutomation = emptyList(),
-            ciCdPlatforms = emptyList(),
-            webApiAutomation = emptyList(),
-            infrastructureObservability = emptyList(),
-            leadershipAbilities = emptyList()
-        )
+        skills = listOf(SkillGroup("Primary Stack", listOf("Kotlin")))
     )
 
-    private fun validCandidateProfileJson(withTodoVisaStatus: Boolean = false): String {
-        val visa = if (withTodoVisaStatus) "__TODO__: e.g. 'US Citizen'" else "US Citizen"
-        return """
-            {
-              "identity": {
-                "name": "Jane Doe",
-                "first_name": "Jane",
-                "last_name": "Doe",
-                "email": "jane@example.com",
-                "phone": "555-1234",
-                "location": "Seattle, WA"
-              },
-              "background": {
-                "target_title": "Senior SDET",
-                "years_experience": 10,
-                "summary": "Test summary.",
-                "education": [],
-                "career_history": [],
-                "core_strengths": [],
-                "languages": [],
-                "domain_expertise": []
-              },
-              "skills": {
-                "primary_stack": [],
-                "mobile_automation": [],
-                "ci_cd_platforms": [],
-                "web_api_automation": [],
-                "infrastructure_observability": [],
-                "leadership_abilities": []
-              },
-              "preferences": {
-                "willing_to_relocate": false,
-                "visa_status": "$visa",
-                "preferred_work_arrangement": "Remote"
-              },
-              "projects": []
-            }
-        """.trimIndent()
-    }
+    private fun sampleResumeYaml() = """
+        demographics:
+          first_name: Jane
+          last_name: Doe
+          email: jane@example.com
+          phone: "555"
+          location: "Seattle, WA"
+        summary: "Summary."
+        experience:
+          - role: SDET
+            company: Acme
+            start: 2020-01
+            end: null
+            bullets:
+              - category: Impact
+                text: Built things.
+        education:
+          - degree: B.S.
+            field: Computer Science
+            school: State U
+            year: 2010
+        skills:
+          - label: Core
+            items: [Kotlin, Java]
+    """.trimIndent()
 
-    @Suppress("unused")
-    private fun verifyJsoupAvailable() {
-        // Sanity check that the Jsoup classpath import resolves at test time.
-        assertTrue(Jsoup.parse("<p>x</p>").text() == "x")
+    private fun profileConfigYaml(withTodoVisa: Boolean = false): String {
+        val visa = if (withTodoVisa) "\"__TODO__: e.g. 'US Citizen'\"" else "\"US Citizen\""
+        return """
+            scoring:
+              target_title: "Senior SDET"
+              years_experience: 10
+              core_strengths: []
+              languages: []
+              domain_expertise: []
+            preferences:
+              willing_to_relocate: false
+              visa_status: $visa
+              preferred_work_arrangement: "Remote"
+        """.trimIndent()
     }
 }

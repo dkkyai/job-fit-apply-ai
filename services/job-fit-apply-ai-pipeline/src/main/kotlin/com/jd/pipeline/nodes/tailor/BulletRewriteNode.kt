@@ -8,6 +8,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.jd.pipeline.client.LlmCaller
 import com.jd.pipeline.client.LlmClient
 import com.jd.pipeline.config.Config
+import com.jd.pipeline.models.Bullet
 import com.jd.pipeline.models.CareerEntry
 import java.nio.file.Files
 
@@ -80,11 +81,12 @@ class BulletRewriteNode(
                 val rb = rewritten.getOrNull(idx)
                 if (rb != null && rb.rewritten.isNotBlank()) {
                     flat += TailoredBullet(
-                        original = original,
+                        original = original.text,
                         rewritten = rb.rewritten,
                         jdAlignmentScore = rb.jdAlignmentScore
                     )
-                    rb.rewritten
+                    // Re-label the category to the JD's wording when supplied, else keep the original.
+                    Bullet(category = rb.category.ifBlank { original.category }, text = rb.rewritten)
                 } else {
                     original
                 }
@@ -141,6 +143,8 @@ class BulletRewriteNode(
             }
             appendLine()
             appendLine("CANDIDATE ROLES (career history + projects). Rewrite the bullets array for each role.")
+            appendLine("Each bullet is { category, text }. Rewrite BOTH: sharpen the text AND re-label the category to the")
+            appendLine("JD's terminology where truthful (else keep the original category).")
             appendLine("Preserve role/company/start_date verbatim — those are the join keys.")
             appendLine("Return one rewritten bullet per original bullet, in the same order.")
             appendLine()
@@ -165,6 +169,7 @@ class BulletRewriteNode(
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class RewrittenBullet(
         @JsonProperty("original") val original: String = "",
+        @JsonProperty("category") val category: String = "",
         @JsonProperty("rewritten") val rewritten: String = "",
         @JsonProperty("jd_alignment_score") val jdAlignmentScore: Int = 0
     )
@@ -182,6 +187,7 @@ class BulletRewriteNode(
             |    "start_date": "exact start_date from input",
             |    "bullets": [
             |      { "original": "verbatim original bullet text",
+            |        "category": "short bold label (a few words), re-aligned to the JD where truthful",
             |        "rewritten": "rewritten ATS-aligned version",
             |        "jd_alignment_score": integer (0-100) }
             |    ]
@@ -190,6 +196,8 @@ class BulletRewriteNode(
             |
             |Rules:
             |- One rewritten bullet per original bullet, IN THE SAME ORDER (index alignment).
+            |- Each bullet keeps a short "category" label. Re-align it to the JD's wording where
+            |  truthful; otherwise repeat the original category.
             |- Preserve ALL numbers, percentages, and quantification from the original.
             |- Do not add skills, tools, or metrics not present in the original bullet.
             |- Lead with a strong action verb.

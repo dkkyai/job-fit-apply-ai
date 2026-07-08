@@ -1,5 +1,6 @@
 package com.jd.pipeline.nodes.tailor
 
+import com.jd.pipeline.models.Bullet
 import com.jd.pipeline.models.CareerEntry
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -38,8 +39,8 @@ class BulletRewriteNodeApplyTest {
         val (tailored, flat) = node.applyRewrites(originals, rewrites)
 
         assertEquals(2, tailored.size)
-        assertEquals(listOf("Architected X", "Led Y"), tailored[0].bullets)
-        assertEquals(listOf("Drove Z to GA in 3 months"), tailored[1].bullets)
+        assertEquals(listOf("Architected X", "Led Y"), tailored[0].bullets.map { it.text })
+        assertEquals(listOf("Drove Z to GA in 3 months"), tailored[1].bullets.map { it.text })
         // All non-bullet fields preserved verbatim
         assertEquals("Staff SDET", tailored[0].role)
         assertEquals("Acme", tailored[0].company)
@@ -61,8 +62,8 @@ class BulletRewriteNodeApplyTest {
 
         val (tailored, _) = node.applyRewrites(originals, rewrites)
 
-        assertEquals(listOf("Rewritten 1"), tailored[0].bullets)
-        assertEquals(listOf("Original 2"), tailored[1].bullets, "missing-from-LLM role keeps its original bullets")
+        assertEquals(listOf("Rewritten 1"), tailored[0].bullets.map { it.text })
+        assertEquals(listOf("Original 2"), tailored[1].bullets.map { it.text }, "missing-from-LLM role keeps its original bullets")
     }
 
     @Test
@@ -83,9 +84,34 @@ class BulletRewriteNodeApplyTest {
 
         assertEquals(
             listOf("Rewritten 1", "Original 2", "Original 3"),
-            tailored[0].bullets,
+            tailored[0].bullets.map { it.text },
             "blank rewrites and missing trailing rewrites should keep the original at that index"
         )
+    }
+
+    @Test
+    @DisplayName("Category is re-labelled from the LLM output, falling back to the original")
+    fun rewritesCategoryLabel() {
+        val originals = listOf(
+            CareerEntry(
+                role = "A", company = "Co1", location = "", startDate = "2020-01", endDate = null,
+                bullets = listOf(Bullet("Old Label", "Original 1"), Bullet("Keep Me", "Original 2"))
+            )
+        )
+        val rewrites = listOf(
+            BulletRewriteNode.RoleRewrite(
+                role = "A", company = "Co1", startDate = "2020-01",
+                bullets = listOf(
+                    BulletRewriteNode.RewrittenBullet(original = "Original 1", category = "New Label", rewritten = "Rewritten 1", jdAlignmentScore = 90),
+                    BulletRewriteNode.RewrittenBullet(original = "Original 2", category = "", rewritten = "Rewritten 2", jdAlignmentScore = 70)
+                )
+            )
+        )
+
+        val (tailored, _) = node.applyRewrites(originals, rewrites)
+
+        assertEquals("New Label", tailored[0].bullets[0].category, "category re-labelled from LLM")
+        assertEquals("Keep Me", tailored[0].bullets[1].category, "blank category falls back to original")
     }
 
     @Test
@@ -97,19 +123,19 @@ class BulletRewriteNodeApplyTest {
 
         val (tailored, _) = node.applyRewrites(originals, rewrites)
 
-        assertEquals(listOf("Rewritten"), tailored[0].bullets)
+        assertEquals(listOf("Rewritten"), tailored[0].bullets.map { it.text })
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
-    private fun entry(role: String, company: String, startDate: String, bullets: List<String>) =
+    private fun entry(role: String, company: String, startDate: String, bulletTexts: List<String>) =
         CareerEntry(
             role = role,
             company = company,
             location = "",
             startDate = startDate,
             endDate = null,
-            bullets = bullets
+            bullets = bulletTexts.map { Bullet("", it) }
         )
 
     private fun roleRewrite(

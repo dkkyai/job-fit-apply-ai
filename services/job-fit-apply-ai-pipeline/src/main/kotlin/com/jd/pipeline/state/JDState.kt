@@ -1,13 +1,11 @@
 package com.jd.pipeline.state
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.models.EvidenceItem
 import com.jd.pipeline.models.CandidateProfile
+import com.jd.pipeline.models.ProfileLoader
 import com.jd.pipeline.nodes.tailor.JdStructured
 import com.jd.pipeline.source.IntakeContext
-import java.nio.file.Files
 
 /**
  * JDState — typed, immutable pipeline state.
@@ -111,26 +109,13 @@ data class JDState(
     val draftText: String = ""
 ) {
     companion object {
-        private val MAPPER = ObjectMapper().registerKotlinModule()
 
         /**
-         * Lazily load the user profile once per JVM invocation.
-         * Returns null if the file is missing or malformed (nodes handle null gracefully).
+         * Lazily load + merge the résumé (`resume.yaml`) and pipeline config
+         * (`candidate_profile.yaml`) into one [CandidateProfile], once per JVM invocation.
+         * Returns null if the résumé is missing or malformed (nodes handle null gracefully).
          */
-        fun loadCandidateProfile(): CandidateProfile? {
-            val path = Config.CANDIDATE_PROFILE_PATH
-            if (!Files.exists(path)) {
-                System.err.println("[JDState] CANDIDATE_PROFILE_PATH not found: $path — create config/candidate_profile.json to enable structured user data")
-                return null
-            }
-            return try {
-                val json = Files.readString(path)
-                MAPPER.readValue(json, CandidateProfile::class.java)
-            } catch (e: Exception) {
-                System.err.println("[JDState] Failed to parse candidate_profile.json: ${e.message}")
-                null
-            }
-        }
+        fun loadCandidateProfile(): CandidateProfile? = ProfileLoader.loadMergedProfile()
 
         // Singleton, loaded once per JVM — shared across all JDState instances
         private val SINGLETON_CANDIDATE_PROFILE: CandidateProfile? by lazy { loadCandidateProfile() }

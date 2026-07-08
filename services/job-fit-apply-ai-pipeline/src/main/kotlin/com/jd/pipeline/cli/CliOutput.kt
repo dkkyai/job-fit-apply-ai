@@ -29,7 +29,6 @@ object CliOutput {
         println("║  RESUME_REASONING_MODEL│ ${Config.RESUME_REASONING_MODEL} - Resume tailoring (rewrite).")
         println("║  COVER_LETTER_MODEL    │ ${Config.COVER_LETTER_MODEL} - Cover letter.")
         println("║  DRAFT_REPLY_MODEL     │ ${Config.DRAFT_REPLY_MODEL} - Recruiter reply.")
-        println("║  RESUME_GEN_MODEL      │ ${Config.RESUME_GEN_MODEL} - DOCX/PDF → HTML resume gen.")
         println("╚═══════════════════════════════════════════════════════════╝")
         println()
     }

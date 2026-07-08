@@ -1,0 +1,31 @@
+# Slim pipeline config template — everything the résumé (resume.yaml) does NOT carry.
+# `--init-profile` copies this to config/candidate_profile.yaml and opens your $EDITOR so you
+# can replace every __TODO__ value. Résumé content (identity, summary, experience, education,
+# skills) is authored separately in resume.yaml.
+
+scoring:
+  # NOTE: years_experience, languages, and domain expertise are all derived from resume.yaml — not set here.
+  # The role(s) you're targeting — steers fit scoring.
+  target_title: "__TODO__: target role title (e.g. 'Staff SDET')"
+  # Your top differentiators — weighed heavily by Score Fit.
+  core_strengths:
+    - "__TODO__: top differentiator 1"
+    - "__TODO__: top differentiator 2"
+
+preferences:
+  willing_to_relocate: false
+  relocation_notes: "__TODO__: free text about relocation/work-arrangement preferences"
+  visa_status: "__TODO__: e.g. 'US Citizen', 'H1B', 'GC'"
+  visa_sponsorship_required: false
+  available_to_start_date: "__TODO__: e.g. 'Immediately' or 'YYYY-MM-DD'"
+  notice_period_days: null
+  preferred_work_arrangement: "__TODO__: e.g. 'Remote', 'Hybrid Seattle', 'Onsite NYC only'"
+  current_base_salary: null
+  minimum_total_compensation: "__TODO__: target TC (USD, e.g. '180000')"
+  compensation_notes: "__TODO__: any context on comp expectations"
+  open_to_equity_only_roles: false
+  willing_to_travel: false
+  travel_percentage: "__TODO__: e.g. '<= 10%'"
+  open_to_contract_roles: false
+  minimum_contract_rate_hourly: null
+  additional_notes: null

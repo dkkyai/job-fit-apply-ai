@@ -8,7 +8,7 @@ import com.jd.pipeline.models.CareerEntry
  * [CandidateProfile] (unchanged) plus the JD-aligned rewrites produced
  * by the subgraph nodes.
  *
- * [GenerateResumeHtmlNode.renderFromProfile] consumes this as the
+ * [com.jd.pipeline.utils.ResumeHtmlRenderer] consumes this as the
  * authoritative source when generating `tailored_resume.html`.
  *
  * The five tailored fields take precedence over the corresponding fields
@@ -16,7 +16,7 @@ import com.jd.pipeline.models.CareerEntry
  *   - [summary] overrides `base.background.summary`
  *   - [careerHistory] overrides `base.background.careerHistory`
  *   - [projects] overrides `base.projects`
- *   - [skillGroups] overrides the six fixed `base.skills.*` buckets
+ *   - [skillGroups] overrides the résumé's labelled skill groups (`base.skills`)
  *   - [jdMatchedSkills] is used to lead each skill group with the
  *     JD-aligned items first
  */
@@ -42,9 +42,9 @@ data class TailoredProfile(
 
     /**
      * Skills grouped by JD-aligned category names (e.g. "Cloud",
-     * "Testing Frameworks", "Languages"). Replaces the six fixed
-     * `CandidateSkills` buckets at render time so the rendered resume's
-     * Skills section matches the role's terminology.
+     * "Testing Frameworks", "Languages"). Replaces the résumé's labelled
+     * skill groups at render time so the rendered resume's Skills section
+     * matches the role's terminology.
      */
     val skillGroups: Map<String, List<String>>,
 
@@ -55,19 +55,13 @@ data class TailoredProfile(
         /**
          * Convenience factory for the sparse-JD fallback: produces a
          * [TailoredProfile] that mirrors [profile] verbatim, with no
-         * JD-driven rewrites. The six fixed skill buckets are mapped
-         * into a small canonical-named skill-groups map so the renderer
-         * still has structured input.
+         * JD-driven rewrites. The résumé's labelled skill groups pass
+         * straight through as the skill-groups map (order preserved).
          */
         fun untailored(profile: CandidateProfile): TailoredProfile {
-            val sk = profile.skills
-            val groups = linkedMapOf<String, List<String>>().apply {
-                if (sk.primaryStack.isNotEmpty()) put("Primary Stack", sk.primaryStack)
-                if (sk.mobileAutomation.isNotEmpty()) put("Mobile Automation", sk.mobileAutomation)
-                if (sk.ciCdPlatforms.isNotEmpty()) put("CI/CD Platforms", sk.ciCdPlatforms)
-                if (sk.webApiAutomation.isNotEmpty()) put("Web & API Automation", sk.webApiAutomation)
-                if (sk.infrastructureObservability.isNotEmpty()) put("Infrastructure & Observability", sk.infrastructureObservability)
-                if (sk.leadershipAbilities.isNotEmpty()) put("Leadership", sk.leadershipAbilities)
+            val groups = linkedMapOf<String, List<String>>()
+            profile.skills.forEach { group ->
+                if (group.items.isNotEmpty()) groups[group.label] = group.items
             }
             return TailoredProfile(
                 base = profile,

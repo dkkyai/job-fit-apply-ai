@@ -21,10 +21,8 @@ class GapAnalysisNodeTest {
             summary = "", education = emptyList(), careerHistory = emptyList(),
             coreStrengths = listOf("Leadership"), languages = emptyList(), domainExpertise = emptyList()
         ),
-        skills = CandidateSkills(
-            primaryStack = listOf("Kotlin"), mobileAutomation = emptyList(),
-            ciCdPlatforms = emptyList(), webApiAutomation = emptyList(),
-            infrastructureObservability = emptyList(), leadershipAbilities = emptyList()
+        skills = listOf(
+            SkillGroup("Primary Stack", listOf("Kotlin"))
         )
     )
 

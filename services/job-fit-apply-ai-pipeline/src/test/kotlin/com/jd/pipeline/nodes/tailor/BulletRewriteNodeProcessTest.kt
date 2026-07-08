@@ -20,12 +20,12 @@ class BulletRewriteNodeProcessTest {
             targetTitle = "Eng", yearsExperience = 5,
             summary = "", education = emptyList(),
             careerHistory = listOf(
-                CareerEntry("Eng", "Acme", "SF", "2020", null, listOf("B1", "B2"))
+                CareerEntry("Eng", "Acme", "SF", "2020", null, listOf(Bullet("", "B1"), Bullet("", "B2")))
             ),
             coreStrengths = emptyList(), languages = emptyList(), domainExpertise = emptyList()
         ),
-        skills = CandidateSkills(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()),
-        projects = listOf(CareerEntry("Maintainer", "OSS", "", "2022", null, listOf("P1")))
+        skills = emptyList(),
+        projects = listOf(CareerEntry("Maintainer", "OSS", "", "2022", null, listOf(Bullet("", "P1"))))
     )
 
     private val baseState = TailorState(
@@ -92,8 +92,8 @@ class BulletRewriteNodeProcessTest {
         assertNotNull(result.tailoredProjects)
         assertNotNull(result.tailoredBullets)
         assertEquals(2, result.tailoredCareerHistory!!.first().bullets.size)
-        assertEquals("R1", result.tailoredCareerHistory!!.first().bullets[0])
-        assertEquals("P1R", result.tailoredProjects!!.first().bullets[0])
+        assertEquals("R1", result.tailoredCareerHistory!!.first().bullets[0].text)
+        assertEquals("P1R", result.tailoredProjects!!.first().bullets[0].text)
         assertEquals(3, result.tailoredBullets!!.size)
     }
 }

@@ -2,11 +2,11 @@ package com.jd.pipeline.nodes.tailor
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.jd.pipeline.config.Config
-import com.jd.pipeline.nodes.GenerateResumeHtmlNode
 import com.jd.pipeline.nodes.Node
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.utils.OutputUtils
+import com.jd.pipeline.utils.ResumeHtmlRenderer
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -17,7 +17,7 @@ import java.nio.file.Path
  * exclusively from `candidateProfile`, never from HTML), assembles a
  * [TailoredProfile] from the outputs, and renders it to
  * `output/<timestamp>/tailored_resume.html` via
- * [GenerateResumeHtmlNode.renderFromProfile].
+ * [com.jd.pipeline.utils.ResumeHtmlRenderer].
  *
  * Pipeline:
  *   JdExtractionNode → GapAnalysisNode → SummaryRewriteNode
@@ -30,7 +30,6 @@ class ResumeTailoringSubgraph(
     private val bulletRewrite: BulletRewriteNode      = BulletRewriteNode(),
     private val skillsRestructure: SkillsRestructureNode = SkillsRestructureNode(),
     private val atsScoring: AtsScoringNode            = AtsScoringNode(),
-    private val resumeHtmlNode: GenerateResumeHtmlNode = GenerateResumeHtmlNode(),
 ) : Node<JDState> {
 
     private val mapper = ObjectMapper()
@@ -101,7 +100,7 @@ class ResumeTailoringSubgraph(
         // ── Render tailored HTML from structured profile ──────────────────────
         return try {
             val tailored = buildTailoredProfile(profile, state)
-            val html = resumeHtmlNode.renderFromProfile(tailored)
+            val html = ResumeHtmlRenderer.render(tailored)
             Files.writeString(outputDir.resolve("tailored_resume.html"), html)
             println("[tailor_subgraph] tailored_resume.html written to $outputDir")
 
@@ -198,7 +197,7 @@ class ResumeTailoringSubgraph(
 
     private fun writeUntailoredHtml(outputDir: Path, profile: com.jd.pipeline.models.CandidateProfile) {
         try {
-            val html = resumeHtmlNode.renderFromProfile(TailoredProfile.untailored(profile))
+            val html = ResumeHtmlRenderer.render(profile)
             Files.writeString(outputDir.resolve("tailored_resume.html"), html)
             println("[tailor_subgraph] Wrote untailored render of candidate profile (no JD content to tailor against)")
         } catch (e: Exception) {
