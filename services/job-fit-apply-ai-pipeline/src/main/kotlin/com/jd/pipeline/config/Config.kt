@@ -9,10 +9,23 @@ import java.nio.file.Paths
  * All tunables live here; nodes import from this module.
  */
 object Config {
-    private val DOTENV: Dotenv = Dotenv.configure()
-        .filename(System.getProperty("dotenv.file", ".env"))
-        .ignoreIfMissing()
-        .load()
+    // Load .env if present. In a container, a bind-mount whose host source doesn't exist
+    // shows up as a DIRECTORY at the mount path, which dotenv can't read ("Is a directory")
+    // — ignoreIfMissing only covers absence, not that. Treat any load failure like a missing
+    // file: real env vars (compose `environment:`) + defaults still apply via get().
+    private val DOTENV: Dotenv = run {
+        val name = System.getProperty("dotenv.file", ".env")
+        try {
+            Dotenv.configure().filename(name).ignoreIfMissing().ignoreIfMalformed().load()
+        } catch (e: Exception) {
+            System.err.println("[config] .env not loaded ($name: ${e.message}) — using environment + defaults")
+            Dotenv.configure()
+                .directory(System.getProperty("java.io.tmpdir"))
+                .filename("jd-pipeline-nonexistent.env")
+                .ignoreIfMissing()
+                .load()
+        }
+    }
 
     private val PROJECT_DIR: Path = Paths.get(System.getProperty("user.dir"))
 

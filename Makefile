@@ -40,7 +40,7 @@ e2e: ## End-to-end smoke: submit a fixture JD to the bridge, wait for the PDF
 	./scripts/e2e-smoke.sh
 
 processor-test: ## In-container pipeline smoke on a sample JD (LLMs + PDF, no bridge)
-	docker compose run --rm processor --test
+	docker compose run --rm --no-deps processor --test
 
 logs: ## Tail container logs
 	docker compose logs -f --tail=100

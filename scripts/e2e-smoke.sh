@@ -31,8 +31,9 @@ json_get() { # json_get <json> <field>  — top-level string/number field or emp
 }
 
 # ── 1. Bring up the smoke slice and wait for health ──────────────────────────
-say "Starting db + bridge + processor…"
-docker compose up -d db bridge processor >/dev/null
+# --build so the smoke always exercises current source, not a stale image.
+say "Building + starting db + bridge + processor…"
+docker compose up -d --build db bridge processor >/dev/null
 
 say "Waiting for containers to report healthy…"
 for c in jobfit-db jobfit-bridge jobfit-processor; do
