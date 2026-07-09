@@ -2,7 +2,7 @@
 
 A monorepo AI pipeline that automates the complete job search workflow: Gmail inbox scanning → email classification → digest fan-out → job scraping → fit scoring → resume tailoring → cover letter generation → PDF rendering → recruiter reply drafting → Postgres tracking → dashboard management. A Chrome extension extends the same pipeline to job boards encountered during normal browsing.
 
-The datastore and app tier — **Postgres, the HTTP bridge, the artifact/markdown server, and the dashboard** — run as **Docker Compose** services, each exposed to your tailnet (and nothing else) via **Tailscale Serve**. The pipeline **worker** and its browser/LLM dependencies (Chrome/CDP, MLX, Ollama) run on the host and reach the bridge over a published loopback port. Bring the whole stack up with `make up`; check it with `make doctor`.
+Every service — **Postgres, the HTTP bridge, the artifact/markdown server, the dashboard, and the pipeline processor/poller/jsearch/notifier** — runs as a **Docker Compose** service; the tailnet-facing ones are exposed (and nothing else) via **Tailscale Serve**. Only the processor's browser/LLM dependencies (the logged-in Chrome/CDP, MLX, Ollama) stay on the host, reached from the container via `host.docker.internal`. Bring the whole stack up with `make up`; check it with `make doctor`.
 
 ---
 
@@ -41,17 +41,17 @@ flowchart TB
         NOTIFIER["notifier (jobfit-notifier)<br/>completed-event consumer"]
     end
 
-    %% ---------------- Host worker ----------------
-    subgraph HOST["Host — PM2: jd-processor (no Gmail)"]
+    %% ---------------- Processor (containerized) ----------------
+    subgraph PROC["Container — processor (jobfit-processor, no Gmail)"]
         direction TB
         N1["CheckDuplicate"] --> N2["ScoreFit"]
         N2 --> N3["ResumeTailoringSubgraph (6 nodes):<br/>JdExtraction · GapAnalysis · SummaryRewrite<br/>BulletRewrite · SkillsRestructure · AtsScoring"]
         N3 --> N4["GenerateCoverLetter"]
-        N4 --> N5["RenderResumePdf (Playwright)"]
+        N4 --> N5["RenderResumePdf (YAML→LaTeX/tectonic)"]
         N5 --> N6["AddArtifactUrl"] --> N7["Track → Postgres"] --> N8["postResult()"]
     end
 
-    subgraph DEPS["Host dependencies"]
+    subgraph DEPS["Host dependencies (reached via host.docker.internal)"]
         direction LR
         CDP["Chrome / CDP :9222"]
         MLX["MLX / oMLX :11436"]
@@ -65,7 +65,7 @@ flowchart TB
     POLLER -->|submit JdRecord| BRIDGE
     JSEARCH -->|submit JdRecord| BRIDGE
 
-    N1 <-->|"poll claim() / postResult()<br/>http://127.0.0.1:8765"| BRIDGE
+    N1 <-->|"poll claim() / postResult()<br/>http://bridge:8765"| BRIDGE
     N7 -->|JDBC| DB
     POLLER -.->|"write-back: Gmail labels, recruiter draft"| GM
 
@@ -84,8 +84,8 @@ flowchart TB
     classDef host fill:#8957e522,stroke:#8957e5;
     classDef src fill:#23863622,stroke:#238636;
     classDef store fill:#9e6a0322,stroke:#d29922;
-    class POLLER,JSEARCH,BRIDGE,FRONT,MARK,NOTIFIER container;
-    class N1,N2,N3,N4,N5,N6,N7,N8,CDP,MLX,OLL host;
+    class POLLER,JSEARCH,BRIDGE,FRONT,MARK,NOTIFIER,N1,N2,N3,N4,N5,N6,N7,N8 container;
+    class CDP,MLX,OLL host;
     class GM,EXT,JS_API src;
     class DB store;
 ```
@@ -98,8 +98,9 @@ flowchart TB
 | Bridge (Ktor) | `jobfit-bridge` | `127.0.0.1:8765` | `http://<tailscale-name>:8765` |
 | Dashboard (nginx) | `jobfit-frontend` | `127.0.0.1:3030` | `http://<tailscale-name>:3030` |
 | Artifact server (markserv) | `jobfit-markserv` | `127.0.0.1:8081` | `http://<tailscale-name>:8081` |
+| Processor (pipeline) | `jobfit-processor` | — (outbound only) | — (internal only) |
 
-**On the host:** `jd-processor` (PM2) plus the local model servers and Chrome/CDP. Gmail intake + write-back now runs in the containerized `jobfit-poller`; the host processor no longer touches Gmail. The processor reaches the bridge at `http://127.0.0.1:8765`; the browser/extension reach the bridge and dashboard over Tailscale.
+**On the host:** only the local model servers (oMLX `:11436`, Ollama `:11434`) and the logged-in Chrome/CDP (`:9222`) remain. Every pipeline service — including the Processor — is now a container: `jobfit-processor` reaches the bridge over the Compose network (`http://bridge:8765`) and dials the host model servers + CDP Chrome via `host.docker.internal` (its entrypoint resolves the CDP endpoint to an IP, since Chrome DevTools rejects non-IP Host headers). Gmail intake + write-back runs in `jobfit-poller`; the Processor never touches Gmail.
 
 ### Queue concurrency guards
 
@@ -114,7 +115,7 @@ The `--max-emails` cron run is protected against re-entrant overlap at two level
 
 | Repo | Language | Description |
 |---|---|---|
-| `services/job-fit-apply-ai-pipeline` | Kotlin / JVM 21 | Email ingestion pipeline + processing pipeline + worker; CLI entry point for all modes. Runs on the host (needs Chrome/CDP + local LLMs). |
+| `services/job-fit-apply-ai-pipeline` | Kotlin / JVM 21 | Email ingestion + processing pipeline; CLI entry point for all modes. Runs as the `jobfit-processor` container (reaches the host's Chrome/CDP + local LLMs via `host.docker.internal`). |
 | `services/job-fit-apply-ai-bridge` | Kotlin / JVM 21 | Ktor bridge — SQLite job queue, claim/result/artifact API, and the Postgres-backed `tracks` API for the dashboard. **Containerized** (`jobfit-bridge`). |
 | `apps/job-fit-apply-ai-extension` | JavaScript (MV3) | Chrome extension — JD extraction from job boards, real-time progress UI. |
 | `apps/job-fit-apply-ai-backlog` | TypeScript / React 18 | Vite dashboard — live job table, status management, artifact downloads. **Containerized** (`jobfit-frontend`, served by nginx). |
@@ -131,7 +132,7 @@ The `--max-emails` cron run is protected against re-entrant overlap at two level
 ### Host worker — `services/job-fit-apply-ai-pipeline`
 - JDK 21 + Gradle (wrapper included)
 - **MLX/oMLX** (`:11436`) and/or **Ollama** (`:11434`) with models, or cloud API keys (MiniMax / DeepSeek / Anthropic)
-- **Playwright** with Chromium; a Chrome profile logged in to LinkedIn (for LinkedIn scraping) reachable over **CDP** (`:9222`)
+- A logged-in Chrome (LinkedIn/job boards) reachable over **CDP** (`:9222`) — the only browser the pipeline uses; the container ships no Chromium (PDF rendering is LaTeX/tectonic, baked into the image)
 - **Gmail OAuth credentials** — `gmail_credentials.json` from Google Cloud Console (Gmail API enabled, OAuth 2.0 desktop client)
 
 ### Dashboard / bridge development
@@ -172,18 +173,16 @@ cd services/job-fit-apply-ai-pipeline
 # Test end-to-end on a sample JD (no Gmail required)
 ./gradlew run --args="--test"
 
-# Build both dists and start the two Phase 1 processes under PM2.
-# (Cutting over from an existing jd-worker? Follow docs/phase1-cutover-runbook.md.)
-./gradlew installDist
-( cd ../job-fit-apply-ai-poller && ./gradlew installDist )
-pm2 start --name jd-processor --cwd "$PWD" --interpreter bash \
-  build/install/job-fit-apply-ai-pipeline/bin/job-fit-apply-ai-pipeline -- --processor
-pm2 start --name jd-poller --cwd "$PWD/../job-fit-apply-ai-poller" --interpreter bash \
-  ../job-fit-apply-ai-poller/build/install/job-fit-apply-ai-poller/bin/job-fit-apply-ai-poller -- --poll
-pm2 save
+# Everything — including the Processor — runs under Docker Compose. Bring the stack up:
+make up            # docker compose up -d + Tailscale Serve
+
+# The Processor image bundles the LaTeX toolchain (tectonic + Roboto); the first
+# `docker compose build processor` warms tectonic's package cache as a build gate.
+# Host prerequisites the Processor reaches via host.docker.internal: the CDP Chrome
+# (scripts/launch-chrome-cdp.sh + its launchd watchdog) and the local model servers.
 ```
 
-The worker's `.env` selects the database backend: `DB_BACKEND=postgres` with `DATABASE_URL=postgresql://jobfit:jobfit@localhost:5432/jobfit` (the published Postgres port). It writes `tracks` directly over JDBC.
+The `processor` service sets `DB_BACKEND=postgres` and `DATABASE_URL=postgresql://…@db:5432/…` in `docker-compose.yml`, writing `tracks` directly over JDBC to the `jobfit-db` container. Its personal inputs (`.env`, `resume.yaml`, `config/candidate_profile.yaml`) are bind-mounted read-only from `services/job-fit-apply-ai-pipeline/`.
 
 ### 3. Chrome Extension
 
@@ -210,13 +209,13 @@ npm run dev                     # http://localhost:3001
 
 ---
 
-## Automation (Docker + PM2 + cron)
+## Automation (Docker + cron)
 
 | Process | Runs as | Command | Schedule |
 |---|---|---|---|
-| `db` / `bridge` / `frontend` / `markserv` / `poller` / `jsearch` / `notifier` | Docker Compose | `make up` (`restart: unless-stopped`) | continuous |
+| `db` / `bridge` / `frontend` / `markserv` / `processor` / `poller` / `jsearch` / `notifier` | Docker Compose | `make up` (`restart: unless-stopped`) | continuous |
 | Tailscale Serve (`:8765`,`:3030`,`:8081`) | host `tailscaled` | `scripts/setup-tailscale-serve.sh` | persisted across reboot |
-| `jd-processor` | PM2 (always-on) | pipeline `--processor` (LLM pipeline, no Gmail) | continuous |
+| `jobfit-processor` | Docker Compose | pipeline `--processor` (LLM pipeline, no Gmail) | continuous |
 | `jobfit-poller` | Docker Compose | poller `--poll` (Gmail intake + write-back) | continuous |
 | `jobfit-jsearch` | Docker Compose | jsearch `--once` (JSearch API intake) | daily (self-gated) |
 | `jobfit-notifier` | Docker Compose | notifier `--poll` (Discord/Telegram from the completed-event stream) | continuous |
@@ -349,7 +348,7 @@ For recruiter emails that complete the tailor path:
 output/
 └── 20260405_143022_acme_corp_staff_sdet/
     ├── tailored_resume.html          # Tailored HTML (source for PDF)
-    ├── YourName_Staff_SDET.pdf       # Playwright-rendered PDF
+    ├── YourName_Staff_SDET.pdf       # LaTeX (tectonic) - rendered PDF
     ├── cover_letter.txt              # Cover letter
     ├── score_fit.txt                 # Fit score + reasoning
     ├── gap_analysis.json             # Skills gap table
@@ -394,7 +393,7 @@ CI runs the test suites on every push to `main` and publishes a combined Allure 
 ## Known Constraints
 
 - **The stack relies on Docker Desktop being set to start on login** — with `restart: unless-stopped`, the containers return after a reboot only if Docker Desktop auto-starts. `tailscale serve` config is persisted by `tailscaled` and restored automatically.
-- **`jd-processor` runs on the host (PM2); the Poller is a container.** The Processor needs Chrome/CDP + MLX/Ollama, so it stays on the host and reaches the bridge over the published loopback port. The `jobfit-poller` container owns all Gmail and reaches the bridge over the Compose network (`http://bridge:8765`); its token lives in a mounted secrets volume.
+- **Every service is containerized, including the Processor.** `jobfit-processor` reaches the bridge over the Compose network (`http://bridge:8765`) and dials the host's model servers (oMLX/Ollama) and logged-in Chrome/CDP via `host.docker.internal` — verified working on Docker Desktop 29.x (its host proxy reaches loopback-bound ports, so no socat shim is needed). PDF rendering is `YAML → LaTeX (tectonic)` baked into the image, so the container ships no browser. The remaining host prerequisites are just the model servers and the CDP Chrome (kept warm by the `com.jd.chrome-cdp` launchd watchdog).
 - **LinkedIn scraping requires a logged-in Chrome profile** reachable over CDP. Set `CHROME_PROFILE_DIRECTORY` / `CHROME_CDP_ENDPOINT` in `.env`.
 - **Local LLM quality scales with model size.** The 6-node tailoring subgraph produces significantly better results with dense ≥27B models; smaller models tend to hallucinate resume content.
 - **Containers are tailnet-only.** They bind `127.0.0.1` and are exposed via Tailscale Serve — not reachable from the LAN or the public internet. Run `make serve` if a service isn't reachable on the tailnet.

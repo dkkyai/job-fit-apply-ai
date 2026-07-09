@@ -9,14 +9,14 @@ A Kotlin pipeline that turns inbound job opportunities into tailored resume + co
 The pipeline is split into two halves connected by the bridge job queue:
 
 - **IngestionPipeline** — scan → scrape → save → submit to bridge
-- **ProcessingPipeline** — duplicate-check → score → tailor → PDF → track (run by the worker)
+- **ProcessingPipeline** — duplicate-check → score → tailor → PDF → track (run by the processor)
 
 ## What it does
 
 - Fetches recruiter emails and job-board digests from Gmail, or pulls live listings from the JSearch API.
-- Classifies the email, expands digests into per-job records, and scrapes each job page (HTTP + schema.org JSON-LD for most boards, Playwright + Chrome profile for LinkedIn).
+- Classifies the email, expands digests into per-job records, and scrapes each job page (HTTP-first + schema.org JSON-LD for most boards; the logged-in host Chrome over CDP for LinkedIn and challenge-prone sites).
 - Submits each ingested job to the bridge queue; `--max-emails` is fire-and-forget while `--email` polls the single job to completion.
-- The worker claims jobs from the queue and runs the processing pipeline: deduplicates, scores fit, runs `ResumeTailoringSubgraph`, renders a tailored HTML + PDF via Playwright, and appends a run record to `output/runs/run_log.jsonl`.
+- The processor claims jobs from the queue and runs the processing pipeline: deduplicates, scores fit, runs `ResumeTailoringSubgraph`, renders a tailored HTML preview + PDF (YAML → LaTeX/tectonic), and appends a run record to `output/runs/run_log.jsonl`.
 - Tracks every job in Supabase and, when the source is a recruiter email, drafts a reply with your preferences pre-filled.
 
 ## Quick start
@@ -61,11 +61,11 @@ flowchart TD
 ```
 
 `--max-emails` is **fire-and-forget**: it submits each job, applies the `JD_Processing`
-label, and returns — the worker drives the job to completion and (for recruiter emails)
+label, and returns — the processor drives the job to completion and (for recruiter emails)
 creates the draft reply and applies `Recruiter_Response_Required`. `--email` instead
 polls the single job to completion and then applies the terminal label.
 
-### Processing (`--worker`)
+### Processing (`--processor`)
 
 ```mermaid
 flowchart TD
@@ -91,7 +91,7 @@ flowchart TD
     Tailor --> TailorErrQ{"Error?"}
     TailorErrQ -->|Yes| Track1
     TailorErrQ -->|No| Cover["GenerateCoverLetterNode"]
-    Cover --> Pdf["RenderResumePdfNode\n(Playwright headless)"]
+    Cover --> Pdf["RenderResumePdfNode\n(YAML → LaTeX / tectonic)"]
     Pdf --> Artifact["AddArtifactUrlNode"]
     Artifact --> Track2["SupabaseTrackNode"]
     Track1 --> Post["bridge.postResult()"]
@@ -99,7 +99,7 @@ flowchart TD
     Post --> Rec["RunReport → output/runs/run_log.jsonl"]
 ```
 
-After every job the worker appends a structured record (score, action, error,
+After every job the processor appends a structured record (score, action, error,
 `jdTextLen`, board, duration) to `output/runs/run_log.jsonl`. This durable per-job log
 is what the **run analyzer** reasons over — see [`tuner/run-analyzer`](tuner/run-analyzer/README.md).
 
@@ -109,8 +109,10 @@ For every tailored job, `ResumeTailoringSubgraph` writes to `output/<timestamp>_
 
 | File | Description |
 |---|---|
-| `tailored_resume.html` | Tailored HTML rendered from your `TailoredProfile` |
-| `<AUTHOR_NAME>_<Role>.pdf` | PDF rendered from `tailored_resume.html` via Playwright |
+| `tailored_resume.html` | Tailored HTML preview rendered from your `TailoredProfile` (served by markserv) |
+| `tailored_resume.yaml` | Tailored résumé in the canonical YAML schema — the input to the PDF renderer |
+| `tailored_resume.tex` | Intermediate LaTeX from `yaml_to_tex.py` (kept for debugging) |
+| `<AUTHOR_NAME>_<Role>.pdf` | PDF rendered from `tailored_resume.yaml` via LaTeX (tectonic) |
 | `tailored_summary.txt` | Rewritten professional summary |
 | `tailored_bullets.txt` | Original → rewritten bullet pairs with must-have hits + quantified/seniority flags |
 | `restructured_skills.txt` | JD-relevance-ordered skill groups (+ skills dropped for this role) |
@@ -124,10 +126,9 @@ For every tailored job, `ResumeTailoringSubgraph` writes to `output/<timestamp>_
 - **Java 21** (Temurin / Adoptium recommended)
 - **Gradle wrapper** — bundled, use `./gradlew`
 - **At least one LLM backend**: local Ollama, MiniMax cloud, DeepSeek cloud, or Ollama Cloud
-- **Chrome** (only if you intend to scrape LinkedIn job pages — Playwright launches your Chrome profile)
+- **Logged-in Chrome over CDP** (only if you intend to scrape LinkedIn/challenge-prone pages — the pipeline attaches to your host Chrome at `CHROME_CDP_ENDPOINT`, never launches its own)
 - **Gmail OAuth credentials** (only if you want to drive the pipeline from your inbox)
-- **Supabase project** (only if you want to persist scored jobs)
-- **Bridge service running** (`jd-bridge` pm2 process or `./gradlew run` in the bridge directory)
+- **Bridge service running** (the `jobfit-bridge` container, or `./gradlew run` in the bridge directory)
 
 ## First-time setup: `--init-profile`
 
@@ -236,15 +237,14 @@ All node-level model variables default to `qwen3.5:9b-q4_K_M`. Override per node
 | `PLAYWRIGHT_HEADLESS` | `false` |
 | `PLAYWRIGHT_FALLBACK_ON_CAPTCHA` | `true` |
 
-#### Persistent Chrome over CDP (recommended)
+#### Persistent Chrome over CDP (required for browser scraping)
 
-By default the scraper copies your Chrome profile into a temp dir and launches a throwaway
-browser **per job**, so LinkedIn's mid-visit session-cookie refreshes are discarded — the real
-profile slowly goes stale and gets signed out, and every cold launch looks like a bot.
-
-Instead, run **one** long-lived Chrome with a remote-debugging port and point the pipeline at it.
-It reuses a warm, logged-in session (one tab per domain), which sharply reduces sign-outs and
-CAPTCHAs.
+Run **one** long-lived Chrome with a remote-debugging port and point the pipeline at it. It reuses
+a warm, logged-in session (one tab per domain), which sharply reduces sign-outs and CAPTCHAs — a
+real, signed-in browser clears bot checks far better than a cold headless launch. This is the
+**only** browser path: the pipeline attaches over CDP and never launches its own Chromium (the
+container ships none), so when the debug Chrome is down, browser-needing scrapes fail cleanly
+rather than falling back.
 
 > **Dedicated profile required.** Current Chrome refuses `--remote-debugging-port` on the **Default**
 > profile dir ("DevTools remote debugging requires a non-default data directory"). So the debug
@@ -280,8 +280,9 @@ finds **blocked or thin** (Cloudflare / 403 / JS-rendered SPA), and for any doma
 **`CDP_FORCE_DOMAINS`** — a proactive list for sites that soft-block plain HTTP (e.g. Glassdoor)
 where waiting to detect a block isn't reliable.
 
-If the debug Chrome is unreachable, the scraper automatically falls back to the legacy
-copy-profile / clean-launch path and sends a one-time alert (see Alerts below).
+All browser scraping goes through this host CDP Chrome — there is no in-process launch
+fallback. If the debug Chrome is unreachable, browser-needing scrapes **fail cleanly** with a
+one-time alert (see Alerts below); plain-HTTP scraping is unaffected.
 
 ## Skills (prompt files)
 
@@ -325,8 +326,8 @@ Prompt files live in `src/main/resources/skills/` and are loaded at runtime — 
 # JSearch API mode (fetches live listings, bypasses email scan + page scrape)
 ./gradlew run --args="--jsearch"
 
-# Start the worker (drains the bridge job queue continuously)
-./gradlew run --args="--worker"
+# Start the processor (drains the bridge job queue continuously)
+./gradlew run --args="--processor"
 
 # Test modes — useful smoke tests, no Gmail/Supabase required
 ./gradlew run --args="--test"             # end-to-end on a sample JD string
@@ -350,21 +351,23 @@ Drive the pipeline against the JSearch API to discover live job listings. JSearc
 Flow:
 1. `JSearchClient.search()` fetches listings from the JSearch API.
 2. Each `JobListing` is wrapped in a `JdRecord` and submitted to the bridge queue via `BridgeClient.submit()`.
-3. The worker claims and processes each job through `ProcessingPipeline` — deduplication, fit scoring, tailoring, and Supabase tracking.
+3. The processor claims and processes each job through `ProcessingPipeline` — deduplication, fit scoring, tailoring, and Postgres tracking.
 
 Required env: `JSEARCH_API_KEY` (RapidAPI key for JSearch).
 
-### Worker mode
+### Processor mode
 
-The worker runs a continuous poll loop against the bridge queue:
+The processor runs a continuous poll loop against the bridge queue. In production it's the
+`jobfit-processor` Docker Compose service (`--processor`); deploy with:
 
 ```bash
-./gradlew run --args="--worker"
-# or via pm2:
-pm2 start --name "jd-worker" bash -- -c "cd /path/to/pipeline && ./gradlew run --args='--worker'"
+docker compose build processor && docker compose up -d processor   # from the repo root
+# health:  docker compose run --rm processor --health   (exit 0 = loop alive)
+# For a local host run instead of the container:
+./gradlew run --args="--processor"
 ```
 
-Override the bridge URL with `JD_BRIDGE_URL` if the bridge is not on `http://127.0.0.1:8765`.
+Override the bridge URL with `JD_BRIDGE_URL` (the container sets `http://bridge:8765`).
 
 ### Gmail token management
 
@@ -389,13 +392,13 @@ The pipeline uses OAuth 2.0 to authenticate with Gmail. Tokens are stored at `GM
 | "Token EXPIRED" / "Token INVALID" | `./gradlew run --args="--reauth"` |
 | "No stored token found" on first run | Ensure `GMAIL_CREDENTIALS_FILE` points to a valid OAuth JSON, then `--reauth` |
 
-### Bridge / worker
+### Bridge / processor
 
 | Symptom | Fix |
 |---|---|
-| "Connection refused" on submit | Bridge is not running — `pm2 start ecosystem.config.js --only jd-bridge` |
-| Jobs queued but never processed | Worker is not running — `pm2 start ecosystem.config.js --only jd-worker` |
-| `pollUntilTerminal` times out | Worker crashed or is overloaded — check `pm2 logs jd-worker` |
+| "Connection refused" on submit | Bridge container is down — `docker compose up -d bridge` (check `docker logs jobfit-bridge`) |
+| Jobs queued but never processed | Processor is down — `docker compose up -d processor` (check `docker logs jobfit-processor`) |
+| `pollUntilTerminal` times out | Processor crashed or is overloaded — `docker logs -f jobfit-processor`; `make doctor` |
 
 ### LinkedIn scraping
 
@@ -428,7 +431,7 @@ src/main/kotlin/com/jd/pipeline/
 │       ├── BatchCommandHandler.kt     # --max-emails: ingest → submit (fire-and-forget)
 │       ├── SingleEmailCommandHandler.kt # --email: single email
 │       ├── JSearchCommandHandler.kt   # --jsearch: fetch → submit to queue
-│       ├── WorkerCommandHandler.kt    # --worker: drain bridge queue
+│       ├── ProcessorCommandHandler.kt # --processor: drain bridge queue
 │       └── TestCommandHandler.kt      # --test: smoke test
 ├── client/
 │   ├── BridgeClient.kt                # HTTP client for bridge queue API
@@ -444,12 +447,12 @@ src/main/kotlin/com/jd/pipeline/
 │   └── JobListing.kt                  # JSearch API response model
 ├── nodes/
 │   ├── ScanEmailNode.kt               # Email classification and field extraction
-│   ├── ScrapeJdNode.kt                # Job-page scraping (HTTP + Playwright/LinkedIn, schema.org JSON-LD)
+│   ├── ScrapeJdNode.kt                # Job-page scraping (HTTP-first + host CDP Chrome, schema.org JSON-LD)
 │   ├── SaveJobDescriptionNode.kt      # Persist JD text
 │   ├── CheckDuplicateNode.kt          # Supabase-backed dedup
 │   ├── ScoreFitNode.kt                # Combined fit scoring + JD structure extraction
 │   ├── GenerateCoverLetterNode.kt     # Cover letter
-│   ├── RenderResumePdfNode.kt         # Playwright: tailored_resume.html → PDF
+│   ├── RenderResumePdfNode.kt         # tailored_resume.yaml → yaml_to_tex.py → tectonic → PDF
 │   ├── AddArtifactUrlNode.kt          # Attach artifact URL to state
 │   ├── SupabaseTrackNode.kt           # Insert/update job record
 │   └── tailor/
