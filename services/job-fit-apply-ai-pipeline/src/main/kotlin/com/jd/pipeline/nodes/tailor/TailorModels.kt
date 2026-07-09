@@ -54,6 +54,42 @@ data class JdRequirements(
     @JsonProperty("company_value_signals") val companyValueSignals: List<String> = emptyList()
 )
 
+/**
+ * The JD's atomic ATS keyword universe: exact-match terms plus the short must-have
+ * phrases (long requirement sentences are prose, not keyword targets). Shared by
+ * [AtsValidationNode] (coverage/missing) and [BulletRewriteNode] (metadata verification)
+ * so both measure against the same terms.
+ */
+fun JdRequirements.coverageKeywords(maxKeywordWords: Int = 5): List<String> =
+    (exactMatchTerms + mustHave.filter { it.trim().split(Regex("\\s+")).size <= maxKeywordWords })
+        .map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
+
+/**
+ * Deterministic text checks shared across tailor nodes — the single implementation of
+ * "is this term literally in this text", so reorder metadata and validation coverage
+ * can never disagree.
+ */
+object TermMatch {
+
+    /**
+     * Word-boundary presence check: the match may not be preceded or followed by an
+     * alphanumeric ("Java" ≠ "JavaScript"; "C++" and "CI/CD" still match). Case- and
+     * whitespace-insensitive.
+     */
+    fun present(term: String, text: String): Boolean {
+        val t = term.trim()
+        if (t.isEmpty()) return false
+        val pattern = "(?<![\\p{Alnum}])" + java.util.regex.Pattern.quote(t.replace(Regex("\\s+"), " ")) + "(?![\\p{Alnum}])"
+        val haystack = text.replace(Regex("\\s+"), " ")
+        return Regex(pattern, RegexOption.IGNORE_CASE).containsMatchIn(haystack)
+    }
+
+    private val QUANT_WORDS = Regex("\\b(doubled|tripled|halved|quadrupled)\\b", RegexOption.IGNORE_CASE)
+
+    /** True when the text carries a quantification signal: a digit, or a multiplier word. */
+    fun quantSignal(text: String): Boolean = text.any { it.isDigit() } || QUANT_WORDS.containsMatchIn(text)
+}
+
 // ── Node B: gap analysis ─────────────────────────────────────────────────────
 
 /** A JD term paired with the resume evidence that makes it safe to claim. */
@@ -158,6 +194,11 @@ data class AtsReport(
     val quantification: Int = 0,
     val formatSafety: Int = 0,
     val topImprovements: List<String> = emptyList(),
+    /**
+     * Deterministic skim-readability findings (overlong bullets, repeated lead verbs) —
+     * score-neutral, but fed to the refine pass and surfaced in ats_report.txt.
+     */
+    val styleWarnings: List<String> = emptyList(),
     /** Weighted composite: coverage 40%, seniority 25%, quantification 20%, format 15%, minus integrity penalties. */
     val overallScore: Int = 0
 ) {

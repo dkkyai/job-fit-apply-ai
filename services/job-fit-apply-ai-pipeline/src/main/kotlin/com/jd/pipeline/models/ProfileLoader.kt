@@ -82,7 +82,8 @@ object ProfileLoader {
             ),
             skills = resume.skills,
             preferences = config.preferences,
-            projects = resume.projects.map(::normalize)
+            projects = resume.projects.map(::normalize),
+            tailoring = config.tailoring.sanitized()
         )
     }
 

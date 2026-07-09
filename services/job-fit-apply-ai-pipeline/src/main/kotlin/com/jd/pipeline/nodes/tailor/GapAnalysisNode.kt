@@ -30,9 +30,13 @@ class GapAnalysisNode(
         println("[gap_analysis] Partitioning ${jd.mustHave.size} must-have / ${jd.niceToHave.size} nice-to-have terms for: ${state.roleTitle}")
 
         return try {
-            val prompt = buildPrompt(jd, CandidateProfileRenderer.renderForTailoring(profile))
+            val neverClaim = profile.tailoring.neverClaim
+            val prompt = buildPrompt(jd, CandidateProfileRenderer.renderForTailoring(profile), neverClaim)
             val response = llm.call(prompt)
-            val parsed = mapper.readValue(stripJsonFences(response), GapAnalysis::class.java)
+            val parsed = enforceNeverClaim(
+                mapper.readValue(stripJsonFences(response), GapAnalysis::class.java),
+                neverClaim
+            )
             if (parsed.supported.isEmpty() && parsed.unsupported.isEmpty()) {
                 return state.copy(error = "gap_analysis: LLM returned an empty partition")
             }
@@ -43,7 +47,30 @@ class GapAnalysisNode(
         }
     }
 
-    private fun buildPrompt(jd: JdRequirements, profileMarkdown: String): String {
+    /**
+     * Deterministic backstop for the candidate's never-claim list: any supported /
+     * missing_but_supported term that contains a never-claim term moves to unsupported,
+     * and the never-claim terms themselves join unsupported — so downstream DO-NOT-CLAIM
+     * prompts and the ATS leak scan cover them even when the LLM mis-partitioned.
+     * `internal` for test visibility.
+     */
+    internal fun enforceNeverClaim(parsed: GapAnalysis, neverClaim: List<String>): GapAnalysis {
+        if (neverClaim.isEmpty()) return parsed
+        fun banned(term: String) = neverClaim.any { nc -> nc.equals(term.trim(), ignoreCase = true) || TermMatch.present(nc, term) }
+        val (bannedSupported, keptSupported) = parsed.supported.partition { banned(it.term) }
+        if (bannedSupported.isNotEmpty()) {
+            println("[gap_analysis] never_claim override: moved ${bannedSupported.size} term(s) to unsupported: " +
+                bannedSupported.joinToString(", ") { it.term })
+        }
+        return parsed.copy(
+            supported = keptSupported,
+            missingButSupported = parsed.missingButSupported.filterNot { banned(it.term) },
+            unsupported = (parsed.unsupported + bannedSupported.map { it.term } + neverClaim)
+                .map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
+        )
+    }
+
+    private fun buildPrompt(jd: JdRequirements, profileMarkdown: String, neverClaim: List<String>): String {
         val skillPrompt = try {
             if (Files.exists(Config.GAP_ANALYSIS_SKILL)) Files.readString(Config.GAP_ANALYSIS_SKILL)
             else DEFAULT_PROMPT
@@ -57,6 +84,11 @@ class GapAnalysisNode(
             appendLine("NICE-TO-HAVE TERMS: ${jd.niceToHave.joinToString(", ")}")
             appendLine("EXACT-MATCH TERMS (tools/certs/protocols): ${jd.exactMatchTerms.joinToString(", ")}")
             appendLine("SENIORITY SIGNALS: ${jd.senioritySignals.joinToString(", ")}")
+            if (neverClaim.isNotEmpty()) {
+                appendLine()
+                appendLine("CANDIDATE-DECLARED NEVER-CLAIM (classify as unsupported even if evidence exists —")
+                appendLine("the candidate refuses to interview on these): ${neverClaim.joinToString(", ")}")
+            }
             appendLine()
             appendLine("CANDIDATE PROFILE (authoritative evidence source — quote it, never extend it):")
             append(profileMarkdown)

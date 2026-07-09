@@ -27,7 +27,9 @@ Scoring guidance:
   percentages, time/cost deltas, scale)? Bullets whose only number is a date don't count.
 - **format_safety** — scannable fragments, one idea per bullet, standard section
   vocabulary, no odd characters/markdown artifacts/smart quotes, acronym+expansion present
-  for key terms.
+  for key terms. The DETERMINISTIC CHECKS block lists style warnings (overlong bullets,
+  repeated opening verbs) — treat them as confirmed findings and dock this score for them.
+  Also dock for language that reads AI-generated (the rubric's banned-word list).
 
 top_improvements rules — this list drives an automated revision pass, so be concrete:
 

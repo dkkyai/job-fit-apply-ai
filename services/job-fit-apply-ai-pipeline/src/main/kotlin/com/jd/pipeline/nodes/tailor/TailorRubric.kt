@@ -31,7 +31,11 @@ object TailorRubric {
         |acronym + expansion on first use; cover each must-have term once (summary + skills +
         |a bullet) — never stuff; standard section headings only.
         |Skim: strongest bullet first per role; fragments, action verb first, one idea per
-        |bullet; quantify where a real number exists; no filler adjectives.
+        |bullet (≤ ~30 words); quantify where a real number exists (digits, not words);
+        |no filler adjectives.
+        |Voice: plain engineer-to-engineer language; banned LLM tells: spearheaded, leveraged,
+        |utilized, orchestrated, seamless, robust, cutting-edge, innovative; the same opening
+        |verb may lead at most 2 bullets across the resume.
         |Depth: lead with scope signals (team size, teams/apps served, coverage %, time/cost
         |deltas, engineers enabled); rewrite or demote any bullet a mid-level engineer could
         |claim; prefer influence-without-authority evidence.

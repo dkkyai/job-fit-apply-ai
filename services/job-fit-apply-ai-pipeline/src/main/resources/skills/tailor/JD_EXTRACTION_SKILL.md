@@ -34,6 +34,10 @@ Field rules:
 - **exact_match_terms** — the subset of terms that ATS parsers match literally: named tools,
   frameworks, cloud platforms, certifications, standards/protocols (e.g. "Espresso",
   "GitHub Actions", "Firebase Test Lab", "gRPC", "Pact"). May overlap must_have/nice_to_have.
+  Keep each entry ATOMIC — one tool/technology per entry. Split compound listings the JD
+  writes as one phrase ("Selenium/Appium" → "Selenium", "Appium"; "Java or Kotlin" →
+  "Java", "Kotlin"). These entries are the coverage denominators downstream — a fused
+  entry can never be matched.
 - **skill_groupings** — if the JD groups its requirements under labels (e.g. "Testing",
   "Cloud & Infrastructure", "Leadership"), reproduce those labels and their items; the
   skills-restructure node mirrors them. Empty array if the JD has no groupings.

@@ -73,16 +73,19 @@ class BulletRewriteNodeProcessTest {
     }
 
     @Test
-    @DisplayName("mocked LLM rewrites bullets and populates career + projects + meta")
+    @DisplayName("mocked LLM rewrites bullets; hits/quantified are re-verified against the rewritten text")
     fun mockedLlmRewritesBullets() {
+        // R1 genuinely contains "Kotlin" + a number; R2 claims nothing; P1R claims a Kotlin
+        // hit the text does NOT contain (and a bogus quantified=false with no digits) — the
+        // deterministic verification must correct the metadata, not echo the LLM's claims.
         val json = """
             [
                 {"role":"Eng","company":"Acme","start_date":"2020","bullets":[
-                    {"original":"B1","category":"Impact","rewritten":"R1","must_have_hits":["Kotlin"],"quantified":true,"seniority_signal":false},
-                    {"original":"B2","category":"Scale","rewritten":"R2","must_have_hits":[],"quantified":false,"seniority_signal":true}
+                    {"original":"B1","category":"Impact","rewritten":"Rebuilt Kotlin suites, cutting runtime 40%","must_have_hits":["Kotlin"],"quantified":true,"seniority_signal":false},
+                    {"original":"B2","category":"Scale","rewritten":"Standardized flaky-test triage across teams","must_have_hits":[],"quantified":false,"seniority_signal":true}
                 ]},
                 {"role":"Maintainer","company":"OSS","start_date":"2022","bullets":[
-                    {"original":"P1","category":"Ownership","rewritten":"P1R","must_have_hits":["Kotlin"],"quantified":false,"seniority_signal":true}
+                    {"original":"P1","category":"Ownership","rewritten":"Maintained an open-source test library","must_have_hits":["Kotlin"],"quantified":false,"seniority_signal":true}
                 ]}
             ]
         """.trimIndent()
@@ -95,20 +98,22 @@ class BulletRewriteNodeProcessTest {
 
         val careerBullets = result.tailoredCareerHistory!!.first().bullets
         assertEquals(2, careerBullets.size)
-        assertEquals("R1", careerBullets[0].text)
+        assertEquals("Rebuilt Kotlin suites, cutting runtime 40%", careerBullets[0].text)
         assertEquals("Impact", careerBullets[0].category)
-        assertEquals("R2", careerBullets[1].text)
-        assertEquals("P1R", result.tailoredProjects!!.first().bullets[0].text)
 
         assertEquals(3, result.tailoredBullets!!.size)
         val first = result.tailoredBullets!!.first()
         assertEquals("B1", first.original)
-        assertEquals(listOf("Kotlin"), first.mustHaveHits)
-        assertTrue(first.quantified)
+        assertEquals(listOf("Kotlin"), first.mustHaveHits, "verified hit: 'Kotlin' is literally present")
+        assertTrue(first.quantified, "verified: digits present")
 
         val engMeta = result.bulletMeta!![roleKey("Eng", "Acme", "2020")]
         assertNotNull(engMeta)
         assertEquals(2, engMeta!!.size)
         assertEquals(1, engMeta[0].mustHaveHits)
+
+        // The bogus project claim is corrected: no literal "Kotlin" in the text → 0 hits.
+        val projMeta = result.bulletMeta!![roleKey("Maintainer", "OSS", "2022")]!!
+        assertEquals(0, projMeta[0].mustHaveHits, "LLM-claimed hit absent from text is discarded")
     }
 }

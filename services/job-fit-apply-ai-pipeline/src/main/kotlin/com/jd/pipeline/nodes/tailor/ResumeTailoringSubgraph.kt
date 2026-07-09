@@ -301,6 +301,11 @@ class ResumeTailoringSubgraph(
                     appendLine()
                     appendLine("Doubled words found: ${report.doubledWords.joinToString(", ")}")
                 }
+                if (report.styleWarnings.isNotEmpty()) {
+                    appendLine()
+                    appendLine("Style warnings (skim readability):")
+                    report.styleWarnings.forEach { appendLine("  - $it") }
+                }
                 if (report.topImprovements.isNotEmpty()) {
                     appendLine()
                     appendLine("Top improvements:")

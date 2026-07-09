@@ -98,6 +98,46 @@ class AtsValidationNodeTest {
     }
 
     @Test
+    @DisplayName("coverage universe is the UNION of exact-match terms and short must-have phrases")
+    fun coverageUniverseUnion() {
+        val jd = JdRequirements(
+            targetTitle = "Staff SDET",
+            mustHave = listOf("test automation", "7+ years of software engineering experience with a focus on quality"),
+            exactMatchTerms = listOf("Kotlin")
+        )
+        val gap = GapAnalysis()
+
+        val full = node.validateDeterministically(jd, gap, "Kotlin frameworks for test automation.")
+        assertEquals(100, full.coveragePct, "Kotlin AND the short must-have both count; the long sentence is excluded")
+
+        val half = node.validateDeterministically(jd, gap, "Kotlin frameworks.")
+        assertEquals(50, half.coveragePct)
+        assertEquals(listOf("test automation"), half.missingTerms)
+    }
+
+    @Test
+    @DisplayName("findStyleWarnings flags overlong bullets and opening verbs used more than twice")
+    fun styleWarnings() {
+        val state = readyState().copy(
+            tailoredCareerHistory = listOf(
+                CareerEntry(
+                    role = "SDET", company = "Acme", startDate = "2020-01",
+                    bullets = listOf(
+                        Bullet("A", "Led " + "framework work ".repeat(20)), // > 250 chars
+                        Bullet("B", "Led the flaky-test triage rotation"),
+                        Bullet("C", "Led adoption across four teams"),
+                        Bullet("D", "Built coverage dashboards")
+                    )
+                )
+            )
+        )
+        val warnings = node.findStyleWarnings(state)
+        assertTrue(warnings.any { it.contains("too long") }, "overlong bullet flagged: $warnings")
+        assertTrue(warnings.any { it.contains("\"led\"") }, "3× 'Led' flagged: $warnings")
+        assertEquals(2, warnings.size)
+    }
+
+    @Test
     @DisplayName("an unsupported term appearing in the output is reported as a leak")
     fun leakDetection() {
         val jd = JdRequirements(targetTitle = "SDET", mustHave = listOf("Kotlin"))
