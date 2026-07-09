@@ -1,0 +1,121 @@
+%% resume_template.tex.jinja
+%% Jinja2 counterpart to base_resume.template.tex -- same visual format, but
+%% data-driven from a resume YAML file via yaml_to_tex.py. Uses backslash-VAR
+%% and backslash-BLOCK delimiters instead of the default curly-brace ones, so
+%% Jinja2 doesn't collide with LaTeX's own braces. All variables are
+%% pre-escaped for LaTeX by the Python script before rendering here.
+\documentclass[10pt]{article}
+
+\usepackage{fontspec}
+\setmainfont{Roboto-Regular}[
+  Path = fonts/,
+  Extension = .ttf,
+  BoldFont = Roboto-Bold,
+  ItalicFont = Roboto-Italic,
+  BoldItalicFont = Roboto-BoldItalic,
+]
+\newfontfamily\robotolight{Roboto-Light}[Path = fonts/, Extension = .ttf]
+
+\usepackage[margin=0.5in]{geometry}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{tabularx}
+\usepackage{setspace}
+\usepackage{ragged2e}
+\usepackage[none]{hyphenat} % disable automatic hyphenation (matches the HTML's default un-hyphenated wrapping)
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+
+% --- Page number bottom-right instead of article's default bottom-center ---
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[R]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\definecolor{bodytext}{HTML}{222222}
+\definecolor{roletext}{HTML}{486948}
+\definecolor{rulegray}{HTML}{999999}
+\definecolor{spacergray}{HTML}{666666}
+
+\color{bodytext}
+\hypersetup{urlcolor=bodytext, linkcolor=bodytext}
+\setstretch{1.15}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{8pt}
+\hfuzz=1in % silence harmless overfull-hbox warnings from ragged, non-hyphenated text
+
+\titleformat{\section}
+  {\robotolight\fontsize{18}{18}\selectfont\color{black}}
+  {}{0pt}{}
+  [\vspace{1pt}{\color{rulegray}\titlerule[0.75pt]}]
+\titlespacing*{\section}{0pt}{18pt}{8pt}
+
+\setlist[itemize]{leftmargin=22pt, itemsep=4pt, topsep=4pt, parsep=0pt}
+
+% Single two-row table (title/date, subtitle/location) as ONE tabularx, so
+% only one \par fires -- calling \resumerow twice back to back let the
+% global \parskip stack a second 8pt gap between the two rows.
+\newcommand{\resumerow}[4]{%
+  \noindent\begin{tabularx}{\linewidth}{@{}X r@{}}
+    \textbf{\color{roletext}\fontsize{12}{12}\selectfont #1} & \fontsize{10}{10}\selectfont #2 \\
+    \textbf{\color{roletext}\fontsize{12}{12}\selectfont #3} & \fontsize{10}{10}\selectfont #4 \\
+  \end{tabularx}\par\vspace{2pt}%
+}
+
+\newcommand{\sep}{\hspace{7.5pt}\textcolor{spacergray}{|}\hspace{7.5pt}}
+
+\begin{document}
+\RaggedRight
+
+% ---------------- Header ----------------
+\begin{center}
+  {\robotolight\fontsize{30}{30}\selectfont \VAR{demographics.first_name} \VAR{demographics.last_name}}\par\vspace{4pt}
+  {\fontsize{11}{11}\selectfont
+    \href{mailto:\VAR{demographics.email}}{\VAR{demographics.email}}\sep
+    \VAR{demographics.phone}\sep
+    \VAR{demographics.location}\BLOCK{ if demographics.postal_code } \VAR{demographics.postal_code}\BLOCK{ endif }
+  }
+\end{center}
+\vspace{8pt}
+
+\section*{Summary}
+\VAR{summary}
+
+\section*{Experience}
+\BLOCK{ for job in experience }
+\resumerow{\VAR{job.role}}{\VAR{job.start_display} -- \VAR{job.end_display}}{\VAR{job.company}}{\VAR{job.location}}
+\begin{itemize}
+\BLOCK{ for bullet in job.bullets }
+  \item \textbf{\VAR{bullet.category}:} \VAR{bullet.text}
+\BLOCK{ endfor }
+\end{itemize}
+\BLOCK{ endfor }
+
+\BLOCK{ if projects }
+\section*{Independent Projects}
+\BLOCK{ for project in projects }
+\resumerow{\VAR{project.role}}{\VAR{project.start_display} -- \VAR{project.end_display}}{\VAR{project.name}}{\VAR{project.link}}
+\begin{itemize}
+\BLOCK{ for bullet in project.bullets }
+  \item \textbf{\VAR{bullet.category}:} \VAR{bullet.text}
+\BLOCK{ endfor }
+\end{itemize}
+\BLOCK{ endfor }
+\BLOCK{ endif }
+
+\section*{Education}
+\BLOCK{ for edu in education }
+\resumerow{\VAR{edu.degree} | \VAR{edu.field}}{\VAR{edu.year}}{\VAR{edu.school}}{\VAR{edu.location}}
+\BLOCK{ endfor }
+
+\clearpage
+
+\section*{Skills}
+\BLOCK{ for group in skills }
+\textbf{\VAR{group.label}:} \VAR{group.items_display}
+
+\BLOCK{ endfor }
+
+\end{document}
