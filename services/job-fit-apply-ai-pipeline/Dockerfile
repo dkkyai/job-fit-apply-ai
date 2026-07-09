@@ -42,8 +42,13 @@ RUN python3 /app/src/main/resources/resume/yaml_to_tex.py \
     && rm -rf /tmp/warmup
 
 # Container defaults (compose overrides as needed). The heartbeat lives in /tmp for --health.
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: the scraper only ever attaches to the host Chrome over CDP
+# (connectOverCDP), which needs the driver but NOT a local browser. Without this flag,
+# Playwright.create() eagerly downloads Chromium+Firefox+WebKit (~500MB) on first use and hangs
+# the container — this image ships no browsers by design.
 ENV HEARTBEAT_FILE=/tmp/processor-heartbeat \
-    JD_BRIDGE_URL=http://bridge:8765
+    JD_BRIDGE_URL=http://bridge:8765 \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # Healthcheck execs the same binary with --health (exit 0 = processor loop alive).
 HEALTHCHECK --interval=60s --timeout=15s --start-period=60s --retries=3 \
