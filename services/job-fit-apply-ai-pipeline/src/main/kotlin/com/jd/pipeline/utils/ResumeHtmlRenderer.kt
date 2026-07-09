@@ -53,7 +53,7 @@ object ResumeHtmlRenderer {
         }
         sections += "<h2>Education</h2>"
         t.base.background.education.forEach { sections += educationBlock(it) }
-        sections += skillsSection(t.skillGroups, t.jdMatchedSkills)
+        sections += skillsSection(t.orderedSkillGroups())
         return sections.joinToString("\n\n")
     }
 
@@ -111,23 +111,15 @@ object ResumeHtmlRenderer {
         |</table>
     """.trimMargin()
 
-    private fun skillsSection(groups: Map<String, List<String>>, jdMatched: List<String>): String {
+    /** Groups arrive pre-ordered by [TailoredProfile.orderedSkillGroups] (JD-matched first). */
+    private fun skillsSection(groups: Map<String, List<String>>): String {
         val paras = groups.entries.joinToString("\n\n") { (label, items) ->
-            val ordered = orderJdFirst(items, jdMatched)
-            "<p><strong>${esc(label)}:</strong> ${ordered.joinToString(" · ") { esc(it) }}</p>"
+            "<p><strong>${esc(label)}:</strong> ${items.joinToString(" · ") { esc(it) }}</p>"
         }
         return "<div class=\"page-break\">\n\n<h2>Skills</h2>\n\n$paras\n\n</div>"
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
-
-    /** Within a group, lead with JD-matched skills (original spelling preserved), then the rest. */
-    private fun orderJdFirst(items: List<String>, jdMatched: List<String>): List<String> {
-        if (jdMatched.isEmpty()) return items
-        val jd = jdMatched.map { it.lowercase() }.toSet()
-        val (matched, rest) = items.partition { it.lowercase() in jd }
-        return matched + rest
-    }
 
     /** "9/2024 – 1/2026"; a blank/null end renders "Present". */
     private fun dateRange(start: String, end: String?): String = "${fmt(start)} – ${fmt(end)}"

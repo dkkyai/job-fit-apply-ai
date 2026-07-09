@@ -15,6 +15,7 @@ object CommandParser {
         var resumeGenPath: String? = null
         var initProfilePath: String? = null
         var processor = false
+        var health = false
         var notifyTimeoutMinutes: Int? = null
 
         var i = 0
@@ -63,6 +64,7 @@ object CommandParser {
                     System.err.println("[cli] --worker is deprecated; use --processor")
                     processor = true
                 }
+                "--health" -> health = true
                 "--notify-timeout" -> {
                     if (i + 1 < args.size) {
                         notifyTimeoutMinutes = args[i + 1].toIntOrNull()
@@ -74,6 +76,7 @@ object CommandParser {
         }
 
         return when {
+            health -> Command.Health
             notifyTimeoutMinutes != null -> Command.NotifyTimeout(notifyTimeoutMinutes)
             test -> Command.Test
             testResume -> Command.TestResume

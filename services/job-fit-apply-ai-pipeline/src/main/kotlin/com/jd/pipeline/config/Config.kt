@@ -148,6 +148,17 @@ object Config {
     /** Personal HTML résumé rendered from resume.yaml. Gitignored — produced by `--init-profile` / `--resume-gen`. */
     val GENERATED_RESUME_HTML_PATH: Path = PROJECT_DIR.resolve("src/main/resources/resume").resolve("generated_resume.html")
 
+    // ── Resume PDF (YAML → LaTeX → PDF via yaml_to_tex.py + tectonic) ────────────
+    /** Python interpreter used to run yaml_to_tex.py (needs pyyaml + jinja2 on its path). */
+    val PYTHON_BIN: String = get("PYTHON_BIN", "python3")
+    /** The YAML→TeX renderer script; compiles to PDF with tectonic when run with --pdf. */
+    val YAML_TO_TEX_SCRIPT: Path = get("YAML_TO_TEX_SCRIPT", "").let { override ->
+        if (override.isNotBlank()) Paths.get(override)
+        else PROJECT_DIR.resolve("src/main/resources/resume").resolve("yaml_to_tex.py")
+    }
+    /** Hard cap on one render+compile run (tectonic is seconds once its cache is warm). */
+    val RENDER_PDF_TIMEOUT_MS: Long = get("RENDER_PDF_TIMEOUT_MS", "180000").toLong()
+
     // ── User Profile ─────────────────────────────────────────────────────────────
     /** Slim pipeline config (preferences + scoring aids). Gitignored — produced by `--init-profile`. */
     val CANDIDATE_PROFILE_PATH: Path = PROJECT_DIR.resolve("config").resolve("candidate_profile.yaml")
@@ -210,6 +221,13 @@ object Config {
     val TELEGRAM_BOT_TOKEN: String = get("TELEGRAM_BOT_TOKEN", "")
     val TELEGRAM_CHAT_ID: String   = get("TELEGRAM_CHAT_ID", "")
     val NOTIFICATION_FIT_THRESHOLD: Int = get("NOTIFICATION_FIT_THRESHOLD", "50").toInt()
+
+    // ── Liveness (container healthcheck) ─────────────────────────────────────────
+    // The processor loop touches HEARTBEAT_FILE each iteration; `--health` exits 0 when it is
+    // fresher than HEALTH_MAX_AGE_MIN. Generous window: the loop only beats between jobs, and a
+    // queue of local-LLM jobs can hold one iteration for tens of minutes.
+    val HEARTBEAT_FILE: String = get("HEARTBEAT_FILE", "/tmp/processor-heartbeat")
+    val HEALTH_MAX_AGE_MIN: Long = get("HEALTH_MAX_AGE_MIN", "90").toLong()
 
     // ── Artifacts URL (Tailscale file server) ──────────────────────────────────────
     val ARTIFACT_BASE_URL: String = get("ARTIFACT_BASE_URL", "")

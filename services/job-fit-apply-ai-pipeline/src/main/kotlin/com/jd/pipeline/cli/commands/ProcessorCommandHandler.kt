@@ -3,6 +3,8 @@ package com.jd.pipeline.cli.commands
 import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.ClaimDto
 import com.jd.pipeline.client.WorkItemType
+import com.jd.pipeline.config.Config
+import com.jd.pipeline.utils.Heartbeat
 import com.jd.pipeline.pipeline.EmailDisposition
 import com.jd.pipeline.pipeline.EmailResolution
 import com.jd.pipeline.pipeline.IngestionPipeline
@@ -26,12 +28,17 @@ object ProcessorCommandHandler {
         bridge: BridgeClient = BridgeClient(),
         pipeline: ProcessingPipeline = ProcessingPipeline(),
         ingestion: IngestionPipeline = IngestionPipeline(),
+        heartbeat: Heartbeat = Heartbeat.fromConfig(Config.HEARTBEAT_FILE),
     ) {
         // Messaging (Discord/Telegram) is now a separate Notifier service that consumes the bridge's
         // completed-event stream. The Processor just posts results.
         println("[processor] Starting — polling ${System.getenv("JD_BRIDGE_URL") ?: "http://127.0.0.1:8765"}")
 
         while (true) {
+            // Liveness for the container healthcheck (`--health`). Beats only between jobs, so
+            // the freshness window (HEALTH_MAX_AGE_MIN) must tolerate a long job.
+            heartbeat.beat()
+
             val claimed = try {
                 bridge.claim()
             } catch (e: Exception) {

@@ -7,10 +7,7 @@ import com.jd.pipeline.client.LlmCaller
 import com.jd.pipeline.client.LlmClient
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.state.JDState
-import com.microsoft.playwright.Browser
-import com.microsoft.playwright.BrowserType
 import com.microsoft.playwright.Page
-import com.microsoft.playwright.Playwright
 import com.microsoft.playwright.options.LoadState
 import com.microsoft.playwright.options.WaitForSelectorState
 import com.microsoft.playwright.options.WaitUntilState
@@ -21,10 +18,6 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
-import java.nio.file.SimpleFileVisitor
-import java.nio.file.StandardCopyOption
-import java.nio.file.attribute.BasicFileAttributes
 import java.util.regex.Pattern
 
 /**
@@ -36,8 +29,9 @@ import java.util.regex.Pattern
  */
 class ScrapeJdNode(
     private val llm: LlmCaller = LlmClient.fromModelString(Config.SCRAPE_MODEL, jsonMode = true, temperature = 0.0, nodeKey = "scrape_jd"),
-    // Long-lived Chrome connected over CDP (one tab per domain, warm session). When the endpoint
-    // is unreachable the scraper falls back to the legacy per-job profile-copy / clean-launch path.
+    // Long-lived Chrome connected over CDP (one tab per domain, warm session). The ONLY browser
+    // path — when the endpoint is unreachable, browser-needing scrapes fail cleanly with an alert
+    // (plain-HTTP scraping is unaffected). No in-process Chromium is ever launched.
     private val cdpBrowser: ChromeCdpBrowser = ChromeCdpBrowser(),
     private val alerts: AlertService = AlertService(),
 ) : Node<JDState> {
@@ -119,18 +113,6 @@ class ScrapeJdNode(
         val host = extractHost(jobUrl)
 
         // ── Batch-skip checks (one attempt per domain per batch) ─────────────
-        // Pre-check: if Chrome profile doesn't exist, skip LinkedIn entirely (no auth possible)
-        if (isLinkedInHost(host)) {
-            val chromeProfilePath = Paths.get(Config.CHROME_USER_DATA_DIR).resolve(Config.CHROME_PROFILE_DIRECTORY)
-            if (!Files.isDirectory(chromeProfilePath)) {
-                log("[scrape_jd] No Chrome profile for LinkedIn — skipping $host")
-                batchLinkedInSessionExpired = true
-                return input.copy(
-                    isChromeSessionExpired = true,
-                    error = "scrape_jd: LinkedIn auth unavailable — Chrome profile not found at $chromeProfilePath"
-                )
-            }
-        }
         if (isLinkedInHost(host) && batchLinkedInSessionExpired) {
             log("[scrape_jd] Skipping $host — LinkedIn session expired this batch")
             return input.copy(
@@ -196,8 +178,8 @@ class ScrapeJdNode(
         }
 
         // Proactive CDP for known soft-blocking / challenge-prone domains: skip HTTP and use the
-        // warm browser directly (fetchPageWithPlaywright falls back to a clean launch + alert if
-        // the debug Chrome is down).
+        // warm browser directly (fetchPageWithPlaywright alerts + fails the scrape if the debug
+        // Chrome is unreachable — all browser scraping goes through the host CDP Chrome).
         if (isForceCdpHost(host)) {
             log("[scrape_jd] Force-CDP domain: $host — routing to browser")
             return fetchPageWithPlaywright(url).copy(scrapePath = "cdp_forced")
@@ -205,14 +187,14 @@ class ScrapeJdNode(
 
         val httpResult = fetchPageOverHttp(url)
         if ((httpResult.isCaptchaBlock || httpResult.isBotBlock) && Config.PLAYWRIGHT_FALLBACK_ON_CAPTCHA) {
-            log("[scrape_jd] HTTP blocked ($host: ${httpResult.blockReason}) — retrying with Playwright")
-            return fetchPageWithPlaywright(url).copy(scrapePath = "playwright_clean")
+            log("[scrape_jd] HTTP blocked ($host: ${httpResult.blockReason}) — retrying with CDP browser")
+            return fetchPageWithPlaywright(url).copy(scrapePath = "cdp_fallback")
         }
         if (httpResult.blockReason.isEmpty() &&
             httpResult.cleanedText.length < Config.PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH &&
             Config.PLAYWRIGHT_FALLBACK_ON_THIN_CONTENT) {
-            log("[scrape_jd] Thin content ($host: ${httpResult.cleanedText.length} chars) — retrying with Playwright")
-            return fetchPageWithPlaywright(url).copy(scrapePath = "playwright_clean")
+            log("[scrape_jd] Thin content ($host: ${httpResult.cleanedText.length} chars) — retrying with CDP browser")
+            return fetchPageWithPlaywright(url).copy(scrapePath = "cdp_fallback")
         }
         return httpResult.copy(scrapePath = "http")
     }
@@ -363,60 +345,19 @@ class ScrapeJdNode(
     }
 
     /**
-     * Fetch a LinkedIn job page using the logged-in profile. Prefers the long-lived CDP Chrome
-     * (warm session, no profile copy, reused per-domain tab); falls back to the legacy per-job
-     * profile-copy launch when the debug Chrome is unreachable, alerting once per batch.
+     * Fetch a LinkedIn job page using the logged-in CDP Chrome (warm session, reused
+     * per-domain tab). All browser scraping goes through the host CDP Chrome — when the
+     * debug Chrome is unreachable the scrape fails cleanly (alerting once per batch)
+     * instead of falling back to an in-process launch.
      */
     private fun fetchLinkedInPageWithPlaywright(url: String): PageContent {
-        if (cdpBrowser.isAvailable()) {
-            log("[scrape_jd] Using CDP Chrome for LinkedIn: $url")
-            val page = cdpBrowser.pageForDomain(extractHost(url))
-            return scrapeLinkedInPage(page, url).copy(scrapePath = "cdp_profile")
+        if (!cdpBrowser.isAvailable()) {
+            alertCdpUnavailable()
+            throw CdpUnavailableException(cdpUnavailableMessage())
         }
-        alertCdpUnavailable()
-        return fetchLinkedInPageWithProfileCopy(url).copy(scrapePath = "playwright_profile")
-    }
-
-    /**
-     * Legacy path: copy the Chrome profile into an isolated temp dir and launch a throwaway
-     * persistent context. Used only when the CDP debug Chrome is unreachable.
-     */
-    private fun fetchLinkedInPageWithProfileCopy(url: String): PageContent {
-        val sourceUserDataDir = Paths.get(Config.CHROME_USER_DATA_DIR)
-        val profileDirectory = Config.CHROME_PROFILE_DIRECTORY
-
-        if (!Files.isDirectory(sourceUserDataDir)) {
-            throw RuntimeException("Chrome user data dir not found: $sourceUserDataDir")
-        }
-
-        val profilePath = sourceUserDataDir.resolve(profileDirectory)
-        if (!Files.isDirectory(profilePath)) {
-            throw RuntimeException("Chrome profile directory not found: $profilePath")
-        }
-
-        log("[scrape_jd] Using Playwright (profile copy) for LinkedIn with profile: $profilePath")
-
-        val isolatedUserDataDir = createIsolatedChromeUserDataDir(sourceUserDataDir, profileDirectory)
-        var playwright: Playwright? = null
-        var launchedContext: com.microsoft.playwright.BrowserContext? = null
-        try {
-            playwright = Playwright.create()
-            val launchOptions = BrowserType.LaunchPersistentContextOptions()
-                .setExecutablePath(Paths.get(Config.CHROME_EXECUTABLE_PATH))
-                .setHeadless(Config.PLAYWRIGHT_HEADLESS)
-                .setArgs(listOf("--profile-directory=$profileDirectory"))
-
-            launchedContext = playwright.chromium().launchPersistentContext(isolatedUserDataDir, launchOptions)
-            launchedContext.setDefaultTimeout(Config.PLAYWRIGHT_TIMEOUT_MS)
-            launchedContext.setDefaultNavigationTimeout(Config.PLAYWRIGHT_TIMEOUT_MS)
-
-            val page = launchedContext.pages().firstOrNull() ?: launchedContext.newPage()
-            return scrapeLinkedInPage(page, url)
-        } finally {
-            runCatching { launchedContext?.close() }
-            runCatching { playwright?.close() }
-            deleteDirectoryRecursively(isolatedUserDataDir)
-        }
+        log("[scrape_jd] Using CDP Chrome for LinkedIn: $url")
+        val page = cdpBrowser.pageForDomain(extractHost(url))
+        return scrapeLinkedInPage(page, url).copy(scrapePath = "cdp_profile")
     }
 
     /**
@@ -433,7 +374,7 @@ class ScrapeJdNode(
 
         if (isLinkedInLoginPage(page)) {
             throw LinkedInAuthenticationException(
-                "LinkedIn session is not authenticated for Chrome profile ${Config.CHROME_PROFILE_DIRECTORY}"
+                "LinkedIn session is not authenticated in the CDP Chrome (${Config.CHROME_CDP_ENDPOINT}) — sign in to LinkedIn in that browser"
             )
         }
 
@@ -463,54 +404,11 @@ class ScrapeJdNode(
         }
     }
 
-    private fun createIsolatedChromeUserDataDir(sourceUserDataDir: Path, profileDirectory: String): Path {
-        val tempUserDataDir = Files.createTempDirectory("jd-linkedin-chrome-")
-        val sourceProfileDir = sourceUserDataDir.resolve(profileDirectory)
-        val targetProfileDir = tempUserDataDir.resolve(profileDirectory)
-
-        val localState = sourceUserDataDir.resolve("Local State")
-        if (Files.exists(localState)) {
-            Files.copy(localState, tempUserDataDir.resolve("Local State"), StandardCopyOption.REPLACE_EXISTING)
-        }
-
-        copyDirectoryRecursively(sourceProfileDir, targetProfileDir)
-        return tempUserDataDir
-    }
-
-    private fun copyDirectoryRecursively(source: Path, target: Path) {
-        Files.walkFileTree(source, object : SimpleFileVisitor<Path>() {
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): java.nio.file.FileVisitResult {
-                Files.createDirectories(target.resolve(source.relativize(dir)))
-                return java.nio.file.FileVisitResult.CONTINUE
-            }
-
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): java.nio.file.FileVisitResult {
-                Files.copy(
-                    file,
-                    target.resolve(source.relativize(file)),
-                    StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.COPY_ATTRIBUTES
-                )
-                return java.nio.file.FileVisitResult.CONTINUE
-            }
-        })
-    }
-
-    private fun deleteDirectoryRecursively(path: Path) {
-        if (!Files.exists(path)) return
-
-        Files.walkFileTree(path, object : SimpleFileVisitor<Path>() {
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): java.nio.file.FileVisitResult {
-                Files.deleteIfExists(file)
-                return java.nio.file.FileVisitResult.CONTINUE
-            }
-
-            override fun postVisitDirectory(dir: Path, exc: java.io.IOException?): java.nio.file.FileVisitResult {
-                Files.deleteIfExists(dir)
-                return java.nio.file.FileVisitResult.CONTINUE
-            }
-        })
-    }
+    private fun cdpUnavailableMessage(): String =
+        if (Config.CHROME_CDP_ENDPOINT.isBlank())
+            "CDP Chrome not configured (set CHROME_CDP_ENDPOINT) — browser scraping unavailable"
+        else
+            "CDP Chrome unreachable at ${Config.CHROME_CDP_ENDPOINT} — browser scraping unavailable"
 
     private fun waitForLinkedInPage(page: Page) {
         // Use LOAD rather than NETWORKIDLE — NETWORKIDLE can hang indefinitely
@@ -1124,57 +1022,19 @@ class ScrapeJdNode(
 
     /**
      * Fetches a JS-rendered page when the plain HTTP fetch is blocked (Cloudflare challenge, 403)
-     * or returns thin SPA content. Prefers the warm CDP Chrome — a real, logged-in browser clears
-     * bot checks far better than a cold headless launch — and falls back to a clean headless
-     * Playwright session when the debug Chrome is unreachable (alerting once per batch).
+     * or returns thin SPA content, via the warm CDP Chrome — a real, logged-in browser clears bot
+     * checks far better than a cold headless launch. All browser scraping goes through the host
+     * CDP Chrome; when it is unreachable the scrape fails cleanly (alerting once per batch), and a
+     * CDP fetch error propagates rather than retrying with an in-process launch.
      */
     private fun fetchPageWithPlaywright(url: String): PageContent {
-        if (cdpBrowser.isAvailable()) {
-            return try {
-                log("[scrape_jd] Using CDP Chrome for $url")
-                val page = cdpBrowser.pageForDomain(extractHost(url))
-                extractDynamicPage(page, url)
-            } catch (e: Exception) {
-                log("[scrape_jd] CDP fetch failed for $url: ${e.message} — using clean launch")
-                fetchPageWithCleanLaunch(url)
-            }
+        if (!cdpBrowser.isAvailable()) {
+            alertCdpUnavailable()
+            throw CdpUnavailableException(cdpUnavailableMessage())
         }
-        alertCdpUnavailable()
-        return fetchPageWithCleanLaunch(url)
-    }
-
-    /**
-     * Legacy fallback: a clean Playwright browser session (no Chrome profile, no cookies) with
-     * anti-automation flags. Used only when the CDP debug Chrome is unreachable.
-     */
-    private fun fetchPageWithCleanLaunch(url: String): PageContent {
-        var playwright: Playwright? = null
-        try {
-            playwright = Playwright.create()
-            val browser = playwright.chromium().launch(
-                BrowserType.LaunchOptions()
-                    .setExecutablePath(Paths.get(Config.CHROME_EXECUTABLE_PATH))
-                    .setHeadless(Config.PLAYWRIGHT_HEADLESS)
-                    .setArgs(listOf(
-                        "--disable-blink-features=AutomationControlled",
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox"
-                    ))
-            )
-            val context = browser.newContext(
-                Browser.NewContextOptions()
-                    .setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            )
-            // Hide the webdriver flag so bot-detection JS sees a regular browser
-            context.addInitScript("Object.defineProperty(navigator,'webdriver',{get:()=>undefined})")
-
-            return extractDynamicPage(context.newPage(), url)
-        } catch (e: Exception) {
-            log("[scrape_jd] Playwright fallback failed for $url: ${e.message}")
-            return PageContent("", "", "Playwright error: ${e.message}")
-        } finally {
-            runCatching { playwright?.close() }
-        }
+        log("[scrape_jd] Using CDP Chrome for $url")
+        val page = cdpBrowser.pageForDomain(extractHost(url))
+        return extractDynamicPage(page, url)
     }
 
     /**
@@ -1214,4 +1074,7 @@ class ScrapeJdNode(
 
     private class LinkedInAuthenticationException(message: String) : RuntimeException(message)
     private class CaptchaBlockedException(message: String) : RuntimeException(message)
+
+    /** The host CDP Chrome is unconfigured/unreachable — no browser scraping is possible. */
+    private class CdpUnavailableException(message: String) : RuntimeException(message)
 }

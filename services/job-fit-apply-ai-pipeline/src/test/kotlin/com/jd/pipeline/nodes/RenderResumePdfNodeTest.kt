@@ -1,206 +1,129 @@
 package com.jd.pipeline.nodes
-import com.jd.pipeline.state.PipelineAction
 
 import com.jd.pipeline.state.JDState
-import org.junit.jupiter.api.Test
+import com.jd.pipeline.state.PipelineAction
 import org.junit.jupiter.api.Assertions.*
-import java.nio.charset.StandardCharsets
+import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Test for RenderResumePdfNode.
- * Validates that PDF placeholder generation works correctly.
+ * Tests for RenderResumePdfNode (YAML → LaTeX → PDF).
+ *
+ * The real yaml_to_tex.py needs jinja2 + tectonic, which aren't test dependencies, so these
+ * tests inject a stub script that honours the same contract: run in the job dir with
+ * `<yaml> -o tailored_resume.tex --pdf`, it writes tailored_resume.tex, a fonts/ copy, and
+ * tailored_resume.pdf. The real-toolchain compile is exercised at Docker build time (warm-up)
+ * and by --test-resume on a machine with tectonic installed.
  */
 class RenderResumePdfNodeTest {
 
+    /** Stub yaml_to_tex.py: mimics outputs (tex + fonts/ + pdf) without jinja2/tectonic. */
+    private val stubScript = """
+        import pathlib, sys
+        assert sys.argv[1] == "tailored_resume.yaml", f"unexpected yaml arg: {sys.argv[1]}"
+        assert "--pdf" in sys.argv, "expected --pdf flag"
+        pathlib.Path("tailored_resume.tex").write_text("stub tex")
+        fonts = pathlib.Path("fonts"); fonts.mkdir(exist_ok=True)
+        (fonts / "Roboto-Regular.ttf").write_bytes(b"stub font")
+        pathlib.Path("tailored_resume.pdf").write_bytes(b"%PDF-1.4 stub resume")
+    """.trimIndent()
+
+    private val failingScript = """
+        import sys
+        print("tectonic: error: something exploded")
+        sys.exit(3)
+    """.trimIndent()
+
+    private fun tempJobDir(withYaml: Boolean = true): Path {
+        val dir = Files.createTempDirectory("jd-pipeline-test-")
+        if (withYaml) Files.writeString(dir.resolve("tailored_resume.yaml"), "summary: test")
+        return dir
+    }
+
+    private fun node(dir: Path, script: String = stubScript): RenderResumePdfNode {
+        val scriptPath = dir.resolve("stub_yaml_to_tex.py")
+        Files.writeString(scriptPath, script)
+        return RenderResumePdfNode(pythonBin = "python3", script = scriptPath, timeoutMs = 30_000)
+    }
+
+    private fun tailorState(dir: Path, profile: com.jd.pipeline.models.CandidateProfile? = null) = JDState(
+        pipelineAction = PipelineAction.TAILOR,
+        outputPath = dir.toString(),
+        company = "Acme Corp",
+        roleTitle = "Staff SDET",
+        candidateProfile = profile,
+    )
+
     @Test
-    fun `test PDF placeholder is created with correct path and content`() {
-        // Create a temp directory for the test output
-        val tempDir = Files.createTempDirectory("jd-pipeline-test-")
-        val outputPath = tempDir.toString()
-        
-        // Create the HTML file that the test expects
-        val htmlPath = tempDir.resolve("tailored_resume.html")
-        Files.writeString(htmlPath, "<html><body>Test Resume</body></html>")
-        
-        // Verify HTML file exists (prerequisite)
-        assertTrue(Files.exists(htmlPath), "HTML file should exist at $htmlPath")
-        
-        // Create mock JDState for PDF generation
-        val mockState = JDState(
-            pipelineAction = PipelineAction.TAILOR,
-            outputPath = outputPath,
-            company = "Acme Corp",
-            roleTitle = "Staff SDET"
-        )
-        
-        // Invoke PDF node
-        val pdfNode = RenderResumePdfNode()
-        val result = pdfNode.process(mockState)
-        
-        // Validation 1: result.resumeHtmlPdf is non-empty
-        assertTrue(result.resumeHtmlPdf.isNotEmpty(), 
-            "resumeHtmlPdf should be non-empty, but was: '${result.resumeHtmlPdf}'")
-        
-        // Validation 2: PDF file exists at that path
+    fun `renders PDF from tailored_resume yaml, keeps tex, removes fonts copy`() {
+        val dir = tempJobDir()
+        val result = node(dir).process(tailorState(dir, createCandidateProfile()))
+
+        assertEquals("", result.error, "render should succeed: ${result.error}")
+        assertTrue(result.resumeHtmlPdf.isNotEmpty(), "resumeHtmlPdf should be set")
+
         val pdfPath = Path.of(result.resumeHtmlPdf)
-        assertTrue(Files.exists(pdfPath), 
-            "PDF file should exist at ${result.resumeHtmlPdf}")
-        
-        // Validation 3: File size > 0
-        val fileSize = Files.size(pdfPath)
-        assertTrue(fileSize > 0, 
-            "PDF file should have size > 0, but was: $fileSize")
-        
-        // Validation 4: Verify PDF magic bytes
-        val bytes = Files.readAllBytes(pdfPath)
-        val pdfHeader = String(bytes, 0, minOf(8, bytes.size), StandardCharsets.US_ASCII)
-        assertTrue(pdfHeader.startsWith("%PDF-"), 
-            "PDF file should start with %PDF- magic bytes, but was: ${pdfHeader.take(20)}")
-        
-        println("=== PDF Verification Test Results ===")
-        println("PDF path: ${result.resumeHtmlPdf}")
-        println("File size: $fileSize bytes")
-        println("PDF header: ${pdfHeader.take(20)}")
-        println("=====================================")
-        
-        // Cleanup
-        Files.deleteIfExists(htmlPath)
-        Files.deleteIfExists(pdfPath)
-        Files.deleteIfExists(tempDir)
+        assertTrue(Files.exists(pdfPath), "PDF should exist at $pdfPath")
+        assertEquals("Jane_Doe_Staff_SDET.pdf", pdfPath.fileName.toString())
+        assertTrue(Files.readAllBytes(pdfPath).decodeToString().startsWith("%PDF-"), "PDF magic bytes")
+
+        assertTrue(Files.exists(dir.resolve("tailored_resume.tex")), ".tex kept for debugging")
+        assertFalse(Files.exists(dir.resolve("tailored_resume.pdf")), "intermediate pdf renamed away")
+        assertFalse(Files.exists(dir.resolve("fonts")), "per-job fonts/ copy removed")
+        assertFalse(Files.exists(dir.resolve("render_pdf.log")), "log removed on success")
     }
-    
+
     @Test
-    fun `test PDF node skips when action is not tailor`() {
-        val mockState = JDState(
-            pipelineAction = PipelineAction.SKIP,
-            outputPath = "/tmp/test_output",
-            company = "Test Corp",
-            roleTitle = "Engineer"
-        )
-        
-        val pdfNode = RenderResumePdfNode()
-        val result = pdfNode.process(mockState)
-        
-        // Should return input unchanged
-        assertEquals("", result.resumeHtmlPdf)
-    }
-    
-    @Test
-    fun `test PDF node skips when outputPath is null`() {
-        val mockState = JDState(
-            pipelineAction = PipelineAction.TAILOR,
-            outputPath = "",
-            company = "Test Corp",
-            roleTitle = "Engineer"
-        )
-        
-        val pdfNode = RenderResumePdfNode()
-        val result = pdfNode.process(mockState)
-        
-        // Should return input unchanged
+    fun `skips when action is not tailor`() {
+        val dir = tempJobDir()
+        val result = node(dir).process(tailorState(dir).copy(pipelineAction = PipelineAction.SKIP))
         assertEquals("", result.resumeHtmlPdf)
     }
 
     @Test
-    fun `test PDF filename includes author name from candidateProfile`() {
-        val tempDir = Files.createTempDirectory("jd-pipeline-test-")
-        val outputPath = tempDir.toString()
-
-        val htmlPath = tempDir.resolve("tailored_resume.html")
-        Files.writeString(htmlPath, "<html><body>Test Resume</body></html>")
-
-        val profile = createCandidateProfile(firstName = "Jane", lastName = "Doe")
-
-        val mockState = JDState(
-            pipelineAction = PipelineAction.TAILOR,
-            outputPath = outputPath,
-            company = "Acme Corp",
-            roleTitle = "Staff SDET",
-            candidateProfile = profile
-        )
-
-        val pdfNode = RenderResumePdfNode()
-        val result = pdfNode.process(mockState)
-
-        assertTrue(result.resumeHtmlPdf.isNotEmpty())
-        val pdfPath = Path.of(result.resumeHtmlPdf)
-        val fileName = pdfPath.fileName.toString()
-
-        assertTrue(fileName.contains("Jane_Doe"), "Filename should contain author name: $fileName")
-        assertTrue(fileName.contains("Staff_SDET"), "Filename should contain role title: $fileName")
-        assertTrue(fileName.endsWith(".pdf"), "Filename should end with .pdf: $fileName")
-
-        // Cleanup
-        Files.deleteIfExists(htmlPath)
-        Files.deleteIfExists(pdfPath)
-        Files.deleteIfExists(tempDir)
+    fun `skips when outputPath is empty`() {
+        val dir = tempJobDir()
+        val result = node(dir).process(tailorState(dir).copy(outputPath = ""))
+        assertEquals("", result.resumeHtmlPdf)
     }
 
     @Test
-    fun `test PDF filename falls back to Resume when candidateProfile is null`() {
-        val tempDir = Files.createTempDirectory("jd-pipeline-test-")
-        val outputPath = tempDir.toString()
-
-        val htmlPath = tempDir.resolve("tailored_resume.html")
-        Files.writeString(htmlPath, "<html><body>Test Resume</body></html>")
-
-        val mockState = JDState(
-            pipelineAction = PipelineAction.TAILOR,
-            outputPath = outputPath,
-            company = "Acme Corp",
-            roleTitle = "Engineer",
-            candidateProfile = null
-        )
-
-        val pdfNode = RenderResumePdfNode()
-        val result = pdfNode.process(mockState)
-
-        assertTrue(result.resumeHtmlPdf.isNotEmpty())
-        val pdfPath = Path.of(result.resumeHtmlPdf)
-        val fileName = pdfPath.fileName.toString()
-
-        assertTrue(fileName.startsWith("Resume_"), "Filename should fallback to 'Resume': $fileName")
-        assertTrue(fileName.endsWith(".pdf"), "Filename should end with .pdf: $fileName")
-
-        // Cleanup
-        Files.deleteIfExists(htmlPath)
-        Files.deleteIfExists(pdfPath)
-        Files.deleteIfExists(tempDir)
+    fun `errors when tailored_resume yaml is missing`() {
+        val dir = tempJobDir(withYaml = false)
+        val result = node(dir).process(tailorState(dir))
+        assertTrue(result.error.contains("tailored_resume.yaml not found"), "got: ${result.error}")
+        assertEquals("", result.resumeHtmlPdf)
     }
 
     @Test
-    fun `test PDF filename falls back to Resume when fullName is blank`() {
-        val tempDir = Files.createTempDirectory("jd-pipeline-test-")
-        val outputPath = tempDir.toString()
+    fun `errors with script output tail when the toolchain fails`() {
+        val dir = tempJobDir()
+        val result = node(dir, script = failingScript).process(tailorState(dir))
+        assertTrue(result.error.contains("exited 3"), "should carry exit code: ${result.error}")
+        assertTrue(result.error.contains("something exploded"), "should carry output tail: ${result.error}")
+        assertTrue(Files.exists(dir.resolve("render_pdf.log")), "log kept on failure")
+        assertEquals("", result.resumeHtmlPdf)
+    }
 
-        val htmlPath = tempDir.resolve("tailored_resume.html")
-        Files.writeString(htmlPath, "<html><body>Test Resume</body></html>")
+    @Test
+    fun `filename falls back to Resume when candidateProfile is null`() {
+        val dir = tempJobDir()
+        val result = node(dir).process(tailorState(dir, profile = null))
+        assertTrue(result.resumeHtmlPdf.isNotEmpty())
+        val fileName = Path.of(result.resumeHtmlPdf).fileName.toString()
+        assertTrue(fileName.startsWith("Resume_"), "Filename should fall back to 'Resume': $fileName")
+        assertTrue(fileName.endsWith(".pdf"))
+    }
 
+    @Test
+    fun `filename falls back to Resume when fullName is blank`() {
+        val dir = tempJobDir()
         val profile = createCandidateProfile(firstName = "", lastName = "")
-
-        val mockState = JDState(
-            pipelineAction = PipelineAction.TAILOR,
-            outputPath = outputPath,
-            company = "Acme Corp",
-            roleTitle = "Engineer",
-            candidateProfile = profile
-        )
-
-        val pdfNode = RenderResumePdfNode()
-        val result = pdfNode.process(mockState)
-
+        val result = node(dir).process(tailorState(dir, profile))
         assertTrue(result.resumeHtmlPdf.isNotEmpty())
-        val pdfPath = Path.of(result.resumeHtmlPdf)
-        val fileName = pdfPath.fileName.toString()
-
-        assertTrue(fileName.startsWith("Resume_"), "Filename should fallback to 'Resume' when name is blank: $fileName")
-
-        // Cleanup
-        Files.deleteIfExists(htmlPath)
-        Files.deleteIfExists(pdfPath)
-        Files.deleteIfExists(tempDir)
+        val fileName = Path.of(result.resumeHtmlPdf).fileName.toString()
+        assertTrue(fileName.startsWith("Resume_"), "Filename should fall back to 'Resume': $fileName")
     }
 
     private fun createCandidateProfile(

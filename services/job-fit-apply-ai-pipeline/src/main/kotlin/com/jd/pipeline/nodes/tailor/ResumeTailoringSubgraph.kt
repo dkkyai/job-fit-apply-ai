@@ -2,11 +2,13 @@ package com.jd.pipeline.nodes.tailor
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.jd.pipeline.config.Config
+import com.jd.pipeline.models.ProfileLoader
 import com.jd.pipeline.nodes.Node
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.utils.OutputUtils
 import com.jd.pipeline.utils.ResumeHtmlRenderer
+import com.jd.pipeline.utils.ResumeYamlWriter
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -63,7 +65,7 @@ class ResumeTailoringSubgraph(
             .count { it.isNotBlank() && !it.startsWith("http") }
         if (jdWordCount < 50) {
             System.err.println("[tailor_subgraph] WARN: jdText too sparse ($jdWordCount non-URL words) — rendering untailored profile")
-            writeUntailoredHtml(outputDir, profile)
+            writeUntailoredArtifacts(outputDir, profile)
             return input.copy(outputPath = outputPath, tailoringDegradedNodes = listOf("all (untailored — JD too sparse)"))
         }
 
@@ -109,12 +111,15 @@ class ResumeTailoringSubgraph(
         // ── Save output files ──────────────────────────────────────────────────
         saveOutputFiles(outputDir, state)
 
-        // ── Render tailored HTML from structured profile ──────────────────────
+        // ── Render tailored HTML + YAML from structured profile ───────────────
+        // HTML is the markserv preview; YAML feeds yaml_to_tex.py → LaTeX → PDF.
         return try {
             val tailored = buildTailoredProfile(profile, state)
             val html = ResumeHtmlRenderer.render(tailored)
             Files.writeString(outputDir.resolve("tailored_resume.html"), html)
-            println("[tailor_subgraph] tailored_resume.html written to $outputDir")
+            val yaml = ResumeYamlWriter.render(tailored, ProfileLoader.loadResume()?.demographics)
+            Files.writeString(outputDir.resolve("tailored_resume.yaml"), yaml)
+            println("[tailor_subgraph] tailored_resume.{html,yaml} written to $outputDir")
 
             if (degraded.isNotEmpty()) {
                 println("[tailor_subgraph] Complete (short-circuited — fell back on: ${degraded.joinToString(", ")}) → $outputPath")
@@ -228,13 +233,17 @@ class ResumeTailoringSubgraph(
         )
     }
 
-    private fun writeUntailoredHtml(outputDir: Path, profile: com.jd.pipeline.models.CandidateProfile) {
+    private fun writeUntailoredArtifacts(outputDir: Path, profile: com.jd.pipeline.models.CandidateProfile) {
         try {
-            val html = ResumeHtmlRenderer.render(profile)
-            Files.writeString(outputDir.resolve("tailored_resume.html"), html)
+            val untailored = TailoredProfile.untailored(profile)
+            Files.writeString(outputDir.resolve("tailored_resume.html"), ResumeHtmlRenderer.render(untailored))
+            Files.writeString(
+                outputDir.resolve("tailored_resume.yaml"),
+                ResumeYamlWriter.render(untailored, ProfileLoader.loadResume()?.demographics)
+            )
             println("[tailor_subgraph] Wrote untailored render of candidate profile (no JD content to tailor against)")
         } catch (e: Exception) {
-            System.err.println("[tailor_subgraph] WARN: failed to write untailored tailored_resume.html: ${e.message}")
+            System.err.println("[tailor_subgraph] WARN: failed to write untailored tailored_resume artifacts: ${e.message}")
         }
     }
 

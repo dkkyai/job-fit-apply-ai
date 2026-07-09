@@ -69,7 +69,7 @@ object TestResumeCommandHandler {
             techStack = listOf("Kotlin", "Espresso", "XCUITest", "Bitrise", "GitHub Actions", "KMP", "Firebase Test Lab")
         )
 
-        // Step 1: Run tailoring subgraph (produces tailored_resume.html + .txt files)
+        // Step 1: Run tailoring subgraph (produces tailored_resume.{html,yaml} + .txt files)
         val subgraph = ResumeTailoringSubgraph()
         val tailored = subgraph.process(mockState)
 
@@ -79,7 +79,7 @@ object TestResumeCommandHandler {
         }
         println("[OK] Tailoring complete → ${tailored.outputPath}")
 
-        // Step 2: Render PDF from tailored_resume.html
+        // Step 2: Render PDF from tailored_resume.yaml (LaTeX — needs python3+jinja2+pyyaml+tectonic)
         val rendered = RenderResumePdfNode().process(tailored)
 
         if (rendered.error.isNotEmpty()) {

@@ -51,6 +51,20 @@ data class TailoredProfile(
     /** Skills present on both the resume and the JD — rendered first within each group. */
     val jdMatchedSkills: List<String> = emptyList()
 ) {
+    /**
+     * [skillGroups] with each group's items reordered to lead with the JD-matched skills
+     * (original spelling preserved). The single ordering both renderers (HTML preview and
+     * YAML→LaTeX PDF) consume, so the two artifacts never disagree.
+     */
+    fun orderedSkillGroups(): Map<String, List<String>> {
+        if (jdMatchedSkills.isEmpty()) return skillGroups
+        val jd = jdMatchedSkills.map { it.lowercase() }.toSet()
+        return skillGroups.entries.associate { (label, items) ->
+            val (matched, rest) = items.partition { it.lowercase() in jd }
+            label to (matched + rest)
+        }
+    }
+
     companion object {
         /**
          * Convenience factory for the sparse-JD fallback: produces a
