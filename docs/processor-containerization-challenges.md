@@ -1,9 +1,12 @@
-# Containerizing the Processor — challenges & analysis (deferred)
+# Containerizing the Processor — challenges & analysis (SUPERSEDED)
 
-> **Status: evaluated, deliberately deferred (2026-07-05).** The Processor (`jd-processor`,
-> pipeline `--processor`) stays on the host under PM2. It's the *last* non-containerized component;
-> everything else (db, bridge, frontend, markserv, poller, jsearch, notifier) is a Compose service.
-> This doc records why, so we don't re-litigate — and what the path would look like if taken up.
+> **Status: taken up and superseded (2026-07-09)** — see
+> [phase5-processor-containerization.md](phase5-processor-containerization.md). Two premises
+> changed since the 2026-07-05 deferral: (1) Docker Desktop 29.x's host proxy DOES reach
+> `127.0.0.1`-bound host ports via `host.docker.internal` (verified empirically), so no
+> socat/rebind is needed; (2) PDF rendering moved to YAML→LaTeX (tectonic + committed Roboto),
+> eliminating Chromium/fonts from the image entirely. Scraping is CDP-only (host Chrome).
+> The analysis below is kept for the record.
 
 ## TL;DR
 
