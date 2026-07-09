@@ -135,6 +135,44 @@ services:
     # No ports — outbound only (JSearch API + bridge). Shell-loop entrypoint + heartbeat healthcheck
     # are baked into the image; the JVM only runs ~once/day and exits.
 
+  processor:
+    build: ./services/job-fit-apply-ai-pipeline
+    container_name: jobfit-processor
+    restart: unless-stopped
+    depends_on:
+      bridge:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    # Explicit mapping is a no-op on Docker Desktop (the name resolves anyway) but makes the
+    # same compose file work on plain Linux Docker.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      JD_BRIDGE_URL: "http://bridge:8765"
+      DB_BACKEND: "postgres"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-jobfit}:${POSTGRES_PASSWORD:-jobfit}@db:5432/${POSTGRES_DB:-jobfit}"
+      # Host-loopback services, reached directly via host.docker.internal (verified working on
+      # Docker Desktop 29.x — no socat shim needed). The entrypoint rewrites the CDP endpoint's
+      # hostname to an IP because Chrome DevTools rejects non-IP/localhost Host headers.
+      MLX_LOCAL_BASE_URL: "http://host.docker.internal:11436/v1"
+      OLLAMA_LOCAL_BASE_URL: "http://host.docker.internal:11434"
+      CHROME_CDP_ENDPOINT: "http://host.docker.internal:${CHROME_DEBUG_PORT:-9222}"
+      # Public URL base for artifact links in reports/notifications (markserv over the tailnet).
+      ARTIFACT_BASE_URL: "${ARTIFACT_BASE_URL:-}"
+    volumes:
+      # Same host dir markserv serves read-only at :8081 — reports/PDFs keep their URLs.
+      - ./services/job-fit-apply-ai-pipeline/output:/app/output
+      # Pipeline secrets + per-node model config (gitignored). dotenv reads /app/.env; real env
+      # vars above win over it (Config.get precedence), so host-specific endpoints inside are
+      # safely overridden.
+      - ./services/job-fit-apply-ai-pipeline/.env:/app/.env:ro
+      # Personal, gitignored inputs at their default PROJECT_DIR-relative locations.
+      - ./services/job-fit-apply-ai-pipeline/src/main/resources/resume/resume.yaml:/app/src/main/resources/resume/resume.yaml:ro
+      - ./services/job-fit-apply-ai-pipeline/config/candidate_profile.yaml:/app/config/candidate_profile.yaml:ro
+    # No ports — outbound only (bridge, db, host LLMs/CDP, cloud APIs). Healthcheck (exec
+    # --health, heartbeat freshness) is baked into the image.
+
   notifier:
     build: ./services/job-fit-apply-ai-notifier
     container_name: jobfit-notifier
