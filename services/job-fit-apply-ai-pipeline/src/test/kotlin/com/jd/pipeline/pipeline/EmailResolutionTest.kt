@@ -31,6 +31,27 @@ class EmailResolutionTest {
     }
 
     @Test
+    fun `a failed scan is an Error, not a clean non-job skip`() {
+        // ScanEmailNode catches a transient LLM error (e.g. oMLX 507) and returns
+        // isJobPosting=false WITH error set. That must NOT be labeled JD_Not_Found.
+        val s = JDState(isJobPosting = false, intake = email(), error = "scan_email: LLM HTTP 507")
+        val disposition = EmailResolution.classify(s)
+        assertTrue(disposition is EmailDisposition.Error, "errored scan must classify as Error, got $disposition")
+        assertEquals("scan_email: LLM HTTP 507", (disposition as EmailDisposition.Error).message)
+    }
+
+    @Test
+    fun `error takes precedence over a digest classification`() {
+        // A digest whose scan errored should surface the error, not fan out stale children.
+        val s = JDState(
+            isJobPosting = false, intake = email(isDigest = true),
+            digestJobs = listOf(JDState(isJobPosting = true, company = "A")),
+            error = "scan_email: timeout",
+        )
+        assertTrue(EmailResolution.classify(s) is EmailDisposition.Error)
+    }
+
+    @Test
     fun `digest re-enqueues only its job-posting children`() {
         val children = listOf(
             JDState(isJobPosting = true, company = "A"),

@@ -159,6 +159,15 @@ object ProcessorCommandHandler {
         }
 
         return when (val disposition = EmailResolution.classify(ingState)) {
+            is EmailDisposition.Error -> {
+                // Scan/scrape FAILED (e.g. a transient LLM 507) — not a verdict that this isn't a
+                // job. Label JD_Error, never JD_Not_Found: mislabeling a real recruiter email as
+                // "not found" silently drops it (the intake query excludes JD_Not_Found) and the
+                // user has no signal it needs a retry.
+                System.err.println("[processor] ingestion error for ${claimed.jobId}: ${disposition.message}")
+                bridge.postResult(claimed.jobId, skipResult(disposition.message, TerminalLabel.JD_ERROR))
+                null
+            }
             is EmailDisposition.ReEnqueueChildren -> {
                 for (child in disposition.children) {
                     runCatching { bridge.submit(ingestion.toJdRecord(child)) }
