@@ -53,16 +53,50 @@ class GapAnalysisNodeTest {
     }
 
     @Test
-    @DisplayName("buildPrompt includes JD must-have terms and candidate profile markdown")
+    @DisplayName("buildPrompt includes JD must-have terms, candidate profile markdown, and the never-claim list")
     fun buildPromptContent() {
         val node = GapAnalysisNode()
-        val m = GapAnalysisNode::class.java.getDeclaredMethod("buildPrompt", JdRequirements::class.java, String::class.java)
+        val m = GapAnalysisNode::class.java.getDeclaredMethod(
+            "buildPrompt", JdRequirements::class.java, String::class.java, List::class.java
+        )
         m.isAccessible = true
         val jd = baseState.jdRequirements!!
-        val prompt = m.invoke(node, jd, "MARKDOWN_HERE") as String
+        val prompt = m.invoke(node, jd, "MARKDOWN_HERE", listOf("Ruby")) as String
         assertTrue(prompt.contains("MUST-HAVE TERMS"))
         jd.mustHave.forEach { term -> assertTrue(prompt.contains(term), "expected prompt to contain must-have term: $term") }
         assertTrue(prompt.contains("MARKDOWN_HERE"))
+        assertTrue(prompt.contains("NEVER-CLAIM"))
+        assertTrue(prompt.contains("Ruby"))
+    }
+
+    @Test
+    @DisplayName("enforceNeverClaim moves banned supported terms to unsupported and always leak-lists the never-claim terms")
+    fun enforceNeverClaimOverridesLlm() {
+        val node = GapAnalysisNode()
+        val parsed = GapAnalysis(
+            supported = listOf(
+                EvidencedTerm("Kotlin", "built Kotlin frameworks"),
+                EvidencedTerm("Machine Learning", "took an ML course")   // LLM mis-classified
+            ),
+            unsupported = listOf("Pact"),
+            missingButSupported = listOf(EvidencedTerm("Machine Learning pipelines", "took an ML course"))
+        )
+
+        val result = node.enforceNeverClaim(parsed, listOf("Machine Learning", "Ruby"))
+
+        assertEquals(listOf(EvidencedTerm("Kotlin", "built Kotlin frameworks")), result.supported)
+        assertTrue(result.missingButSupported.isEmpty(), "contained never-claim term must be dropped")
+        // unsupported gains the demoted term + every never-claim term (deduped), keeping Pact.
+        assertTrue(result.unsupported.containsAll(listOf("Pact", "Machine Learning", "Ruby")))
+        assertEquals(result.unsupported.map { it.lowercase() }.distinct().size, result.unsupported.size)
+    }
+
+    @Test
+    @DisplayName("enforceNeverClaim is a no-op for an empty never-claim list")
+    fun enforceNeverClaimNoOp() {
+        val node = GapAnalysisNode()
+        val parsed = GapAnalysis(supported = listOf(EvidencedTerm("Kotlin", "ev")), unsupported = listOf("Pact"))
+        assertEquals(parsed, node.enforceNeverClaim(parsed, emptyList()))
     }
 
     @Test

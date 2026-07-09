@@ -37,7 +37,10 @@ Rewrite rules (non-negotiable):
 3. **Bullet formula.** Strong past-tense action verb → what was built/done → tool or
    method → quantified result → scope. Fragment (no "I"), one idea per bullet. If the
    original ends with a measurable outcome, keep the outcome in the final clause where
-   recruiters look for impact.
+   recruiters look for impact. **Max ~30 words / 2 rendered lines per bullet** — longer
+   means two ideas; keep the stronger one. Vary the structure occasionally so the resume
+   doesn't read as one template repeated; the same opening verb may lead at most 2 bullets
+   across the whole output.
 4. **Preserve quantification.** Every number, percentage, dollar amount, timeframe, and
    scale indicator from the original appears in the rewrite unchanged. Keep hedges
    ("achieving 90% coverage") — do not sharpen approximations into new precise figures.
@@ -62,9 +65,12 @@ Rewrite rules (non-negotiable):
 Metadata rules (feed the deterministic reorder — be accurate, not generous):
 
 - `must_have_hits`: copy the exact strings from the MUST-HAVE TERMS input list that this
-  rewritten bullet genuinely covers. Empty array when none.
+  rewritten bullet genuinely covers. Empty array when none. These are RE-VERIFIED in code
+  by literal word-boundary matching — a hit only counts when the term's exact wording
+  appears in the rewritten text, so place the JD's exact term in the bullet (where
+  truthful), not a paraphrase of it.
 - `quantified`: true only when the rewritten bullet contains a real number/percentage/
-  scale from the source.
+  scale from the source (also re-verified in code by digit scan).
 - `seniority_signal`: true only when the bullet shows Staff-level scope — ownership,
   cross-team influence, standards set, engineers enabled/mentored.
 

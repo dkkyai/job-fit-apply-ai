@@ -26,8 +26,24 @@ These rules bind every node. Where a node's own instructions conflict, THESE rul
 
 - Highest-signal content first: the strongest bullet leads each role.
 - Every bullet is scannable: a fragment (no "I"), a strong action verb first, ONE idea.
-- Quantify wherever a real number exists in the source resume.
+- **Bullets stay short**: at most ~30 words / 2 rendered lines. If it needs more, it is
+  two ideas — keep the stronger one.
+- Quantify wherever a real number exists in the source resume. Numbers render as digits
+  ("40%", "6 engineers", "3 teams") — never spelled out ("forty percent").
 - No filler adjectives — "passionate", "hardworking", "adept at", "results-driven" are banned.
+
+## Language & voice (recruiters discard resumes that read AI-generated)
+
+- Write like an engineer describing real work to another engineer — concrete nouns,
+  plain verbs, zero marketing gloss.
+- **Banned words/phrases** (LLM tells): "spearheaded", "leveraged", "utilized",
+  "orchestrated", "seamless(ly)", "robust", "cutting-edge", "innovative", "delved",
+  "honed", "synergy", "empowered", "elevated", "meticulous", "comprehensive suite".
+  Use the plain verb instead: led, built, used, ran, cut, automated, migrated.
+- **Vary opening verbs**: the same verb may open at most 2 bullets across the whole
+  resume. "Led X… Led Y… Led Z…" reads templated.
+- Keep sentence rhythm natural — not every bullet must follow the exact same
+  verb→object→metric cadence; a resume where all bullets share one skeleton reads generated.
 
 ## Hiring-manager depth rules (Staff/Senior SDET)
 
@@ -48,3 +64,6 @@ These rules bind every node. Where a node's own instructions conflict, THESE rul
 - If tighter wording would imply more scope than the source supports, keep the truthful version.
 - Emphasis may draw ONLY from the gap analysis's `supported` and `missing_but_supported`
   sets. A term in `unsupported` must not appear anywhere in the output.
+- The candidate profile may include an "Additional Verified Evidence" section — facts the
+  candidate curated that the résumé itself doesn't state. Those are legitimate evidence,
+  under the same rules: quote them, never extend them.

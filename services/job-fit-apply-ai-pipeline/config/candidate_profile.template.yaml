@@ -12,6 +12,36 @@ scoring:
     - "__TODO__: top differentiator 1"
     - "__TODO__: top differentiator 2"
 
+# Inputs for the resume-tailoring subgraph. All three are optional: entries still
+# containing "__TODO__" (and blank entries) are ignored at load time, so it is safe to
+# fill these in gradually.
+tailoring:
+  # One sentence, in your own voice, saying how you want to be positioned. The summary
+  # rewrite anchors its angle/voice to this instead of drifting per job description.
+  # Example: "Staff-level SDET who builds the mobile test infrastructure other teams
+  # standardize on — frameworks, CI/CD pipelines, and device labs, at consumer scale."
+  positioning_statement: "__TODO__: one-sentence positioning in your own voice"
+
+  # Verified facts that are TRUE but not written on the résumé — extra evidence the
+  # tailoring pipeline may cite when a JD asks for something the résumé under-states.
+  # Keep each entry one self-contained fact with numbers/context where real. Examples:
+  #   - "Interviewed and hired 4 SDETs at Acme (2022–2024); designed the automation interview loop"
+  #   - "Reduced Android PR pipeline from 55 min to 22 min at Acme by sharding Espresso suites (2023)"
+  #   - "Wrote the org-wide test strategy doc adopted by 3 app teams at Beta LLC"
+  #   - "Administered Grafana dashboards tracking flakiness for 6 services"
+  evidence_bank:
+    - "__TODO__: verified fact 1 (metric + context)"
+    - "__TODO__: verified fact 2"
+
+  # Terms you never want on a generated resume even if a JD matches them — tools you
+  # touched once, skills too rusty to interview on, or claims you consider misleading.
+  # These are always classified unsupported and leak-checked in the final output. Examples:
+  #   - "Ruby"            # one internship 12 years ago; would fail a screen
+  #   - "Machine Learning" # took a course; cannot defend in an interview
+  #   - "Performance testing" # ran k6 twice; not a real competency
+  never_claim:
+    - "__TODO__: term to never claim 1"
+
 preferences:
   willing_to_relocate: false
   relocation_notes: "__TODO__: free text about relocation/work-arrangement preferences"

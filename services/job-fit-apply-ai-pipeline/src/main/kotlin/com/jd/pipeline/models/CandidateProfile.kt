@@ -38,7 +38,11 @@ data class CandidateProfile(
 
     /** Independent projects (open-source, side projects, etc.) — same shape as career history. */
     @JsonProperty("projects")
-    val projects: List<CareerEntry> = emptyList()
+    val projects: List<CareerEntry> = emptyList(),
+
+    /** Candidate-curated tailoring inputs: positioning, off-résumé evidence, never-claim terms. */
+    @JsonProperty("tailoring")
+    val tailoring: TailoringAids = TailoringAids()
 )
 
 /**

@@ -131,6 +131,34 @@ class BulletRewriteNodeApplyTest {
     }
 
     @Test
+    @DisplayName("verifyTerms recomputes hits and quantified from the rewritten text, keeping the LLM's seniority call")
+    fun verifiesMetadataDeterministically() {
+        val originals = listOf(entry("A", "Co", "2020-01", listOf("Original")))
+        val rewrites = listOf(
+            BulletRewriteNode.RoleRewrite(
+                role = "A", company = "Co", startDate = "2020-01",
+                bullets = listOf(
+                    BulletRewriteNode.RewrittenBullet(
+                        original = "Original",
+                        rewritten = "Owned Espresso and GitHub Actions pipelines",
+                        mustHaveHits = listOf("Kotlin"),   // claimed but not present in the text
+                        quantified = true,                  // claimed but no digits
+                        senioritySignal = true
+                    )
+                )
+            )
+        )
+
+        val result = node.applyRewrites(originals, rewrites, verifyTerms = listOf("Kotlin", "Espresso", "GitHub Actions"))
+
+        val meta = result.meta.getValue(roleKey("A", "Co", "2020-01"))
+        assertEquals(2, meta[0].mustHaveHits, "Espresso + GitHub Actions literally present; claimed Kotlin absent")
+        assertFalse(meta[0].quantified, "no digits in the rewritten text")
+        assertTrue(meta[0].senioritySignal, "seniority judgment is not verifiable in code — LLM's call kept")
+        assertEquals(listOf("Espresso", "GitHub Actions"), result.diagnostics[0].mustHaveHits)
+    }
+
+    @Test
     @DisplayName("parseRoleRewrites tolerates a bare array, an object-wrapped array, and a single object")
     fun parseRoleRewritesTolerant() {
         val bullets = """[{"original":"o","category":"c","rewritten":"r"}]"""

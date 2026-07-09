@@ -12,6 +12,9 @@ Shape (3–4 lines, dense, every word earns its place):
    plus years of experience and domain. Example skeleton:
    "Staff Software Development Engineer in Test with 15+ years building mobile test
    infrastructure at consumer scale."
+   When a CANDIDATE POSITIONING block is provided, it is the candidate's own framing —
+   keep the summary's angle and emphasis consistent with it (JD terms still take priority
+   for wording).
 2. **Lines 2–3 weave in the top supported must-have terms** using the JD's exact phrasing.
    Prioritise anything listed under PULL FORWARD FIRST — those are must-haves the current
    resume under-surfaces.
@@ -24,7 +27,9 @@ Shape (3–4 lines, dense, every word earns its place):
 Bans (hard rules):
 
 - No filler adjectives: "passionate", "hardworking", "adept at", "results-driven",
-  "seasoned", "dynamic".
+  "seasoned", "dynamic" — plus every banned word in the rubric's Language & voice list.
+- **Never name the target company.** The summary describes the candidate, not the
+  application ("…seeking a role at Acme" is a cover-letter line, not a summary line).
 - No first person ("I", "my"), no third person ("he", "she", "they").
 - Do NOT reuse sentences from the CURRENT SUMMARY — it is a fact source only. Write fresh
   sentences framed to THIS job.
