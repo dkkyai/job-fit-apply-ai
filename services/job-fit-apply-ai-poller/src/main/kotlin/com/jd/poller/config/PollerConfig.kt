@@ -24,7 +24,7 @@ object PollerConfig {
     val GMAIL_MAX_EMAILS: Int = get("GMAIL_MAX_EMAILS", "10").toInt()
     val GMAIL_SEARCH_QUERY: String = get(
         "GMAIL_SEARCH_QUERY",
-        "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:JD_Processing -label:JD_Error",
+        "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:Processing -label:JD_Error",
     )
 
     // ── Poll loops ──────────────────────────────────────────────────────────────

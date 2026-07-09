@@ -7,14 +7,15 @@ object TerminalLabels {
     const val JD_PROCESSED_DIGEST = "JD_Processed_Digest"
     const val JD_NOT_FOUND        = "JD_Not_Found"
     const val JD_PROCESSED        = "JD_Processed"
-    const val JD_PROCESSING       = "JD_Processing"   // in-flight, applied at intake, cleared here
+    const val PROCESSING          = "Processing"      // in-flight, applied at intake (before we know it's a JD), cleared here
 }
 
 /**
  * Applies a completed job's terminal label to its Gmail message, replicating the side effects of
  * the old EmailLabelingService (archive / star / mark-unread) keyed by the label name. The
- * in-flight JD_Processing label is always cleared. Pure orchestration over [GmailClient] — the
- * decision (which label) was already made by the Processor.
+ * in-flight Processing label is always cleared. Pure orchestration over [GmailClient] — the
+ * decision (which label) was already made by the Processor, except a blank/null decision falls
+ * back to JD_Not_Found so the email always reaches a state the intake query excludes.
  */
 object LabelApplier {
 
@@ -47,8 +48,17 @@ object LabelApplier {
                 clearErrorLabel(client, messageId)
             }
             else -> {
-                // Unknown/blank label: apply as-is if non-blank, still clear in-flight state.
-                if (terminalLabel.isNotBlank()) label(client, messageId, terminalLabel)
+                // A blank/null terminal label means the Processor finished the email WITHOUT a
+                // labeling decision — a scanned "not a job" email, a digest parent, or an early
+                // skip (ProcessorCommandHandler.skipResult emits no terminal_label). Fall back to
+                // JD_Not_Found so the email leaves the intake query's match set. Without a terminal
+                // label the email keeps matching the query, is re-submitted (deduped to the already
+                // written-back job) and re-labeled Processing every intake pass — but that job is
+                // no longer in the completed feed, so Processing is never cleared again and the
+                // label sticks forever. An unknown NON-blank label is applied verbatim. Unlike a JD
+                // link we tried and failed to scrape, a not-a-job email needs no attention, so this
+                // path deliberately does not mark it unread.
+                label(client, messageId, terminalLabel.ifBlank { TerminalLabels.JD_NOT_FOUND })
                 clearErrorLabel(client, messageId)
             }
         }
@@ -66,7 +76,7 @@ object LabelApplier {
     }
 
     private fun clearProcessingLabel(client: GmailClient, messageId: String) {
-        client.findLabelId(TerminalLabels.JD_PROCESSING)?.let {
+        client.findLabelId(TerminalLabels.PROCESSING)?.let {
             client.applyLabels(messageId, addLabels = emptyList(), removeLabels = listOf(it))
         }
     }

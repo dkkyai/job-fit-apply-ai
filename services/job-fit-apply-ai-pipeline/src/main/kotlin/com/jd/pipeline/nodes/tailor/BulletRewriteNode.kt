@@ -48,8 +48,12 @@ class BulletRewriteNode(
             val rewrites = parseRoleRewrites(stripJsonFences(response))
             println("[bullet_rewrite] LLM returned rewrites for ${rewrites.size} role(s)")
 
-            val career = applyRewrites(profile.background.careerHistory, rewrites)
-            val projects = applyRewrites(profile.projects, rewrites)
+            // Verify reorder metadata against the same keyword universe validation uses — the
+            // LLM's own hit/quantified claims are optimistic, and they decide which bullet
+            // leads each role and which get dropped by the cap.
+            val universe = jd.coverageKeywords()
+            val career = applyRewrites(profile.background.careerHistory, rewrites, universe)
+            val projects = applyRewrites(profile.projects, rewrites, universe)
 
             val flatBullets = career.diagnostics + projects.diagnostics
             println("[bullet_rewrite] Rewrote ${flatBullets.size} bullet(s) across ${career.entries.size + projects.entries.size} role(s)")
@@ -76,9 +80,20 @@ class BulletRewriteNode(
      * Fold per-role LLM rewrites back into the original `CareerEntry` list, matching by
      * [roleKey]. Roles missing from the response keep their original bullets; within a
      * matched role, bullets pair by index and a missing/blank rewrite keeps the original
-     * (its meta falls back to a digit-scan for `quantified`). `internal` for test visibility.
+     * (its meta falls back to a digit-scan for `quantified`).
+     *
+     * When [verifyTerms] is non-empty (the JD's coverage-keyword universe), the reorder
+     * metadata is recomputed deterministically instead of trusting the LLM's claims:
+     * `mustHaveHits` becomes the universe terms literally present in the rewritten text
+     * (word-boundary match — what an ATS actually sees), and `quantified` comes from a
+     * digit/multiplier scan. `seniority_signal` stays the LLM's judgment — code can't
+     * verify scope. `internal` for test visibility.
      */
-    internal fun applyRewrites(originals: List<CareerEntry>, rewrites: List<RoleRewrite>): FoldResult {
+    internal fun applyRewrites(
+        originals: List<CareerEntry>,
+        rewrites: List<RoleRewrite>,
+        verifyTerms: List<String> = emptyList()
+    ): FoldResult {
         val byKey = rewrites.associateBy { roleKey(it.role, it.company, it.startDate) }
         val metaMap = mutableMapOf<String, List<BulletMeta>>()
         val diagnostics = mutableListOf<TailoredBullet>()
@@ -93,16 +108,20 @@ class BulletRewriteNode(
             val mergedBullets = entry.bullets.mapIndexed { idx, original ->
                 val rb = match.bullets.getOrNull(idx)
                 if (rb != null && rb.rewritten.isNotBlank()) {
+                    val hits = if (verifyTerms.isEmpty()) rb.mustHaveHits
+                        else verifyTerms.filter { TermMatch.present(it, rb.rewritten) }
+                    val quantified = if (verifyTerms.isEmpty()) rb.quantified
+                        else TermMatch.quantSignal(rb.rewritten)
                     metas += BulletMeta(
-                        mustHaveHits = rb.mustHaveHits.size,
-                        quantified = rb.quantified,
+                        mustHaveHits = hits.size,
+                        quantified = quantified,
                         senioritySignal = rb.senioritySignal
                     )
                     diagnostics += TailoredBullet(
                         original = original.text,
                         rewritten = rb.rewritten,
-                        mustHaveHits = rb.mustHaveHits,
-                        quantified = rb.quantified,
+                        mustHaveHits = hits,
+                        quantified = quantified,
                         senioritySignal = rb.senioritySignal
                     )
                     // Category is JD-alignable signal (renders as the bold lead-in) — take the
@@ -191,12 +210,17 @@ class BulletRewriteNode(
                 appendLine("- Supported terms still MISSING from the output: ${report.missingTerms.joinToString(", ").ifBlank { "(none)" }}")
                 appendLine("- Unsupported terms that LEAKED (remove): ${report.leakedUnsupportedTerms.joinToString(", ").ifBlank { "(none)" }}")
                 appendLine("- Improvements: ${report.topImprovements.joinToString("; ").ifBlank { "(none)" }}")
+                if (report.styleWarnings.isNotEmpty()) {
+                    appendLine("- Style fixes: ${report.styleWarnings.joinToString("; ")}")
+                }
             }
             appendLine()
             appendLine("CANDIDATE ROLES (career history + projects). Each bullet is { category, text }.")
             appendLine("Rewrite BOTH per bullet: re-label the category to the JD's terminology where truthful,")
             appendLine("and rewrite the text. Preserve role/company/start_date verbatim — they are join keys.")
             appendLine("Return one rewritten bullet per original bullet, in the same order.")
+            appendLine("NOTE: must_have_hits are re-verified in code by literal word-boundary matching — a term")
+            appendLine("only counts when its exact wording appears in the rewritten bullet text.")
             appendLine()
             append(rolesJson)
         }

@@ -78,12 +78,19 @@ class SummaryRewriteNode(
         val pullForward = gap.missingButSupported.take(5).joinToString("\n") { "- ${it.term} — evidence: ${it.evidence}" }
             .ifBlank { "(none)" }
 
+        val positioning = state.candidateProfile?.tailoring?.positioningStatement.orEmpty()
+
         return buildString {
             appendLine(TailorRubric.prepend(skillPrompt))
             appendLine()
-            appendLine("TARGET TITLE (line 1 must frame to this): ${jd.targetTitle} at ${state.company}")
+            appendLine("TARGET TITLE (line 1 must frame to this): ${jd.targetTitle}")
+            appendLine("COMPANY (context only — NEVER name the company in the summary): ${state.company}")
             appendLine("SENIORITY SIGNALS TO MIRROR: ${jd.senioritySignals.joinToString(", ").ifBlank { "(none)" }}")
             appendLine("COMPANY VALUE SIGNALS: ${jd.companyValueSignals.joinToString(", ").ifBlank { "(none)" }}")
+            if (positioning.isNotBlank()) {
+                appendLine("CANDIDATE POSITIONING (the candidate's own framing — anchor the summary's angle and voice to it):")
+                appendLine(positioning)
+            }
             appendLine()
             appendLine("SUPPORTED TERMS (the ONLY terms you may claim; mirror the JD phrasing):")
             appendLine(supported)

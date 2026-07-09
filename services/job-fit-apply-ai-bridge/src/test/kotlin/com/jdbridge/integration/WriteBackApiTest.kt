@@ -122,4 +122,93 @@ class WriteBackApiTest {
         assertEquals(1, afterFirst.size)
         assertTrue(afterFirst[0].jsonObject["completed_seq"]!!.jsonPrimitive.long > firstSeq)
     }
+
+    // ── Regression: blank/null terminal_label must surface in the completed feed ──
+    // Bug: the Poller's WritebackLoop skipped LabelApplier.apply() when terminalLabel
+    // was blank/null, so JD_Processing was never cleared in Gmail — but writeback_done
+    // was still marked, silently dropping the job from the feed with the label stuck.
+    // These tests verify the bridge side: a result with no terminal_label still
+    // produces a completed-feed entry with message_id present, and writeback-done
+    // correctly clears it. The Poller-side tests (WritebackLoopTest) verify the
+    // label-clearing behaviour itself.
+
+    @Test
+    fun `result with blank terminal_label surfaces in completed feed with message_id`() = testApplication {
+        application { configureApplication() }
+        submitEmail(client, "msg-blank")
+        val jobId = json.parseToJsonElement(client.get("/api/queue/claim").bodyAsText())
+            .jsonObject["job_id"]!!.jsonPrimitive.content
+
+        client.post("/api/jobs/$jobId/result") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"pipeline_action":"skip","fit_score":0,"message_id":"msg-blank","terminal_label":""}""")
+        }
+
+        val feed = json.parseToJsonElement(client.get("/api/jobs/completed").bodyAsText()).jsonArray
+        assertEquals(1, feed.size)
+        val item = feed[0].jsonObject
+        assertEquals("msg-blank", item["message_id"]!!.jsonPrimitive.content)
+        // terminal_label should be null or blank — the Poller must still clear JD_Processing.
+        assertTrue(
+            item["terminal_label"]?.jsonPrimitive?.contentOrNull.isNullOrBlank(),
+            "terminal_label should be null/blank but the job must still appear in the feed"
+        )
+
+        // writeback-done should clear it from the feed — the Poller should always be able to drain it.
+        assertEquals(HttpStatusCode.OK, client.post("/api/jobs/$jobId/writeback-done").status)
+        val after = json.parseToJsonElement(client.get("/api/jobs/completed").bodyAsText()).jsonArray
+        assertTrue(after.isEmpty(), "writeback-done should drop the job from the feed even with blank terminal_label")
+    }
+
+    @Test
+    fun `result with null terminal_label surfaces in completed feed with message_id`() = testApplication {
+        application { configureApplication() }
+        submitEmail(client, "msg-null")
+        val jobId = json.parseToJsonElement(client.get("/api/queue/claim").bodyAsText())
+            .jsonObject["job_id"]!!.jsonPrimitive.content
+
+        // No terminal_label field at all — defaults to null in ResultRequest.
+        client.post("/api/jobs/$jobId/result") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"pipeline_action":"skip","fit_score":0,"message_id":"msg-null"}""")
+        }
+
+        val feed = json.parseToJsonElement(client.get("/api/jobs/completed").bodyAsText()).jsonArray
+        assertEquals(1, feed.size)
+        val item = feed[0].jsonObject
+        assertEquals("msg-null", item["message_id"]!!.jsonPrimitive.content)
+        assertTrue(
+            item["terminal_label"]?.jsonPrimitive?.contentOrNull.isNullOrBlank(),
+            "terminal_label should be null but the job must still appear in the feed"
+        )
+
+        assertEquals(HttpStatusCode.OK, client.post("/api/jobs/$jobId/writeback-done").status)
+        val after = json.parseToJsonElement(client.get("/api/jobs/completed").bodyAsText()).jsonArray
+        assertTrue(after.isEmpty())
+    }
+
+    @Test
+    fun `blank terminal_label job stays in completed feed until writeback-done`() = testApplication {
+        application { configureApplication() }
+        submitEmail(client, "msg-persist")
+        val jobId = json.parseToJsonElement(client.get("/api/queue/claim").bodyAsText())
+            .jsonObject["job_id"]!!.jsonPrimitive.content
+
+        client.post("/api/jobs/$jobId/result") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"pipeline_action":"skip","fit_score":0,"message_id":"msg-persist","terminal_label":""}""")
+        }
+
+        // Should remain in the feed until explicitly marked done.
+        val before = json.parseToJsonElement(client.get("/api/jobs/completed").bodyAsText()).jsonArray
+        assertEquals(1, before.size)
+
+        // Simulate a second poll — still there.
+        val stillThere = json.parseToJsonElement(client.get("/api/jobs/completed").bodyAsText()).jsonArray
+        assertEquals(1, stillThere.size, "job should persist in the feed until writeback-done")
+
+        client.post("/api/jobs/$jobId/writeback-done")
+        val after = json.parseToJsonElement(client.get("/api/jobs/completed").bodyAsText()).jsonArray
+        assertTrue(after.isEmpty())
+    }
 }

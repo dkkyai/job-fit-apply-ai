@@ -33,6 +33,7 @@ object CandidateProfileRenderer {
         appendCareerHistoryWithBullets(profile)
         appendProjectsWithBullets(profile)
         appendStrengthsAndSkills(profile)
+        appendEvidenceBank(profile)
     }.trimEnd() + "\n"
 
     // ── header (identity + summary) ──────────────────────────────────────────
@@ -136,6 +137,21 @@ object CandidateProfileRenderer {
         if (bg.domainExpertise.isNotEmpty()) {
             append("**Domain Expertise:** ${bg.domainExpertise.joinToString(", ")}\n")
         }
+        append("\n")
+    }
+
+    // ── evidence bank (tailoring only) ───────────────────────────────────────
+
+    /**
+     * Candidate-curated facts that are true but not on the résumé — rendered so gap
+     * analysis can quote them as evidence (the tailor nodes may only claim what this
+     * markdown supports).
+     */
+    private fun StringBuilder.appendEvidenceBank(profile: CandidateProfile) {
+        val bank = profile.tailoring.evidenceBank
+        if (bank.isEmpty()) return
+        append("### Additional Verified Evidence (candidate-provided facts not on the résumé — valid evidence, same integrity rules)\n")
+        bank.forEach { append("- $it\n") }
         append("\n")
     }
 

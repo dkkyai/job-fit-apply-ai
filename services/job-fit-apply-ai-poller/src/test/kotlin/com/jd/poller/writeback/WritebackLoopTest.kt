@@ -122,4 +122,116 @@ class WritebackLoopTest {
         verify(gmail, never()).createDraftReply(any(), any(), any(), any(), any())
         verify(bridge).markWritebackDone("job-2")
     }
+
+    // ── Regression: blank/null terminalLabel must still clear Processing ──────
+    // Bug: the old code skipped LabelApplier.apply() when terminalLabel was blank,
+    // which meant clearProcessingLabel() never ran. The email kept Processing
+    // forever, and markWritebackDone() still fired — so the job left the feed with
+    // the Gmail label stuck. These tests guard against that regression.
+
+    @Test
+    @DisplayName("blank terminalLabel still clears Processing and marks done")
+    fun blankTerminalLabelClearsProcessingAndMarksDone() {
+        val gmail = labelStubs()
+        val job = CompletedJob(
+            jobId = "job-blank", completedSeq = 10, status = "done",
+            messageId = "m-blank", terminalLabel = "", isRecruiter = false,
+        )
+        val bridge = mock<PollerBridgeClient> {
+            on { fetchCompleted(any(), any()) } doReturn listOf(job)
+        }
+
+        val done = WritebackLoop(gmail, bridge).drainOnce()
+
+        assertEquals(1, done)
+        // LabelApplier.apply() must have been called → it clears Processing.
+        // findLabelId is called for both clearErrorLabel and clearProcessingLabel;
+        // verify the processing one specifically was invoked.
+        verify(gmail, org.mockito.kotlin.atLeast(1)).findLabelId(TerminalLabels.PROCESSING)
+        verify(gmail, org.mockito.kotlin.atLeast(1)).applyLabels(eq("m-blank"), eq(emptyList()), eq(listOf("existing")))
+        verify(bridge).markWritebackDone("job-blank")
+    }
+
+    @Test
+    @DisplayName("null terminalLabel still clears Processing and marks done")
+    fun nullTerminalLabelClearsProcessingAndMarksDone() {
+        val gmail = labelStubs()
+        val job = CompletedJob(
+            jobId = "job-null", completedSeq = 11, status = "done",
+            messageId = "m-null", terminalLabel = null, isRecruiter = false,
+        )
+        val bridge = mock<PollerBridgeClient> {
+            on { fetchCompleted(any(), any()) } doReturn listOf(job)
+        }
+
+        val done = WritebackLoop(gmail, bridge).drainOnce()
+
+        assertEquals(1, done)
+        verify(gmail, org.mockito.kotlin.atLeast(1)).findLabelId(TerminalLabels.PROCESSING)
+        verify(gmail, org.mockito.kotlin.atLeast(1)).applyLabels(eq("m-null"), eq(emptyList()), eq(listOf("existing")))
+        verify(bridge).markWritebackDone("job-null")
+    }
+
+    @Test
+    @DisplayName("blank terminalLabel falls back to JD_Not_Found (no unread/archive) so the email exits intake")
+    fun blankTerminalLabelAppliesNotFound() {
+        val gmail = labelStubs()
+        val job = CompletedJob(
+            jobId = "job-nolabel", completedSeq = 12, status = "done",
+            messageId = "m-nolabel", terminalLabel = "", isRecruiter = false,
+        )
+        val bridge = mock<PollerBridgeClient> {
+            on { fetchCompleted(any(), any()) } doReturn listOf(job)
+        }
+
+        WritebackLoop(gmail, bridge).drainOnce()
+
+        // Blank = "not a job" / digest parent → apply JD_Not_Found so it drops out of the intake
+        // query, breaking the re-fetch → re-label Processing loop. No unread/archive side effects.
+        verify(gmail).getOrCreateLabel(TerminalLabels.JD_NOT_FOUND)
+        verify(gmail).labelEmail("m-nolabel", "lbl")
+        verify(gmail, never()).markUnread(any())
+        verify(gmail, never()).archiveEmail(any())
+    }
+
+    @Test
+    @DisplayName("null terminalLabel falls back to JD_Not_Found (no unread/archive) so the email exits intake")
+    fun nullTerminalLabelAppliesNotFound() {
+        val gmail = labelStubs()
+        val job = CompletedJob(
+            jobId = "job-nolabel2", completedSeq = 13, status = "done",
+            messageId = "m-nolabel2", terminalLabel = null, isRecruiter = false,
+        )
+        val bridge = mock<PollerBridgeClient> {
+            on { fetchCompleted(any(), any()) } doReturn listOf(job)
+        }
+
+        WritebackLoop(gmail, bridge).drainOnce()
+
+        verify(gmail).getOrCreateLabel(TerminalLabels.JD_NOT_FOUND)
+        verify(gmail).labelEmail("m-nolabel2", "lbl")
+        verify(gmail, never()).markUnread(any())
+        verify(gmail, never()).archiveEmail(any())
+    }
+
+    @Test
+    @DisplayName("blank terminalLabel marks writeback_done even if clearProcessingLabel fails")
+    fun blankLabelGmailFailureLeavesJobForRetry() {
+        val gmail = mock<GmailClient> {
+            on { findLabelId(any()) } doReturn "lbl-id"
+        }
+        doThrow(RuntimeException("gmail 503")).whenever(gmail).applyLabels(any(), any(), any())
+        val job = CompletedJob(
+            jobId = "job-fail", completedSeq = 14, status = "done",
+            messageId = "m-fail", terminalLabel = "", isRecruiter = false,
+        )
+        val bridge = mock<PollerBridgeClient> {
+            on { fetchCompleted(any(), any()) } doReturn listOf(job)
+        }
+
+        val done = WritebackLoop(gmail, bridge).drainOnce()
+
+        assertEquals(0, done)
+        verify(bridge, never()).markWritebackDone(any())  // stays in the feed for retry
+    }
 }

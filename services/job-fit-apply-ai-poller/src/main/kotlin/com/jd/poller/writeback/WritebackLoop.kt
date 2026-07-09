@@ -31,7 +31,8 @@ class WritebackLoop(
                 continue
             }
             try {
-                job.terminalLabel?.takeIf { it.isNotBlank() }?.let { LabelApplier.apply(gmail, messageId, it) }
+                // Always call apply() so clearProcessingLabel() runs even when terminalLabel is blank.
+                LabelApplier.apply(gmail, messageId, job.terminalLabel ?: "")
                 if (job.isRecruiter && !job.draftText.isNullOrBlank()) {
                     deliverDraft(job, messageId)
                 }

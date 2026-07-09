@@ -5,7 +5,6 @@ import com.jd.pipeline.client.LlmCaller
 import com.jd.pipeline.client.LlmClient
 import com.jd.pipeline.config.Config
 import java.nio.file.Files
-import java.util.regex.Pattern
 
 /**
  * Tailor subgraph node G (7/7): ATS validation — actionable, never a silent pass.
@@ -15,7 +14,9 @@ import java.util.regex.Pattern
  *  - **must-have coverage %** — supported must-haves present ÷ total must-haves;
  *  - **missing terms** — supported must-haves not yet placed (fed to the refine pass);
  *  - **leaked unsupported terms** — integrity failures that must be removed;
- *  - **doubled words** — the "reducing reducing" class of artifact.
+ *  - **doubled words** — the "reducing reducing" class of artifact;
+ *  - **style warnings** — overlong bullets and repeated lead verbs (score-neutral,
+ *    fed to the refine pass).
  *
  * The LLM judges only what needs judgment (seniority alignment, quantification, format
  * safety) and proposes concrete improvements. The composite [AtsReport.overallScore]
@@ -40,8 +41,9 @@ class AtsValidationNode(
         return try {
             val outputText = assembleOutputText(state)
             val deterministic = validateDeterministically(jd, gap, outputText)
-            val llmScores = judgeWithLlm(jd, state, deterministic)
-            val report = buildReport(deterministic, llmScores)
+            val style = findStyleWarnings(state)
+            val llmScores = judgeWithLlm(jd, state, deterministic, style)
+            val report = buildReport(deterministic, style, llmScores)
 
             val colour = if (report.needsRefinement) "[93m" else "[92m"
             println("${colour}[ats_validation] overall=${report.overallScore} coverage=${report.mustHaveCoveragePct}% " +
@@ -77,18 +79,8 @@ class AtsValidationNode(
         val doubledWords: List<String>
     )
 
-    /**
-     * Word-boundary presence check for a term: the match may not be preceded or followed
-     * by an alphanumeric ("Java" ≠ "JavaScript"; "C++" and "CI/CD" still match). Case- and
-     * whitespace-insensitive. `internal` for test visibility.
-     */
-    internal fun termPresent(term: String, text: String): Boolean {
-        val t = term.trim()
-        if (t.isEmpty()) return false
-        val pattern = "(?<![\\p{Alnum}])" + Pattern.quote(t.replace(Regex("\\s+"), " ")) + "(?![\\p{Alnum}])"
-        val haystack = text.replace(Regex("\\s+"), " ")
-        return Regex(pattern, RegexOption.IGNORE_CASE).containsMatchIn(haystack)
-    }
+    /** Word-boundary presence check — delegates to the shared [TermMatch]. `internal` for test visibility. */
+    internal fun termPresent(term: String, text: String): Boolean = TermMatch.present(term, text)
 
     /** Consecutive duplicated words ("reducing reducing"), case-insensitive, distinct. */
     internal fun findDoubledWords(text: String): List<String> =
@@ -106,12 +98,10 @@ class AtsValidationNode(
             return unsupportedSet.any { it == t || (it.length > 2 && t.contains(it)) }
         }
 
-        // Coverage universe = the JD's ATOMIC literal-match keywords (tools/skills), which ATS
-        // parsers match verbatim. Long must-have requirement sentences are described in prose, not
-        // keyword-matched, so fall back to only the short must-haves when no exact terms exist.
-        val universe = jd.exactMatchTerms
-            .ifEmpty { jd.mustHave.filter { it.trim().split(Regex("\\s+")).size <= MAX_KEYWORD_WORDS } }
-            .map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }
+        // Coverage universe = the JD's ATOMIC literal-match keywords: named tools/skills PLUS the
+        // short must-have phrases recruiters search verbatim. Long must-have requirement sentences
+        // are described in prose, not keyword-matched, so they are excluded.
+        val universe = jd.coverageKeywords(MAX_KEYWORD_WORDS)
 
         val reachable = universe.filterNot { isUnreachable(it) }
         val present = reachable.filter { termPresent(it, outputText) }
@@ -131,15 +121,35 @@ class AtsValidationNode(
         )
     }
 
+    /**
+     * Deterministic skim-readability findings over the tailored bullets — score-neutral,
+     * but concrete enough for the refine pass to act on. `internal` for test visibility.
+     */
+    internal fun findStyleWarnings(state: TailorState): List<String> {
+        val bullets = (state.tailoredCareerHistory.orEmpty() + state.tailoredProjects.orEmpty())
+            .flatMap { it.bullets }
+        val warnings = mutableListOf<String>()
+        bullets.filter { it.text.length > MAX_BULLET_CHARS }.forEach {
+            warnings += "Bullet too long (${it.text.length} chars, max ~$MAX_BULLET_CHARS — one idea, ≤2 rendered lines): \"${it.text.take(70)}…\""
+        }
+        bullets.mapNotNull { b ->
+            b.text.trim().split(Regex("\\s+")).firstOrNull()
+                ?.filter(Char::isLetter)?.lowercase()?.takeIf { it.isNotBlank() }
+        }.groupingBy { it }.eachCount().filter { it.value > MAX_VERB_REPEATS }.forEach { (verb, n) ->
+            warnings += "Opening verb \"$verb\" starts $n bullets — vary the lead verbs (max $MAX_VERB_REPEATS uses)"
+        }
+        return warnings
+    }
+
     // ── LLM judgment (qualitative only) ───────────────────────────────────────
 
-    private fun judgeWithLlm(jd: JdRequirements, state: TailorState, checks: DeterministicChecks): AtsLlmScores {
-        val prompt = buildPrompt(jd, state, checks)
+    private fun judgeWithLlm(jd: JdRequirements, state: TailorState, checks: DeterministicChecks, style: List<String>): AtsLlmScores {
+        val prompt = buildPrompt(jd, state, checks, style)
         val response = llm.call(prompt)
         return mapper.readValue(stripJsonFences(response), AtsLlmScores::class.java)
     }
 
-    private fun buildReport(d: DeterministicChecks, llm: AtsLlmScores): AtsReport {
+    private fun buildReport(d: DeterministicChecks, style: List<String>, llm: AtsLlmScores): AtsReport {
         val integrityPenalty = 5 * (d.leakedTerms.size + d.doubledWords.size)
         val weighted = d.coveragePct * 0.40 + llm.seniorityAlignment * 0.25 +
             llm.quantification * 0.20 + llm.formatSafety * 0.15
@@ -153,11 +163,12 @@ class AtsValidationNode(
             quantification = llm.quantification,
             formatSafety = llm.formatSafety,
             topImprovements = llm.topImprovements,
+            styleWarnings = style,
             overallScore = (weighted - integrityPenalty).toInt().coerceIn(0, 100)
         )
     }
 
-    private fun buildPrompt(jd: JdRequirements, state: TailorState, checks: DeterministicChecks): String {
+    private fun buildPrompt(jd: JdRequirements, state: TailorState, checks: DeterministicChecks, style: List<String>): String {
         val skillPrompt = try {
             if (Files.exists(Config.ATS_VALIDATION_SKILL)) Files.readString(Config.ATS_VALIDATION_SKILL)
             else DEFAULT_PROMPT
@@ -182,6 +193,8 @@ class AtsValidationNode(
             appendLine("- Supported terms missing: ${checks.missingTerms.joinToString(", ").ifBlank { "(none)" }}")
             appendLine("- Leaked unsupported terms: ${checks.leakedTerms.joinToString(", ").ifBlank { "(none)" }}")
             appendLine("- Doubled words: ${checks.doubledWords.joinToString(", ").ifBlank { "(none)" }}")
+            appendLine("- Style warnings (factor into format_safety and top_improvements):")
+            appendLine(style.joinToString("\n") { "    - $it" }.ifBlank { "    (none)" })
             appendLine()
             appendLine("SUMMARY (as it will render):")
             appendLine(renderedSummary(state))
@@ -199,8 +212,14 @@ class AtsValidationNode(
             .let { if (it.endsWith("`")) it.dropLast(1).trim() else it }
 
     companion object {
-        /** Max word count for a must-have to count as an atomic keyword when no exact-match terms exist. */
+        /** Max word count for a must-have phrase to count as an atomic keyword in the coverage universe. */
         private const val MAX_KEYWORD_WORDS = 5
+
+        /** Bullet length past which the recruiter skim breaks (~2 rendered lines). */
+        internal const val MAX_BULLET_CHARS = 250
+
+        /** Max times the same opening verb may lead a bullet before it reads templated. */
+        internal const val MAX_VERB_REPEATS = 2
 
         private val DEFAULT_PROMPT = """
             |Judge the tailored resume's qualitative quality. Keyword coverage is already computed
