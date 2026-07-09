@@ -58,6 +58,11 @@ if running jobfit-notifier; then
     ok "notifier (jobfit-notifier) healthy — Discord/Telegram from the completed-event stream"
   else warn "notifier container up but not healthy  →  docker logs jobfit-notifier"; fi
 else warn "notifier (jobfit-notifier) not running  →  make up"; fi
+if running jobfit-processor; then
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' jobfit-processor 2>/dev/null)" = "healthy" ]; then
+    ok "processor (jobfit-processor) healthy — scan/scrape/score/tailor"
+  else warn "processor container up but not healthy (loop stalled?  →  docker logs jobfit-processor)"; fi
+else bad "processor (jobfit-processor) not running  →  make up"; fi
 
 hdr "Postgres data"
 CNT="$(docker exec jobfit-db psql -U "${POSTGRES_USER:-jobfit}" -d "${POSTGRES_DB:-jobfit}" -tAc 'SELECT count(*) FROM tracks;' 2>/dev/null || true)"
@@ -86,6 +91,24 @@ hdr "Host services needed by the pipeline"
 port_open 11436 && ok "MLX/oMLX :11436" || warn "MLX/oMLX not reachable on :11436 (scoring/tailoring)"
 port_open 11434 && ok "Ollama :11434"   || warn "Ollama not reachable on :11434"
 port_open 9222  && ok "Chrome CDP :9222" || warn "Chrome CDP not reachable on :9222 (JD scraping)"
+# The processor container dials these via host.docker.internal (works on Docker Desktop 29.x —
+# its host-side proxy connects to loopback-bound ports). Probe the path from inside the container.
+if running jobfit-processor; then
+  if docker exec jobfit-processor curl -sf -m 5 http://host.docker.internal:11434/api/version >/dev/null 2>&1; then
+    ok "container → host.docker.internal reaches host services"
+  else warn "container cannot reach host.docker.internal:11434 — processor's local LLM/CDP calls will fail"; fi
+fi
+
+hdr "Processor container inputs (bind-mount sources)"
+# Compose bind-mounts these three; if one is absent Docker silently creates a DIRECTORY in its
+# place and the processor gets an unreadable/empty input.
+for f in services/job-fit-apply-ai-pipeline/.env \
+         services/job-fit-apply-ai-pipeline/src/main/resources/resume/resume.yaml \
+         services/job-fit-apply-ai-pipeline/config/candidate_profile.yaml; do
+  if [ -f "$f" ]; then ok "present: $f"
+  elif [ -d "$f" ]; then bad "$f is a DIRECTORY (created by docker before the file existed) — remove it and create the real file"
+  else bad "missing: $f — the processor container needs it (bind-mounted read-only)"; fi
+done
 
 hdr "Gmail (containerized Poller owns all Gmail)"
 POLLER_SECRETS="${JD_POLLER_SECRETS_HOST:-$HOME/.openclaw/jd-poller-secrets}"
@@ -96,16 +119,14 @@ if [ -f "$POLLER_SECRETS/tokens/gmail_token.json" ]; then
   else ok "Gmail token present in poller secrets  ($POLLER_SECRETS)"; fi
 else bad "Gmail token missing in $POLLER_SECRETS/tokens  →  docker compose run --rm poller --reauth"; fi
 
-hdr "Interim orchestration (PM2 — being retired for Compose)"
+hdr "PM2 (fully retired — everything is Compose now)"
 if command -v pm2 >/dev/null 2>&1; then
-  # The Processor stays on PM2 (needs host Chrome/CDP + local LLMs); the Poller is now a container.
-  for p in jd-processor; do
-    if pm2 list 2>/dev/null | grep -E "\b$p\b" | grep -qi online; then ok "pm2 $p online"; else warn "pm2 $p not online"; fi
-  done
-  if pm2 list 2>/dev/null | grep -E "\bjd-(worker|poller)\b" | grep -qi online; then
-    warn "pm2 jd-worker/jd-poller still online — should be gone (poller is a container now)"
+  if pm2 list 2>/dev/null | grep -E "\bjd-(worker|poller|processor)\b" | grep -qi online; then
+    warn "pm2 jd-worker/jd-poller/jd-processor still online — should be gone (all services are containers now)"
+  else
+    ok "no pipeline processes under pm2"
   fi
-else warn "pm2 not on PATH (expected once fully migrated to Compose)"; fi
+else ok "pm2 not on PATH (expected — fully migrated to Compose)"; fi
 
 echo
 warnsuffix=""

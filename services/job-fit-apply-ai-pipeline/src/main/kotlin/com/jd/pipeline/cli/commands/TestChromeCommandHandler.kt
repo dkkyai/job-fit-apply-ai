@@ -25,7 +25,7 @@ object TestChromeCommandHandler {
 
         if (endpoint.isBlank()) {
             println("[test-chrome] CDP is disabled — set CHROME_CDP_ENDPOINT (e.g. http://localhost:${Config.CHROME_DEBUG_PORT}) and run scripts/launch-chrome-cdp.sh.")
-            println("[test-chrome] With it empty, the scraper uses the legacy per-job profile-copy launch.")
+            println("[test-chrome] With it empty, browser scraping is unavailable (plain-HTTP scraping still works).")
             return
         }
 

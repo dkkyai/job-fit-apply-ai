@@ -1,16 +1,15 @@
 # Top-level orchestration for the Dockerized stack.
 #
-# Docker Compose is the source of truth. As services migrate off PM2 into compose
-# (bridge/frontend next), `make up` covers more of the system. Tailnet exposure is
-# via Tailscale Serve on the host — see docs/tailscale-serve.md.
-#
-# NOTE (during migration): services still under PM2 (jd-worker, and until they move,
-# jd-bridge/job-backlog-web) are managed separately; `make doctor` reports their state.
+# Docker Compose is the source of truth — every service (db, bridge, frontend,
+# markserv, poller, jsearch, notifier, processor) is a compose service. Host-side
+# prerequisites the processor needs: the CDP Chrome (launch-chrome-cdp.sh + its
+# launchd watchdog) and the local LLM servers (oMLX :11436, Ollama :11434).
+# Tailnet exposure is via Tailscale Serve on the host — see docs/tailscale-serve.md.
 
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help up down restart status serve doctor logs
+.PHONY: help up down restart status serve doctor logs e2e processor-test
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -36,6 +35,12 @@ serve: ## (Re)configure Tailscale Serve only
 
 doctor: ## Check prerequisites & health (read-only)
 	./scripts/doctor.sh
+
+e2e: ## End-to-end smoke: submit a fixture JD to the bridge, wait for the PDF
+	./scripts/e2e-smoke.sh
+
+processor-test: ## In-container pipeline smoke on a sample JD (LLMs + PDF, no bridge)
+	docker compose run --rm processor --test
 
 logs: ## Tail container logs
 	docker compose logs -f --tail=100
