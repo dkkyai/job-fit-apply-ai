@@ -23,11 +23,11 @@ class IntakeLoopTest {
     private fun email(id: String) = RawEmail(id, "Role $id", "rec@x.com", "body", "", false)
 
     @Test
-    @DisplayName("submits every fetched email and marks each JD_Processing")
+    @DisplayName("submits every fetched email and marks each Processing")
     fun submitsAndLabels() {
         val gmail = mock<GmailClient> {
             on { fetchIntakeEmails() } doReturn listOf(email("a"), email("b"))
-            on { getOrCreateLabel(TerminalLabels.JD_PROCESSING) } doReturn "proc-id"
+            on { getOrCreateLabel(TerminalLabels.PROCESSING) } doReturn "proc-id"
         }
         val bridge = mock<PollerBridgeClient> { on { submitEmail(any()) } doReturn "job-x" }
 

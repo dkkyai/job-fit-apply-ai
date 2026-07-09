@@ -7,6 +7,7 @@ import com.jd.pipeline.client.WorkItemType
 import com.jd.pipeline.nodes.ScrapeJdNode
 import com.jd.pipeline.pipeline.IngestionPipeline
 import com.jd.pipeline.pipeline.ProcessingPipeline
+import com.jd.pipeline.pipeline.TerminalLabel
 import com.jd.pipeline.source.IngestionSource
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.source.JdRecord
@@ -197,7 +198,9 @@ class ProcessorCommandHandlerTest {
 
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should complete the parent within 5s")
             verify(bridge, times(2)).submit(childRecord)      // one per job-posting child
-            verify(bridge).postResult(eq("job-email"), any()) // parent digest completed
+            // parent digest completed → JD_Processed_Digest so the Poller archives it (not a null
+            // label that would loop the parent through JD_Processing forever)
+            verify(bridge).postResult(eq("job-email"), argThat { terminalLabel == TerminalLabel.JD_PROCESSED_DIGEST })
             verify(pipeline, never()).invoke(any())           // the digest parent itself is never processed
         }
 
@@ -219,7 +222,8 @@ class ProcessorCommandHandlerTest {
             processorThread.start()
 
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should complete the non-job within 5s")
-            verify(bridge).postResult(eq("job-email"), any())
+            // JD_Not_Found so the Poller excludes it from the intake query (no null-label loop)
+            verify(bridge).postResult(eq("job-email"), argThat { terminalLabel == TerminalLabel.JD_NOT_FOUND })
             verify(pipeline, never()).invoke(any())
             verify(bridge, never()).submit(any())
         }
@@ -242,7 +246,9 @@ class ProcessorCommandHandlerTest {
             processorThread.start()
 
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a skip within 5s")
-            verify(bridge).postResult(eq("job-bad"), argThat { error != null && error!!.contains("missing email payload") })
+            verify(bridge).postResult(eq("job-bad"), argThat {
+                error != null && error!!.contains("missing email payload") && terminalLabel == TerminalLabel.JD_ERROR
+            })
             verify(ingestion, never()).invoke(any())
             verify(pipeline, never()).invoke(any())
         }

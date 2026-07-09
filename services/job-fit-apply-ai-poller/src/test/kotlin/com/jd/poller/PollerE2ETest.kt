@@ -60,7 +60,7 @@ class PollerE2ETest {
         assertEquals(1, submitted)
         assertEquals(1, bridge.submitted.size)
         assertEquals("m1", bridge.submitted.first()["message_id"])
-        verify(gmail).labelEmail(eq("m1"), eq("lbl"))   // JD_Processing applied
+        verify(gmail).labelEmail(eq("m1"), eq("lbl"))   // Processing applied
 
         // 2. Simulate the Processor completing the job (posts a terminal result into the feed).
         bridge.complete(CompletedJob(jobId = "job-m1", completedSeq = 1, status = "done", messageId = "m1", terminalLabel = TerminalLabels.JD_PROCESSED, isRecruiter = false))

@@ -20,7 +20,7 @@ class LabelApplierTest {
     }
 
     @Test
-    @DisplayName("JD_Processed → label, archive, clear JD_Error + JD_Processing; no star/unread")
+    @DisplayName("JD_Processed → label, archive, clear JD_Error + Processing; no star/unread")
     fun processed() {
         val g = gmail()
         LabelApplier.apply(g, "m1", TerminalLabels.JD_PROCESSED)
@@ -29,7 +29,7 @@ class LabelApplierTest {
         verify(g).labelEmail("m1", "lbl-id")
         verify(g).archiveEmail("m1")
         verify(g).findLabelId(TerminalLabels.JD_ERROR)       // clearErrorLabel
-        verify(g).findLabelId(TerminalLabels.JD_PROCESSING)  // clearProcessingLabel
+        verify(g).findLabelId(TerminalLabels.PROCESSING)  // clearProcessingLabel
         verify(g, never()).starEmail(any())
         verify(g, never()).markUnread(any())
     }
@@ -44,7 +44,7 @@ class LabelApplierTest {
         verify(g).starEmail("m2")
         verify(g).markUnread("m2")
         verify(g).findLabelId(TerminalLabels.JD_ERROR)
-        verify(g).findLabelId(TerminalLabels.JD_PROCESSING)
+        verify(g).findLabelId(TerminalLabels.PROCESSING)
         verify(g, never()).archiveEmail(any())
     }
 
@@ -60,7 +60,7 @@ class LabelApplierTest {
         verify(g, never()).starEmail(any())
         // JD_Error branch skips clearErrorLabel, but still clears the in-flight label.
         verify(g, never()).findLabelId(TerminalLabels.JD_ERROR)
-        verify(g).findLabelId(TerminalLabels.JD_PROCESSING)
+        verify(g).findLabelId(TerminalLabels.PROCESSING)
     }
 
     @Test
@@ -84,19 +84,33 @@ class LabelApplierTest {
     }
 
     @Test
-    @DisplayName("always clears the in-flight JD_Processing label")
+    @DisplayName("always clears the in-flight Processing label")
     fun alwaysClearsProcessing() {
         val g = gmail()
         LabelApplier.apply(g, "m6", TerminalLabels.JD_PROCESSED)
-        verify(g).applyLabels(eq("m6"), eq(emptyList()), eq(listOf(TerminalLabels.JD_PROCESSING + "-id")))
+        verify(g).applyLabels(eq("m6"), eq(emptyList()), eq(listOf(TerminalLabels.PROCESSING + "-id")))
     }
 
     @Test
-    @DisplayName("blank label is a no-op label-wise but still clears in-flight state")
+    @DisplayName("blank label falls back to JD_Not_Found (no unread) so the email exits intake; still clears in-flight state")
     fun blankLabel() {
         val g = gmail()
         LabelApplier.apply(g, "m7", "")
-        verify(g, never()).getOrCreateLabel(any())
-        verify(g).findLabelId(TerminalLabels.JD_PROCESSING)
+        // Blank = Processor made no decision (not-a-job / digest parent). Must still apply a
+        // query-excluding terminal label, or the email loops forever with Processing.
+        verify(g).getOrCreateLabel(TerminalLabels.JD_NOT_FOUND)
+        verify(g).labelEmail("m7", "lbl-id")
+        verify(g, never()).markUnread(any())     // a not-a-job email needs no attention
+        verify(g, never()).archiveEmail(any())
+        verify(g).findLabelId(TerminalLabels.PROCESSING)  // in-flight label still cleared
+    }
+
+    @Test
+    @DisplayName("unknown non-blank label is applied verbatim and clears in-flight state")
+    fun unknownLabel() {
+        val g = gmail()
+        LabelApplier.apply(g, "m8", "Some_Custom_Label")
+        verify(g).getOrCreateLabel("Some_Custom_Label")
+        verify(g).findLabelId(TerminalLabels.PROCESSING)
     }
 }

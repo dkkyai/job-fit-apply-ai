@@ -106,7 +106,7 @@ flowchart TB
 The `--max-emails` cron run is protected against re-entrant overlap at two levels:
 
 1. **`heartbeat_check.sh`** — checks the PID file before starting; exits immediately with `ALREADY_RUNNING` if the previous run is still polling the bridge.
-2. **`-label:JD_Processing`** — the Gmail search query excludes emails already labeled in-flight, so a second run that slips past the PID check still won't re-ingest the same email.
+2. **`-label:Processing`** — the Gmail search query excludes emails already labeled in-flight, so a second run that slips past the PID check still won't re-ingest the same email.
 
 ---
 
@@ -262,7 +262,7 @@ val GMAIL_MAX_EMAILS      = 3    // emails per batch run
 The default query fetches emails from the last 7 days, from INBOX only, excluding already-processed or in-flight messages:
 
 ```
-newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:JD_Processing
+newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:Processing
 ```
 
 Override `GMAIL_SEARCH_QUERY` in `.env` or `Config.kt` to target different senders or date ranges.
@@ -271,7 +271,7 @@ Override `GMAIL_SEARCH_QUERY` in `.env` or `Config.kt` to target different sende
 
 | Outcome | Label | Inbox Action |
 |---|---|---|
-| Submitted to bridge, awaiting worker | `JD_Processing` | Kept in INBOX |
+| Submitted to bridge, awaiting worker | `Processing` | Kept in INBOX |
 | Recruiter draft created | `Recruiter_Response_Required` | Star, mark unread, keep in INBOX |
 | Not a job posting | `JD_Not_Found` | Mark unread, keep in INBOX |
 | Digest processed | `JD_Processed_Digest` | Archive |

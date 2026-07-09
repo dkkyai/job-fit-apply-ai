@@ -7,6 +7,7 @@ import com.jd.pipeline.pipeline.EmailDisposition
 import com.jd.pipeline.pipeline.EmailResolution
 import com.jd.pipeline.pipeline.IngestionPipeline
 import com.jd.pipeline.pipeline.ProcessingPipeline
+import com.jd.pipeline.pipeline.TerminalLabel
 import com.jd.pipeline.source.IngestionSource
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.source.JdRecord
@@ -127,7 +128,7 @@ object ProcessorCommandHandler {
     private fun resolveEmail(claimed: ClaimDto, bridge: BridgeClient, ingestion: IngestionPipeline): JdRecord? {
         val email = claimed.email
         if (email == null) {
-            bridge.postResult(claimed.jobId, skipResult("EMAIL_RAW claim missing email payload"))
+            bridge.postResult(claimed.jobId, skipResult("EMAIL_RAW claim missing email payload", TerminalLabel.JD_ERROR))
             return null
         }
         val emailState = JDState(
@@ -146,7 +147,7 @@ object ProcessorCommandHandler {
             ingestion.invoke(emailState)   // scan → digest fan-out → scrape
         } catch (e: Exception) {
             System.err.println("[processor] ingestion failed for ${claimed.jobId}: ${e.message}")
-            bridge.postResult(claimed.jobId, skipResult("ingestion: ${e.message}"))
+            bridge.postResult(claimed.jobId, skipResult("ingestion: ${e.message}", TerminalLabel.JD_ERROR))
             return null
         }
 
@@ -156,11 +157,11 @@ object ProcessorCommandHandler {
                     runCatching { bridge.submit(ingestion.toJdRecord(child)) }
                         .onFailure { System.err.println("[processor] digest child submit failed: ${it.message}") }
                 }
-                bridge.postResult(claimed.jobId, skipResult(null))   // parent digest complete
+                bridge.postResult(claimed.jobId, skipResult(null, TerminalLabel.JD_PROCESSED_DIGEST))   // parent digest complete → archive
                 null
             }
             EmailDisposition.SkipNotJob -> {
-                bridge.postResult(claimed.jobId, skipResult(null))   // not a job posting
+                bridge.postResult(claimed.jobId, skipResult(null, TerminalLabel.JD_NOT_FOUND))   // not a job posting
                 null
             }
             EmailDisposition.Process ->
@@ -215,7 +216,15 @@ object ProcessorCommandHandler {
         )
     }
 
-    private fun skipResult(error: String?): ProcessingResult = ProcessingResult(
+    /**
+     * A terminal SKIP result for an item that never reaches [ProcessingPipeline]. [terminalLabel]
+     * is the Gmail label the Poller must apply (mirrors [TerminalLabel.forState] for the states we
+     * short-circuit past): without it the email carries no terminal label, so the Poller can't move
+     * it out of the intake query and it loops — re-fetched, re-submitted (deduped to this already
+     * written-back job) and re-labeled JD_Processing forever. The Poller reads message_id from the
+     * bridge row, which preserves the enqueue-time value, so this result need not repeat it.
+     */
+    private fun skipResult(error: String?, terminalLabel: String? = null): ProcessingResult = ProcessingResult(
         pipelineAction = PipelineAction.SKIP.name,
         fitScore       = 0,
         strengths      = emptyList(),
@@ -223,5 +232,6 @@ object ProcessorCommandHandler {
         outputPath     = null,
         hasCoverLetter = false,
         error          = error,
+        terminalLabel  = terminalLabel,
     )
 }

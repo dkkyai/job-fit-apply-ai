@@ -8,7 +8,7 @@ import com.jd.poller.health.Heartbeat
 
 /**
  * Intake loop: fetch unprocessed JD emails from Gmail and submit each to the bridge as an
- * EMAIL_RAW work item, then mark it JD_Processing so it isn't re-fetched. The bridge dedups by
+ * EMAIL_RAW work item, then mark it Processing so it isn't re-fetched. The bridge dedups by
  * message_id, so a re-submit after a labeling failure is harmless.
  */
 class IntakeLoop(
@@ -25,8 +25,8 @@ class IntakeLoop(
                 val jobId = bridge.submitEmail(email)
                 // Apply the in-flight label AFTER a successful submit so a failed submit is
                 // retried next pass (the email stays unlabeled → re-fetched).
-                runCatching { gmail.labelEmail(email.messageId, gmail.getOrCreateLabel(TerminalLabels.JD_PROCESSING)) }
-                    .onFailure { System.err.println("[intake] JD_Processing label failed for ${email.messageId}: ${it.message}") }
+                runCatching { gmail.labelEmail(email.messageId, gmail.getOrCreateLabel(TerminalLabels.PROCESSING)) }
+                    .onFailure { System.err.println("[intake] Processing label failed for ${email.messageId}: ${it.message}") }
                 submitted++
                 println("[intake] submitted ${email.messageId} → job $jobId")
             } catch (e: Exception) {
