@@ -1,58 +1,100 @@
 # run-analyzer
 
-Runs a pipeline batch, waits for the jd-worker to drain it, then has a configurable
-Ollama model analyze the run and write findings as task files. Replaces the summary
-step of the cron pipeline with LLM-driven analysis.
+Analyzes the JD pipeline's **recently-completed jobs**, has a configurable model judge
+pipeline health + scoring quality, and writes each problem as a self-contained task file.
+Optionally (gated, opt-in) turns high-severity findings into a **living draft PR**.
+
+There is **no batch to trigger**. The pipeline runs continuously — the `jd-poller` feeds
+Gmail→bridge and the `jobfit-processor` container drains the bridge. A "run" is simply the
+set of jobs that completed since the analyzer's **cursor**. The analyzer consumes the
+bridge completed-event feed (`GET /api/jobs/completed`) with its own independent cursor.
 
 ## Design
 
-Instead of the LLM watching stdout/stderr, the worker emits a **durable structured
-run report** and the analyzer reasons over that (drilling into logs/output only for
-flagged jobs). This keeps analysis bounded, reproducible, and diffable across runs.
+The analyzer reasons over a **durable, structured window** rather than watching logs:
 
-- **`RunReport`** (`src/main/kotlin/.../utils/RunReport.kt`) — the worker appends one
-  JSON line per processed job to `output/runs/run_log.jsonl` (gitignored). Fields
-  include `score`, `action`, `error`, `jdTextLen` (the thin-JD signal), `board`,
-  `isDigest`, `durationMs`.
-- **`RUN_ANALYZER_SKILL.md`** — canonical instructions: what to look for (scoring
-  quality, digest thin-JDs, timeouts, OOM, blocked scrapes, per-board patterns,
-  regressions vs the prior run), the severity rubric, and the **strict JSON output
-  contract**.
-- **`PROMPT.md`** — entry point (works both for the cron script and for an interactive
-  coding session).
-- **`analyze.py`** — slices the run window from `run_log.jsonl`, computes metrics
-  deterministically, calls the model (`format=json`), and writes each finding to
-  `findings/<run-ts>/NN-slug.md` as a self-contained task plus `analysis.json`.
-  Saves this run's metrics to `last_metrics.json` for next-run regression comparison.
-- **`analyze_run.sh`** — orchestration: run batch → wait for drain → run `analyze.py`.
+- **Source of truth = the bridge completed-event feed** (`services/job-fit-apply-ai-bridge`),
+  consumed via an independent, persisted `completed_seq` cursor (mirrors the notifier's
+  `Cursor`/`drainOnce` pattern; seeds at head on cold start to skip history; at-least-once).
+  The feed is the **spine** — it defines which jobs are in the window.
+- **`run_log.jsonl`** (`output/runs/`, written by the processor via `utils/RunReport.kt`)
+  **enriches** each record with `jdTextLen` (the thin-JD signal), `durationMs`, `isDigest`,
+  `board`, `source`. Joined on `jobId`. A bridge job with no run_log record is flagged
+  `run_log_missing`.
+- **Postgres `tracks`** + per-job output files (`score_fit.txt`, `job_description.txt`,
+  `metadata.json`) feed the deeper **scoring audit** (judges whether scores are *justified by
+  evidence*, not just whether they're zero).
+- **`RUN_ANALYZER_SKILL.md`** — canonical instructions (what to look for, severity rubric,
+  strict JSON output contract). **`PROMPT.md`** — entry point. **`analyze.py`** — orchestrator
+  wiring the `analyzer/` package.
+
+### Package layout
+
+```
+analyzer/
+  cursor.py    persisted independent completed_seq cursor (mirror of Cursor.kt)
+  bridge.py    HTTP client for GET /api/jobs/completed(+/head)
+  sources.py   assemble the window: bridge spine + run_log enrichment
+  metrics.py   deterministic aggregate + rate metrics
+  history.py   append-only metrics history + rolling baseline        (Phase 2)
+  llm.py       model routing (oMLX / ollama-cloud / ollama-local)
+  findings.py  write analysis.json + per-finding task files + fingerprint
+  audit.py     deep per-job scoring-correctness audit                (Phase 3)
+  autofix.py   gated auto-fix -> living draft PR loop                (Phase 4)
+  notify.py    Discord/Telegram messaging                            (Phase 4)
+analyze.py     orchestrator (drain -> metrics -> model -> findings)
+run_analyzer.sh driver (cursor consumer; single-instance lock; no batch/pm2)
+```
 
 ## Usage
 
 ```bash
-# one-off
-RUN_ANALYZER_MODEL=qwen3:14b ./tuner/run-analyzer/analyze_run.sh 5
+# analysis + trend + notify (cheap; run hourly on the schedule)
+./tuner/run-analyzer/run_analyzer.sh
+
+# gated auto-fix -> living draft PR -> notify (run daily; opt-in)
+RUN_ANALYZER_AUTOFIX=1 ./tuner/run-analyzer/run_analyzer.sh --autofix
+
+# one-off with a stronger cloud model
+RUN_ANALYZER_MODEL=minimax-m3:ollama-cloud ./tuner/run-analyzer/run_analyzer.sh
 ```
 
-Config (env): `RUN_ANALYZER_MODEL` (default `qwen3:14b`), `OLLAMA_BASE_URL`,
-`RUN_ANALYZER_QUIET` (drain-detect silence, default 90s), `RUN_ANALYZER_MAXWAIT`
-(default 1800s). The metrics are computed deterministically in Python and are accurate
-regardless of model; a **stronger model produces better root-cause + file-path accuracy**
-in the findings — local models reliably triage but tend to guess at file paths.
+Empty windows exit immediately (before any model call), so frequent scheduling is cheap.
 
-To analyze with **Ollama Cloud**, set `RUN_ANALYZER_MODEL=<model>:ollama-cloud` (e.g.
-`minimax-m3:ollama-cloud`). `analyze.py` routes `:ollama-cloud` models to
-`OLLAMA_CLOUD_BASE_URL` with a `Bearer $OLLAMA_API_KEY` header; `analyze_run.sh` reads
-both from the project `.env` automatically.
+Config (env; `run_analyzer.sh` also reads these from the project `.env`):
 
-## Wiring into cron
+| var | default | purpose |
+|---|---|---|
+| `RUN_ANALYZER_MODEL` | `Qwen3.5-9B-OptiQ-4bit` (local oMLX) | analysis model |
+| `JD_BRIDGE_URL` | `http://127.0.0.1:8765` | bridge base URL |
+| `RUN_ANALYZER_AUTOFIX` | *(off)* | set `1` to arm the `--autofix` loop |
+| `MLX_LOCAL_BASE_URL` / `MLX_API_KEY` | oMLX local | OpenAI-wire backend |
+| `OLLAMA_CLOUD_BASE_URL` / `OLLAMA_API_KEY` | — | for `:ollama-cloud` models |
+| `DISCORD_*` / `TELEGRAM_*` | — | notifications (no-op when blank) |
 
-`~/.local/scripts/run_jd_pipeline.sh` calls `analyze_run.sh`, keeping the existing
-`heartbeat_check.sh` guard (already-running / screen-locked / GPU-busy) and the timeout
-watcher. Discord/Telegram notifications are owned by the Kotlin pipeline
-(`BatchCommandHandler` + `WorkerCommandHandler` via `BatchNotificationService`); the old
-`pipeline_complete.sh` notifier is retired, and the timeout alert is sent by
-`./gradlew run --args="--notify-timeout <minutes>"`. The findings task files can then be reviewed (or fed to a coding
-session via each file's "Agent prompt" section).
+The metrics are computed deterministically in Python and are accurate regardless of model; a
+**stronger model produces better root-cause + file-path accuracy** in the findings — local
+models reliably triage but tend to guess at file paths. Set `RUN_ANALYZER_MODEL=<model>:ollama-cloud`
+to route to Ollama Cloud (`Bearer $OLLAMA_API_KEY`).
 
-Note: the jd-worker must be running (pm2) — it processes the jobs the batch submits and
-writes the run records.
+## State (gitignored, under `state/`)
+
+- `cursor` — last consumed `completed_seq`.
+- `metrics_history.jsonl` — append-only per-run metrics (rolling baseline; Phase 2).
+- `autofix_ledger.jsonl` — fingerprints handled by the autofix loop (Phase 4).
+
+Delete `state/cursor` to re-seed at head (skips history). Findings land in `findings/<run-ts>/`.
+
+## External dependencies
+
+Running `jd-bridge` (`:8765`), `jobfit-processor` + `jobfit-db` containers; the LLM endpoint
+per `RUN_ANALYZER_MODEL`. The `--autofix` loop additionally needs host `git`, an authed `gh`
+CLI, and the `claude` CLI.
+
+## Scheduling
+
+Two committed launchd plists (see `scripts/com.jd.run-analyzer*.plist`): the hourly analysis
+job and the daily gated `--autofix` job. A shared single-instance lock
+(`/tmp/jd-run-analyzer.lock`) guarantees they never overlap (the autofix git ops must not race
+the analysis run). The findings task files can be reviewed directly, fed to a coding session
+via each file's "Agent prompt" section, or applied by the `--autofix` loop.

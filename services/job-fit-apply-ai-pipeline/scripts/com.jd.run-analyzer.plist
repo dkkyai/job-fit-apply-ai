@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd agent: run-analyzer ANALYSIS pass (health + trend + notify).
+
+  Runs run_analyzer.sh at login (RunAtLoad) and hourly (StartInterval 3600). Cheap: empty
+  cursor windows exit before any model call, so an hourly cadence costs almost nothing when
+  nothing has completed. This pass NEVER opens PRs — it surfaces regressions and fires
+  Discord/Telegram notifications (each carries the open analyzer PR's URL when one exists).
+
+  A shared single-instance lock (/tmp/jd-run-analyzer.lock, held by run_analyzer.sh) guarantees
+  this never overlaps the daily --autofix job.
+
+  Install (edit ProgramArguments below if your checkout path differs):
+    cp scripts/com.jd.run-analyzer.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jd.run-analyzer.plist
+
+  Status / logs:
+    launchctl print gui/$(id -u)/com.jd.run-analyzer | grep -i state
+    tail -f /tmp/jd-run-analyzer.out.log /tmp/jd-run-analyzer.err.log
+
+  Uninstall:
+    launchctl bootout gui/$(id -u)/com.jd.run-analyzer
+    rm ~/Library/LaunchAgents/com.jd.run-analyzer.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jd.run-analyzer</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/dkkyai/projects/job-fit-apply-ai/services/job-fit-apply-ai-pipeline/tuner/run-analyzer/run_analyzer.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/jd-run-analyzer.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/jd-run-analyzer.err.log</string>
+</dict>
+</plist>
