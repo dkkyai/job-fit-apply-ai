@@ -20,6 +20,13 @@
 #
 set -uo pipefail
 
+# launchd (and cron) hand us a minimal PATH (/usr/bin:/bin:/usr/sbin:/sbin) that omits
+# docker, gh, and claude — without them the analysis pass silently loses its `docker logs`
+# tail + the Postgres audit, and autofix can't find its tools. Prepend the usual locations
+# so the script behaves identically however it's invoked. This keeps the launchd plists
+# env-agnostic (no per-plist PATH injection needed).
+export PATH="/usr/local/bin:/opt/homebrew/bin:$HOME/.local/bin:$HOME/homebrew/bin:$PATH"
+
 MODE="analyze"
 [ "${1:-}" = "--autofix" ] && MODE="autofix"
 
