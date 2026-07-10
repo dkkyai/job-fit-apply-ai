@@ -170,8 +170,9 @@ services:
       MLX_LOCAL_BASE_URL: "http://host.docker.internal:11436/v1"
       OLLAMA_LOCAL_BASE_URL: "http://host.docker.internal:11434"
       CHROME_CDP_ENDPOINT: "http://host.docker.internal:${CHROME_DEBUG_PORT:-9222}"
-      # Public URL base for artifact links in reports/notifications (markserv over the tailnet).
-      ARTIFACT_BASE_URL: "${ARTIFACT_BASE_URL:-}"
+      # ARTIFACT_BASE_URL is intentionally NOT set here: an empty `${ARTIFACT_BASE_URL:-}` override
+      # would win over the mounted /app/.env (real env beats dotenv in Config.get), blanking the
+      # report/notification links. The value lives in services/.../pipeline/.env (markserv tailnet URL).
     volumes:
       # Same host dir markserv serves read-only at :8081 — reports/PDFs keep their URLs.
       - ./services/job-fit-apply-ai-pipeline/output:/app/output
