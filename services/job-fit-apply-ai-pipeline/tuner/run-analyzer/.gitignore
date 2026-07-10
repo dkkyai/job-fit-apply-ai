@@ -1,3 +1,4 @@
-# Generated per-run analyzer outputs — not source.
+# Generated per-run analyzer outputs + runtime state — not source.
 findings/
+state/
 last_metrics.json
