@@ -61,6 +61,43 @@ class IngestionPipelineTest {
     }
 
     @Test
+    @DisplayName("toJdRecord carries scrape-extracted fields across the queue boundary")
+    fun toJdRecordCarriesScrapeFields() {
+        val pipeline = IngestionPipeline()
+        val state = JDState(
+            jdText         = "jd with salary",
+            salaryRange    = "CA\$110K/yr - CA\$140K/yr",
+            remotePolicy   = "remote",
+            employmentType = "Full-time",
+            seniorityLevel = "Senior",
+            yoeRequired    = 5,
+            techStack      = listOf("Kotlin", "Selenium"),
+        )
+
+        val record = pipeline.toJdRecord(state)
+
+        assertEquals("CA\$110K/yr - CA\$140K/yr", record.salaryRange)
+        assertEquals("remote",                    record.remotePolicy)
+        assertEquals("Full-time",                 record.employmentType)
+        assertEquals("Senior",                    record.seniorityLevel)
+        assertEquals(5,                           record.yoeRequired)
+        assertEquals(listOf("Kotlin", "Selenium"), record.techStack)
+    }
+
+    @Test
+    @DisplayName("toJdRecord maps blank/empty scrape fields to null")
+    fun toJdRecordBlankScrapeFieldsToNull() {
+        val pipeline = IngestionPipeline()
+        val state = JDState(jdText = "jd", salaryRange = "", employmentType = "", techStack = emptyList())
+
+        val record = pipeline.toJdRecord(state)
+
+        assertNull(record.salaryRange)
+        assertNull(record.employmentType)
+        assertNull(record.techStack)
+    }
+
+    @Test
     @DisplayName("toJdRecord maps blank string fields to null")
     fun toJdRecordBlanksToNull() {
         val pipeline = IngestionPipeline()
