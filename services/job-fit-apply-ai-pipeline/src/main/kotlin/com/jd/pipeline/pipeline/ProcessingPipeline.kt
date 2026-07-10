@@ -68,6 +68,12 @@ class ProcessingPipeline(
             roleTitle        = record.roleTitle ?: "",
             location         = record.location ?: "",
             jobUrl           = record.jobUrl ?: "",
+            salaryRange      = record.salaryRange ?: "",
+            remotePolicy     = record.remotePolicy ?: "unknown",
+            employmentType   = record.employmentType ?: "",
+            seniorityLevel   = record.seniorityLevel ?: "",
+            yoeRequired      = record.yoeRequired,
+            techStack        = record.techStack ?: emptyList(),
             candidateProfile = profile,
         )
 

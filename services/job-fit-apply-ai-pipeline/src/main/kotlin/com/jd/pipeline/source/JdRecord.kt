@@ -11,6 +11,14 @@ data class JdRecord(
     val source: IngestionSource,
     val idempotencyKey: String? = null,
     val intakeMeta: IntakeContext? = null,
+    // Scrape-extracted fields carried across the ingestion → processing queue boundary.
+    // Nullable so the bridge JSON round-trip stays backward compatible with older records.
+    val salaryRange: String? = null,
+    val remotePolicy: String? = null,
+    val employmentType: String? = null,
+    val seniorityLevel: String? = null,
+    val yoeRequired: Int? = null,
+    val techStack: List<String>? = null,
 )
 
 data class ProcessingResult(
