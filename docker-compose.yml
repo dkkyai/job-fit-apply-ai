@@ -210,6 +210,9 @@ services:
     volumes:
       # Same host dir markserv serves read-only at :8081 — reports/PDFs keep their URLs.
       - ./services/job-fit-apply-ai-pipeline/output:/app/output
+      # Steel persisted session state (STEEL_STORAGE_STATE_PATH, PROJECT_DIR/state). Host-mounted so
+      # the exported cookies survive processor restarts and are backup-able. Gitignored (state/).
+      - ./services/job-fit-apply-ai-pipeline/state:/app/state
       # Pipeline secrets + per-node model config (gitignored). dotenv reads /app/.env; real env
       # vars above win over it (Config.get precedence), so host-specific endpoints inside are
       # safely overridden.
