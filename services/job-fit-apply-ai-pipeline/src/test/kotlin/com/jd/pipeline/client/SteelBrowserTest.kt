@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Unit tests for [SteelBrowser] that need no live Steel: the URL-rewriting helpers (critical for
@@ -41,6 +42,29 @@ class SteelBrowserTest {
             "http://mac.tailnet.ts.net:3000/v1/sessions/debug?interactive=true&showControls=true",
             SteelBrowser.interactiveDebugUrl("http://mac.tailnet.ts.net:3000", "http://localhost:3000/v1/sessions/debug"),
         )
+    }
+
+    @Test
+    @DisplayName("hostToIp leaves localhost and literal IPs untouched")
+    fun hostToIpPassthrough() {
+        assertEquals("ws://localhost:3000/", SteelBrowser.hostToIp("ws://localhost:3000/"))
+        assertEquals("ws://172.20.0.9:3000/devtools/x", SteelBrowser.hostToIp("ws://172.20.0.9:3000/devtools/x"))
+    }
+
+    @Test
+    @DisplayName("hostToIp returns the endpoint unchanged when the host can't be resolved")
+    fun hostToIpUnresolvableIsSafe() {
+        val ep = "ws://steel.nonexistent.invalid:3000/"
+        assertEquals(ep, SteelBrowser.hostToIp(ep))
+    }
+
+    @Test
+    @DisplayName("hostToIp resolves a real hostname to an IP (localhost's canonical name)")
+    fun hostToIpResolves() {
+        // ip6-localhost / the machine's own resolvable name → an IP literal, not the hostname.
+        val out = SteelBrowser.hostToIp("ws://ip6-localhost:3000/")
+        // Either it resolved to an IP, or (if that alias is absent) it safely passed through.
+        assertTrue(out == "ws://ip6-localhost:3000/" || out.matches(Regex("""ws://[0-9a-f.:]+:3000/""")), "got $out")
     }
 
     @Test

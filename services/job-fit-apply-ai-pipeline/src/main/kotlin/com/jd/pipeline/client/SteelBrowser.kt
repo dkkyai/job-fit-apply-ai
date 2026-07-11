@@ -54,7 +54,7 @@ class SteelBrowser(
         try {
             val s = client.createSession(store.load(), sessionTimeoutMs)
             val pw = Playwright.create()
-            browser = pw.chromium().connectOverCDP(resolveWsEndpoint(baseUrl, s.websocketUrl))
+            browser = pw.chromium().connectOverCDP(hostToIp(resolveWsEndpoint(baseUrl, s.websocketUrl)))
             playwright = pw
             session = s
             log.info("Connected to Steel session {} at {}", s.id, baseUrl)
@@ -146,6 +146,25 @@ class SteelBrowser(
             val path = ws.rawPath?.ifBlank { "/" } ?: "/"
             val query = ws.rawQuery?.let { "?$it" } ?: ""
             return "$scheme://${base.host}$port$path$query"
+        }
+
+        /**
+         * Resolve a ws endpoint's hostname to its IPv4 so the underlying Chrome accepts the CDP
+         * connection. Chrome DevTools rejects any `Host` header that isn't an IP or `localhost`
+         * (DNS-rebinding guard) — connecting via the `steel` service name resets the socket
+         * (`ECONNRESET`). Same rewrite `docker-entrypoint.sh` applies for the host-Chrome path.
+         * `localhost` and literal IPs are returned unchanged; on resolution failure the input is
+         * returned as-is (the connect then surfaces its own error).
+         */
+        fun hostToIp(endpoint: String): String {
+            val uri = URI(endpoint)
+            val host = uri.host ?: return endpoint
+            if (host == "localhost" || host.matches(Regex("""^\d{1,3}(\.\d{1,3}){3}$"""))) return endpoint
+            val ip = runCatching { java.net.InetAddress.getByName(host).hostAddress }.getOrNull() ?: return endpoint
+            val port = if (uri.port != -1) ":${uri.port}" else ""
+            val path = uri.rawPath?.ifBlank { "/" } ?: "/"
+            val query = uri.rawQuery?.let { "?$it" } ?: ""
+            return "${uri.scheme}://$ip$port$path$query"
         }
 
         /**
