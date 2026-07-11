@@ -1,49 +1,61 @@
 # run-analyzer
 
-Analyzes the JD pipeline's **recently-completed jobs**, has a configurable model judge
-pipeline health + scoring quality, and writes each problem as a self-contained task file.
-Optionally (gated, opt-in) turns high-severity findings into a **living draft PR**.
+Analyzes the JD pipeline's **recently-completed jobs**, judges health + scoring quality with a
+mix of **deterministic rules and a model**, surfaces **only what changed** (new / worsening /
+resolved), and — gated/opt-in — turns high-severity findings into a **living draft PR** and then
+**verifies whether the fix actually moved its target metric**.
 
 There is **no batch to trigger**. The pipeline runs continuously — the `jd-poller` feeds
-Gmail→bridge and the `jobfit-processor` container drains the bridge. A "run" is simply the
-set of jobs that completed since the analyzer's **cursor**. The analyzer consumes the
-bridge completed-event feed (`GET /api/jobs/completed`) with its own independent cursor.
+Gmail→bridge and the `jobfit-processor` container drains the bridge. A "run" is the set of jobs
+that completed since the analyzer's **cursor**. The analyzer consumes the bridge completed-event
+feed (`GET /api/jobs/completed`) with its own independent cursor.
 
-## Design
+## How a run works
 
-The analyzer reasons over a **durable, structured window** rather than watching logs:
+1. **Cadence gate** — drain the cursor→head delta. If fewer than `MIN_BATCH` new jobs have accrued
+   and the oldest has waited < `MAX_DEFER_HOURS`, **defer** (leave the cursor; re-accrue). This
+   decouples window size from arrival rate so a slow day doesn't degrade into per-job analysis.
+2. **Two windows** — the **report window** (the new jobs; findings anchor here) plus a read-only
+   **context window** of the last `CONTEXT_N` completed jobs, for rates / per-board patterns /
+   regressions. The bridge feed is the spine; `run_log.jsonl` (via `RunReport.kt`) enriches each
+   record with `jdTextLen`, `durationMs`, `isDigest`, `board` (missing → `run_log_missing`).
+3. **Deterministic detectors** — zero-token rules emit findings for the unambiguous classes
+   (OOM, timeouts, a board's scrapes blocked, thin digests, run_log gaps, TAILOR-after-error,
+   rich-JD-scored-0). These run before the model, so they survive a model outage.
+4. **Model triage** — the LLM gets the metrics, both windows, the baseline, and the deterministic
+   findings, and adds only **net-new** issues + root-cause/`agent_prompt` narration + regression
+   judgement. Findings are merged deduped by fingerprint (`id + category`).
+5. **Scoring audit** — a bounded pass verifies whether triaged scores are *justified by evidence*
+   (deterministic grounding of `score_fit.txt` against the JD, then a model verdict), using Postgres
+   `tracks` + per-job output files.
+6. **Delta + notify** — classify each finding vs the findings ledger as NEW / WORSENING / UNCHANGED;
+   Discord/Telegram is pinged **only for what changed** (steady state stays quiet).
+7. **Outcome loop** — reconcile merged autofix PRs (`gh`), then check whether each fixed finding's
+   target metric recovered over `RESOLVE_RUNS` runs before vs after the merge → **resolved**
+   (auto-retire) or **regressed** (fix didn't help).
 
-- **Source of truth = the bridge completed-event feed** (`services/job-fit-apply-ai-bridge`),
-  consumed via an independent, persisted `completed_seq` cursor (mirrors the notifier's
-  `Cursor`/`drainOnce` pattern; seeds at head on cold start to skip history; at-least-once).
-  The feed is the **spine** — it defines which jobs are in the window.
-- **`run_log.jsonl`** (`output/runs/`, written by the processor via `utils/RunReport.kt`)
-  **enriches** each record with `jdTextLen` (the thin-JD signal), `durationMs`, `isDigest`,
-  `board`, `source`. Joined on `jobId`. A bridge job with no run_log record is flagged
-  `run_log_missing`.
-- **Postgres `tracks`** + per-job output files (`score_fit.txt`, `job_description.txt`,
-  `metadata.json`) feed the deeper **scoring audit** (judges whether scores are *justified by
-  evidence*, not just whether they're zero).
-- **`RUN_ANALYZER_SKILL.md`** — canonical instructions (what to look for, severity rubric,
-  strict JSON output contract). **`PROMPT.md`** — entry point. **`analyze.py`** — orchestrator
-  wiring the `analyzer/` package.
+Empty/deferred windows exit before any model call, so frequent scheduling is cheap.
 
 ### Package layout
 
 ```
 analyzer/
-  cursor.py    persisted independent completed_seq cursor (mirror of Cursor.kt)
-  bridge.py    HTTP client for GET /api/jobs/completed(+/head)
-  sources.py   assemble the window: bridge spine + run_log enrichment
-  metrics.py   deterministic aggregate + rate metrics
-  history.py   append-only metrics history + rolling baseline        (Phase 2)
-  llm.py       model routing (oMLX / ollama-cloud / ollama-local)
-  findings.py  write analysis.json + per-finding task files + fingerprint
-  audit.py     deep per-job scoring-correctness audit                (Phase 3)
-  autofix.py   gated auto-fix -> living draft PR loop                (Phase 4)
-  notify.py    Discord/Telegram messaging                            (Phase 4)
-analyze.py     orchestrator (drain -> metrics -> model -> findings)
-run_analyzer.sh driver (cursor consumer; single-instance lock; no batch/pm2)
+  cursor.py         persisted independent completed_seq cursor (mirror of Cursor.kt)
+  pending.py        'pending since' marker for the accumulate-until-N-or-T gate
+  bridge.py         HTTP client for GET /api/jobs/completed(+/head, +fetch_last)
+  sources.py        assemble a window: bridge spine + run_log enrichment
+  metrics.py        deterministic aggregate + rate metrics
+  detectors.py      rule-based findings for the unambiguous problem classes (no LLM)
+  history.py        append-only metrics history + rolling baseline
+  llm.py            model routing (oMLX / ollama-cloud / ollama-local)
+  findings.py       write analysis.json + per-finding task files + fingerprint (id+category)
+  findings_ledger.py cross-run NEW/WORSENING/UNCHANGED/RESOLVED classification
+  audit.py          deep per-job scoring-correctness audit
+  outcomes.py       finding -> fix -> outcome: merge reconciliation + metric recovery
+  autofix.py        gated auto-fix -> living draft PR loop
+  notify.py         Discord/Telegram messaging
+analyze.py          orchestrator (gate -> detectors -> model -> audit -> delta -> outcomes)
+run_analyzer.sh     driver (cursor consumer; PATH/CA hardening; single-instance lock; no batch/pm2)
 ```
 
 ## Usage
@@ -65,8 +77,13 @@ Config (env; `run_analyzer.sh` also reads these from the project `.env`):
 
 | var | default | purpose |
 |---|---|---|
-| `RUN_ANALYZER_MODEL` | `Qwen3.5-9B-OptiQ-4bit` (local oMLX) | analysis model |
+| `RUN_ANALYZER_MODEL` | `Qwen3.5-9B-OptiQ-4bit` (local oMLX) | analysis model (deployed: `deepseek-v4-pro:ollama-cloud`) |
 | `JD_BRIDGE_URL` | `http://127.0.0.1:8765` | bridge base URL |
+| `RUN_ANALYZER_MIN_BATCH` | `10` | analyze once ≥ N new jobs accrue |
+| `RUN_ANALYZER_MAX_DEFER_HOURS` | `6` | force a run after T hours waiting |
+| `RUN_ANALYZER_CONTEXT_N` | `40` | rolling context-window size |
+| `RUN_ANALYZER_AUDIT_MAX` | `8` | max jobs deep-audited per run (0 disables) |
+| `RUN_ANALYZER_RESOLVE_RUNS` | `3` | runs each side of a merge to judge outcome |
 | `RUN_ANALYZER_AUTOFIX` | *(off)* | set `1` to arm the `--autofix` loop |
 | `MLX_LOCAL_BASE_URL` / `MLX_API_KEY` | oMLX local | OpenAI-wire backend |
 | `OLLAMA_CLOUD_BASE_URL` / `OLLAMA_API_KEY` | — | for `:ollama-cloud` models |
