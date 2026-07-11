@@ -107,6 +107,35 @@ Examples:
 
 ---
 
+## Section A2 — Analyzer model (`RUN_ANALYZER_MODEL`) — evaluated, but NOT a pipeline node
+
+This tuner also selects `RUN_ANALYZER_MODEL`, but it is **not** a pipeline `Config.kt` node — it
+belongs to the run-analyzer tool (`tuner/run-analyzer/`, read from `.env` by `run_analyzer.sh`).
+Section C's self-scan will NOT find it in `Config.kt`/`LlmClient.kt`; **this subsection is manually
+maintained — preserve it across self-scans** (do not delete it when rewriting Section A).
+
+- **Task:** analyzes the JD pipeline's recently-completed jobs. Two model calls: (1) a **health
+  analysis** over a window of job records/metrics → strict JSON (`health`, `metrics`, `regressions`,
+  `findings[]`, each finding carrying a self-contained `agent_prompt`); (2) a per-job scoring **audit**
+  → strict JSON verdict (`justified|too_low|too_high|ungrounded`, `cause`, `confidence`). It also
+  authors root-cause narration and target file paths in findings.
+- **Requirements:** strong structured-JSON adherence + reasoning + file-path accuracy. It runs at most
+  hourly and is batch-gated, so it is **latency-tolerant — quality ≫ speed.** The deep audit is the
+  hard part: weak local models fail it (Qwen3.5-9B returns malformed output such as `[1]`);
+  `DeepSeek-R1-Distill-Qwen-32B-4bit` and cloud reasoning models (e.g. `deepseek-v4-pro`) produce clean
+  verdicts. **Pick a genuinely capable model** — this is the one var where a too-small model silently
+  produces garbage rather than merely lower quality.
+- **Backend constraint (narrower than the pipeline — do not violate):** the analyzer's own `llm.py`
+  supports only **oMLX-local (no suffix)**, **`:ollama-cloud`**, and `:ollama-local`. It does **NOT**
+  implement the `:cloud` (DeepSeek/MiniMax-direct) backends. A cloud pick therefore MUST use the
+  `:ollama-cloud` suffix — e.g. `deepseek-v4-pro:ollama-cloud`, **never** `deepseek-v4-pro:cloud`.
+- **Cloud-cap efficiency:** a `:ollama-cloud` value counts toward the ≤3-distinct-cloud cap (Section
+  D.5). **Prefer reusing a cloud model already selected for a pipeline node** (e.g. the SCORE or
+  RESUME_REASONING cloud model) so the analyzer consumes **zero** extra slots. Only spend a distinct
+  slot on it if none of the selected cloud models is capable enough for the audit.
+
+---
+
 ## Section B — Hardware Reference
 
 Local models run on **oMLX** (MLX format). MacBook Max 64 GB memory budget (leave ~8 GB for OS):
@@ -214,6 +243,11 @@ Classify each config variable with one of four states:
 Also check:
 - New `LlmBackend` enum values not covered by the routing rules → add rules.
 - Changes to `backendFor()` routing logic → update the routing rules block.
+
+**Exclude `RUN_ANALYZER_MODEL` from this reconciliation.** It is NOT a `Config.kt` node var
+(Section A2) — do not classify it as `REMOVED` for being absent from `Config.kt`, and do not delete
+Section A2 or its Section E line. Only revise A2 if the run-analyzer's own model handling
+(`tuner/run-analyzer/analyzer/llm.py`) changes its supported backends.
 
 ### C.3 — Update this skill file
 
@@ -325,6 +359,11 @@ Cross-reference catalogue capabilities and live leaderboard scores against the
 node requirements in Section A. For each config variable, identify 2–3
 candidates and note the quality delta between them.
 
+**Also shortlist `RUN_ANALYZER_MODEL` (Section A2).** Screen for structured-JSON reliability at
+temp 0 (the audit verdict + findings schema) and reasoning depth, not speed. Only `:ollama-cloud`
+or local-oMLX candidates are valid (no `:cloud`). Reject any model that can't reliably return a JSON
+object for the audit prompt (small dense/MoE locals tend to emit a bare array/scalar).
+
 **For RESUME_REASONING specifically, leaderboard rank is NOT sufficient — screen the
 max-output-token behaviour on the bullet_rewrite array (see Section B's cloud-cap table).**
 A candidate must complete the ~25k–34k-token 8-role array with `done_reason=stop`, not
@@ -363,14 +402,25 @@ per config var per output file using:
   **at most 3 distinct `:ollama-cloud` model names** across ALL nine vars (a model reused
   on multiple nodes counts once). Before writing the file, list the distinct cloud model
   names and confirm the count is ≤3; if a 4th is tempting, either reuse an already-selected
-  cloud model or push that node to local. NOTE for the user's live `.env`: `RUN_ANALYZER_MODEL`
-  (not a tuner var) is often also a cloud model — if set, it consumes one of the 3 slots, so
-  a `.env.recommended` that uses 2 cloud models + a cloud RUN_ANALYZER is exactly at the cap.
-  Prefer leaving ≥1 slot free. This ≤3-distinct-cloud-model cap applies ONLY to
+  cloud model or push that node to local. **`RUN_ANALYZER_MODEL` (Section A2) is now a
+  tuner-selected var and COUNTS toward this cap when it is `:ollama-cloud`.** So the ≤3 count spans
+  all nine node vars PLUS `RUN_ANALYZER_MODEL`. Keep it free: **set `RUN_ANALYZER_MODEL` to a cloud
+  model already chosen for a node** (it must be audit-capable — e.g. the SCORE model if that's a
+  strong reasoner) so it adds **zero** distinct models; only spend a distinct slot on the analyzer if
+  no selected cloud model is capable enough. This ≤3-distinct-cloud-model cap applies ONLY to
   `.env.recommended` (the everyday runnable profile). `.env.quality` is EXEMPT — it is the
   aspirational best-possible reference and may use as many distinct cloud models as the
   best-per-node choices require (it just flags in its header when it exceeds 3). The
   local-only files have no cloud models, so the cap is moot for them.
+
+  **Per-file `RUN_ANALYZER_MODEL` selection:**
+  - `.env.quality`: the single best `:ollama-cloud` reasoning model for structured audit (cap-exempt).
+  - `.env.recommended`: reuse an audit-capable cloud model already selected for a node (0 extra slots);
+    only pick a distinct one if none qualifies.
+  - `.env.local-llm-quality`: the strongest local reasoner that returns valid JSON (e.g.
+    `DeepSeek-R1-Distill-Qwen-32B-4bit`); note in the comment that the deep audit is weaker locally.
+  - `.env.local-llm-good-enough`: a local model that still returns a valid JSON object; note the audit
+    degrades and can be bounded via `RUN_ANALYZER_AUDIT_MAX` (it is best-effort, never fatal).
 
 ---
 
@@ -430,6 +480,7 @@ COVER_LETTER_MODEL=
 DRAFT_REPLY_MODEL=
 RESUME_GEN_MODEL=
 PROFILE_GEN_MODEL=
+RUN_ANALYZER_MODEL=      # analyzer tool (Section A2) — :ollama-cloud or local-oMLX only, never :cloud
 ```
 
 Local files also include (oMLX endpoint — no Ollama):
@@ -462,7 +513,8 @@ After writing all four files, print:
 | DRAFT_REPLY_MODEL        | kimi-k2.6:ollama-cloud | gemma-4-12B-it-qat-4bit | Qwen3.5-9B-OptiQ-4bit | gemma-4-12B-it-qat-4bit |
 | RESUME_GEN_MODEL         | glm-5.1:ollama-cloud | Qwen3-Coder-30B-A3B-…-dwq-v2 | Qwen3-Coder-30B-A3B-…-dwq-v2 | Qwen3-Coder-30B-A3B-…-dwq-v2 |
 | PROFILE_GEN_MODEL        | glm-5.1:ollama-cloud | Qwen3.6-35B-A3B-OptiQ-4bit | Qwen3.5-9B-OptiQ-4bit | Qwen3.6-35B-A3B-OptiQ-4bit |
-| Distinct cloud models    | 4 (glm-5.1, deepseek-v4-pro, deepseek-v4-flash, kimi-k2.6) — exceeds 3-model cap by design | 0 | 0 | 2 (glm-5.1, deepseek-v4-pro) |
+| RUN_ANALYZER_MODEL       | deepseek-v4-pro:ollama-cloud | DeepSeek-R1-Distill-Qwen-32B-4bit (audit weaker) | DeepSeek-R1-Distill-Qwen-32B-4bit (audit weaker) | deepseek-v4-pro:ollama-cloud (reuses RESUME slot) |
+| Distinct cloud models    | 4 (glm-5.1, deepseek-v4-pro, deepseek-v4-flash, kimi-k2.6 — analyzer reuses deepseek-v4-pro) — exceeds 3-model cap by design | 0 | 0 | 2 (glm-5.1, deepseek-v4-pro — analyzer REUSES deepseek-v4-pro, 0 extra) |
 | Est. hot-path time       | ~58s         | ~138s              | ~92s                   | ~103s            |
 
 Hot-path = SCAN→SCRAPE→SCORE→RESUME_REASONING→SKILLS→COVER_LETTER→DRAFT_REPLY (one job reaching
