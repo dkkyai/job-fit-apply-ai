@@ -99,8 +99,13 @@ flowchart TB
 | Dashboard (nginx) | `jobfit-frontend` | `127.0.0.1:3030` | `http://<tailscale-name>:3030` |
 | Artifact server (markserv) | `jobfit-markserv` | `127.0.0.1:8081` | `http://<tailscale-name>:8081` |
 | Processor (pipeline) | `jobfit-processor` | — (outbound only) | — (internal only) |
+| Steel Browser (scraping) | `jobfit-steel` | `${STEEL_BIND_ADDR:-127.0.0.1}:3000` | `http://<tailscale-name>:3000` (debug UI) |
 
-**On the host:** only the local model servers (oMLX `:11436`, Ollama `:11434`) and the logged-in Chrome/CDP (`:9222`) remain. Every pipeline service — including the Processor — is now a container: `jobfit-processor` reaches the bridge over the Compose network (`http://bridge:8765`) and dials the host model servers + CDP Chrome via `host.docker.internal` (its entrypoint resolves the CDP endpoint to an IP, since Chrome DevTools rejects non-IP Host headers). Gmail intake + write-back runs in `jobfit-poller`; the Processor never touches Gmail.
+**Browser scraping backend.** The Processor drives a browser only for LinkedIn, forced-CDP domains (e.g. Glassdoor), and as a fallback when plain-HTTP is blocked. Two backends, selected by `STEEL_BASE_URL`:
+- **Steel Browser** (`jobfit-steel`, default when `STEEL_BASE_URL=http://steel:3000`) — self-hosted [Steel](https://github.com/steel-dev/steel-browser), built from source (the prebuilt images can't launch Chrome on Apple Silicon under Docker). It manages Chrome, persists the logged-in session (app-side `storageState` store), and exposes an **interactive debug URL** so you can re-auth from a phone over Tailscale. The Processor connects over the Compose network, resolving `steel` to an IP (Chrome DevTools rejects non-IP `Host` headers). Sign in once via `http://<tailscale-name>:3000` (no auth on the UI — tailnet only).
+- **Host Chrome/CDP** (`:9222`, fallback when `STEEL_BASE_URL` is blank) — a logged-in Chrome on the host reached via `host.docker.internal` (the entrypoint resolves it to an IP for the same Host-header reason).
+
+**On the host:** the local model servers (oMLX `:11436`, Ollama `:11434`) remain, plus the host Chrome/CDP (`:9222`) if used as the fallback backend. Every pipeline service — including the Processor — is a container: `jobfit-processor` reaches the bridge over the Compose network (`http://bridge:8765`) and dials the host model servers via `host.docker.internal`. Gmail intake + write-back runs in `jobfit-poller`; the Processor never touches Gmail.
 
 ### Queue concurrency guards
 
