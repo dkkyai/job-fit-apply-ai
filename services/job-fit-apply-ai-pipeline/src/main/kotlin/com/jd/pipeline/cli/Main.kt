@@ -36,6 +36,7 @@ object Main {
             Command.TestCoverLetter -> TestCoverLetterCommandHandler.run()
             Command.TestSupabase -> TestSupabaseCommandHandler.run()
             is Command.TestChrome -> TestChromeCommandHandler.run(command)
+            is Command.TestSteel -> TestSteelCommandHandler.run(command)
             is Command.ScrapeJdTuner -> ScrapeJdTunerCommandHandler.run(command)
             is Command.ResumeGen -> ResumeGenCommandHandler.run(command)
             is Command.InitProfile -> InitProfileCommandHandler.run(command)
@@ -62,7 +63,7 @@ object Main {
               --init-profile <path>    Scaffold a candidate profile
               --scrapetuner [file]     Tune the JD scraper
               --signed-in              Report signed-in scraping status
-              --test, --test-resume, --test-coverletter, --test-supabase, --test-chrome [url]
+              --test, --test-resume, --test-coverletter, --test-supabase, --test-chrome [url], --test-steel [url]
               --notify-timeout <min>   Send a pipeline-timeout alert
 
             Note: email intake, drafts, and Gmail labeling are handled by the Poller service.

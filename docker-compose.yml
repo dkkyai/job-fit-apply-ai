@@ -143,6 +143,31 @@ services:
     # No ports — outbound only (JSearch API + bridge). Shell-loop entrypoint + heartbeat healthcheck
     # are baked into the image; the JVM only runs ~once/day and exits.
 
+  # Self-hosted Steel Browser — the CDP scraping backend (replaces host Chrome).
+  # Built FROM SOURCE at a pinned commit: the prebuilt steel-browser images fail to launch Chrome
+  # on Apple Silicon under Docker Desktop (bundled Chromium SIGTRAPs); Steel's own api/Dockerfile
+  # (apt Debian arm64 Chromium + xvfb) works. Verified end-to-end at this SHA.
+  steel:
+    build:
+      context: "https://github.com/steel-dev/steel-browser.git#c0f226b8e3b16d0bc2c76a222863d4db6f1aa8f2"
+      dockerfile: api/Dockerfile
+      args:
+        NODE_VERSION: "22.13.0"
+    container_name: jobfit-steel
+    restart: unless-stopped
+    environment:
+      DEBUG: "true"                  # entrypoint only initialises dbus when DEBUG=true; Chrome needs it
+      DOMAIN: "${STEEL_DOMAIN:-localhost:3000}"
+      CDP_DOMAIN: "${STEEL_CDP_DOMAIN:-localhost:9223}"
+    volumes:
+      # Persists Chrome profile/cache across restarts (paired with the app-side storageState store).
+      - steel-data:/app/.cache
+    ports:
+      # Publish the API/UI (and thus the interactive debug URL) on the Tailscale interface only —
+      # set STEEL_BIND_ADDR to the host's tailnet IP in the repo-root .env so a phone can reach it.
+      # Defaults to loopback (safe): the Steel UI has NO auth, so never bind it to 0.0.0.0.
+      - "${STEEL_BIND_ADDR:-127.0.0.1}:3000:3000"
+
   processor:
     build: ./services/job-fit-apply-ai-pipeline
     container_name: jobfit-processor
@@ -152,6 +177,8 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+      steel:
+        condition: service_started
     # Explicit mapping is a no-op on Docker Desktop (the name resolves anyway) but makes the
     # same compose file work on plain Linux Docker.
     extra_hosts:
@@ -170,12 +197,22 @@ services:
       MLX_LOCAL_BASE_URL: "http://host.docker.internal:11436/v1"
       OLLAMA_LOCAL_BASE_URL: "http://host.docker.internal:11434"
       CHROME_CDP_ENDPOINT: "http://host.docker.internal:${CHROME_DEBUG_PORT:-9222}"
+      # Steel Browser backend. Set STEEL_BASE_URL=http://steel:3000 in the repo-root .env to route
+      # scraping through Steel (sessions + persisted auth + phone re-auth); blank/unset falls back to
+      # the host-Chrome CDP path above. STEEL_UI_URL is the tailnet base for the debug link in re-auth
+      # alerts (e.g. http://<tailscale-host>:3000). Sourced from root .env — not the pipeline .env —
+      # so the empty-override caveat below does not apply.
+      STEEL_BASE_URL: "${STEEL_BASE_URL:-}"
+      STEEL_UI_URL: "${STEEL_UI_URL:-}"
       # ARTIFACT_BASE_URL is intentionally NOT set here: an empty `${ARTIFACT_BASE_URL:-}` override
       # would win over the mounted /app/.env (real env beats dotenv in Config.get), blanking the
       # report/notification links. The value lives in services/.../pipeline/.env (markserv tailnet URL).
     volumes:
       # Same host dir markserv serves read-only at :8081 — reports/PDFs keep their URLs.
       - ./services/job-fit-apply-ai-pipeline/output:/app/output
+      # Steel persisted session state (STEEL_STORAGE_STATE_PATH, PROJECT_DIR/state). Host-mounted so
+      # the exported cookies survive processor restarts and are backup-able. Gitignored (state/).
+      - ./services/job-fit-apply-ai-pipeline/state:/app/state
       # Pipeline secrets + per-node model config (gitignored). dotenv reads /app/.env; real env
       # vars above win over it (Config.get precedence), so host-specific endpoints inside are
       # safely overridden.
@@ -210,3 +247,4 @@ services:
 
 volumes:
   jobfit-db-data:
+  steel-data:

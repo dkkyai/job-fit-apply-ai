@@ -71,6 +71,7 @@ def join_window(completed, run_log_by_id):
             "error": c.get("error") or r.get("error"),
             # signals
             "jdTextLen": r.get("jdTextLen", 0),
+            "scrapePath": r.get("scrapePath"),       # run_log only — http vs cdp_* transport
             "hasJobUrl": bool(job_url),
             "outputPath": r.get("outputPath"),
             "durationMs": r.get("durationMs", 0),

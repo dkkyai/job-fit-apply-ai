@@ -149,6 +149,7 @@ class ProcessingPipeline(
             draftText      = state.draftText.takeIf { it.isNotBlank() },
             isRecruiter    = state.isRecruiterEmail,
             messageId      = state.emailIntake?.emailId,
+            scrapePath     = state.scrapePath,
         )
     }
 }

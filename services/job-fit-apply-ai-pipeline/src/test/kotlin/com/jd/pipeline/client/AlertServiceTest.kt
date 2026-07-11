@@ -85,6 +85,22 @@ class AlertServiceTest {
     }
 
     @Test
+    @DisplayName("reauthRequired carries the interactive debug link and prompts phone sign-in")
+    fun reauthRequiredWithLink() {
+        val client = mock<NotificationClient>()
+        val link = "http://mac.tailnet.ts.net:3000/v1/sessions/debug?interactive=true&showControls=true"
+        AlertService(client).reauthRequired("LinkedIn", linkUrl = link)
+        verify(client).postDiscord(check {
+            assertTrue(it.contains(link), "discord should include the raw debug link")
+            assertTrue(it.contains("phone"), "should prompt to open the link on a phone")
+        })
+        verify(client).postTelegramHtml(check {
+            assertTrue(it.contains("<a href="), "telegram should render the link as an anchor")
+            assertTrue(it.contains("interactive=true"), "anchor should be the interactive debug URL")
+        })
+    }
+
+    @Test
     @DisplayName("chromeDebugUnavailable de-dupes and references the endpoint")
     fun chromeDebugUnavailable() {
         val client = mock<NotificationClient>()

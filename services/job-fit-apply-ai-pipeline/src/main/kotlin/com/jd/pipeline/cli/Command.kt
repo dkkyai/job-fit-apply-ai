@@ -7,6 +7,8 @@ sealed class Command {
     object TestSupabase : Command()
     /** Smoke-test the persistent Chrome (CDP) scraping setup. Optional probe URL. */
     data class TestChrome(val url: String?) : Command()
+    /** Smoke-test the self-hosted Steel Browser backend (session + CDP + debug URL). Optional probe URL. */
+    data class TestSteel(val url: String?) : Command()
     data class ScrapeJdTuner(val file: String?, val maxIterations: Int) : Command()
     data class ResumeGen(val path: String) : Command()
     data class InitProfile(val path: String) : Command()
