@@ -122,6 +122,12 @@ Return ONLY a JSON object, no prose, no markdown fences:
 
 Rules for `findings`:
 - One finding per root cause, not per affected job.
+- **Use a stable, canonical `id` for each recurring issue class** — a short slug describing the
+  *problem*, not this run (e.g. `run-log-missing`, `glassdoor-digests-thin`, `jobright-digest-not-split`),
+  and keep `files` to the actual fix target(s). The analyzer dedups findings across runs by
+  `id + category`, so reusing the same id for the same underlying issue lets a known problem stay
+  quiet instead of re-alerting every run. Do NOT embed jobIds, counts, dates, or run-specific
+  detail in the `id` (put those in `evidence`/`affected_jobs`).
 - `agent_prompt` must stand alone — include file paths, the symptom, the evidence, and how to verify the fix. It will be handed to a fresh coding session with no memory of this run.
 - Prefer fixes to code/skills/config over one-off data fixes.
 - If `health == "healthy"`, `findings` is `[]`.

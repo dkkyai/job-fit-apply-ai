@@ -16,15 +16,17 @@ def slugify(s):
 
 
 def fingerprint(f):
-    """Stable id for a root cause: hash of (id + sorted(files) + category).
+    """Stable identity for a root cause: hash of (canonical id + category).
 
-    Deliberately excludes run-specific job ids so the same root cause across runs maps to
-    one fingerprint (the autofix loop keys dedup on this via git commit trailers).
+    Keyed on the *issue* — the canonical `id` (the skill instructs a stable, run-independent
+    slug) plus `category`. Deliberately excludes run-specific detail (job ids, evidence) AND
+    the `files` list: the model rewords `files` between runs, so including it broke cross-run
+    dedup. The same underlying issue therefore maps to one fingerprint whether it comes from
+    the LLM or a deterministic detector; used by the findings ledger and the autofix loop.
     """
     fid = f.get("id") or slugify(f.get("title", "finding"))
-    files = ",".join(sorted(f.get("files", []) or []))
     cat = f.get("category", "")
-    return hashlib.sha1(f"{fid}|{files}|{cat}".encode()).hexdigest()[:12]
+    return hashlib.sha1(f"{fid}|{cat}".encode()).hexdigest()[:12]
 
 
 def write_findings(analysis, findings_dir: Path, run_ts: str):

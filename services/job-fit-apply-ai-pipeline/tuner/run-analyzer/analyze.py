@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from analyzer import audit, history
+from analyzer import audit, findings_ledger, history, notify
 from analyzer.bridge import BridgeClient
 from analyzer.cursor import Cursor
 from analyzer.findings import write_findings
@@ -38,6 +38,7 @@ CURSOR_FILE = Path(ENV.get("CURSOR_FILE", "state/cursor"))
 PENDING_FILE = Path(ENV.get("PENDING_FILE", "state/pending_since"))
 METRICS_FILE = Path(ENV.get("METRICS_FILE", "state/last_metrics.json"))
 HISTORY_FILE = Path(ENV.get("HISTORY_FILE", "state/metrics_history.jsonl"))
+FINDINGS_LEDGER_FILE = Path(ENV.get("FINDINGS_LEDGER_FILE", "state/findings_ledger.jsonl"))
 BASELINE_WINDOW = int(ENV.get("RUN_ANALYZER_BASELINE_WINDOW", "10"))
 SKILL = Path(ENV["SKILL_FILE"]).read_text()
 PROMPT = Path(ENV["PROMPT_FILE"]).read_text()
@@ -180,14 +181,47 @@ def main():
     # Trend history: record our deterministic metrics (not the model's, which may drift).
     history.append(HISTORY_FILE, RUN_TS, since, last_seq, len(recs), metrics)
 
+    # Phase C: classify findings vs the ledger and surface only what CHANGED.
+    delta = findings_ledger.classify(findings, FINDINGS_LEDGER_FILE, RUN_TS)
+    analysis["delta"] = {
+        "new": [f["fingerprint"] for f in delta["new"]],
+        "worsening": [f["fingerprint"] for f in delta["worsening"]],
+        "unchanged": len(delta["unchanged"]),
+        "resolved": [],  # populated in Phase D
+    }
+    # Re-persist analysis.json now that the delta block is attached.
+    (FINDINGS_DIR / "analysis.json").write_text(json.dumps(analysis, indent=2))
+    _notify_delta(delta, analysis)
+
     print(f"[analyze] health={analysis.get('health')} "
           f"batch={metrics['jobs']} context={len(context)} errors={metrics['errors']} "
           f"zero_score={metrics['zero_score']} thin_digest={metrics['thin_digest']} "
-          f"seq={since}->{last_seq} findings={len(findings)}")
+          f"seq={since}->{last_seq} findings={len(findings)} "
+          f"new={len(delta['new'])} worsening={len(delta['worsening'])} unchanged={len(delta['unchanged'])}")
     print(f"[analyze] {analysis.get('summary', '')}")
     for f in findings:
         print(f"  - [{f.get('severity')}] {f.get('title')}")
     return 0
+
+
+def _notify_delta(delta, analysis):
+    """Ping Discord/Telegram for NEW/WORSENING findings only (no-op when creds blank)."""
+    new, worse = delta["new"], delta["worsening"]
+    if not new and not worse:
+        return
+    lines = []
+    if new:
+        lines.append(f"🆕 {len(new)} new:")
+        lines += [f"  • {findings_ledger.summarize(f)}" for f in new]
+    if worse:
+        lines.append(f"📈 {len(worse)} worsening:")
+        lines += [f"  • {findings_ledger.summarize(f)}" for f in worse]
+    title = (f"run-analyzer [{analysis.get('health', '?')}]: "
+             f"{len(new)} new, {len(worse)} worsening")
+    try:
+        notify.send(title, "\n".join(lines))
+    except Exception as e:  # noqa: BLE001 — notification must never sink the run
+        print(f"[analyze] delta notify failed (non-fatal): {e}", file=sys.stderr)
 
 
 def _save_metrics(metrics):
