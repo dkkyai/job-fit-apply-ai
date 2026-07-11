@@ -47,15 +47,26 @@ class ScrapeJdNode(
     // The same ScrapeJdNode instance is reused across all jobs in a single pipeline
     // invocation — one attempt per domain, then skip with a clear reason.
     val batchBlockedDomains: MutableSet<String> = mutableSetOf()
-    var batchLinkedInSessionExpired: Boolean = false
+    // Hosts that hit an auth wall (login/challenge) via a CDP scrape this batch — skipped on
+    // re-attempt, and each fires one phone re-auth alert. Generalizes the old LinkedIn-only flag so
+    // every authenticated CDP-scraped board (Glassdoor, Jobright, …) gets the same treatment.
+    val batchAuthExpiredDomains: MutableSet<String> = mutableSetOf()
     // Fire the "debug Chrome unreachable" alert at most once per batch.
     var batchCdpUnavailableAlerted: Boolean = false
 
+    /** Back-compat accessor for the LinkedIn-specific console warning (see CliOutput). */
+    val batchLinkedInSessionExpired: Boolean
+        get() = batchAuthExpiredDomains.any { it.contains("linkedin") }
+
     fun resetBatch() {
         batchBlockedDomains.clear()
-        batchLinkedInSessionExpired = false
+        batchAuthExpiredDomains.clear()
         batchCdpUnavailableAlerted = false
     }
+
+    /** True if [host] already hit an auth wall this batch (exact or parent-domain match). */
+    private fun isAuthExpired(host: String): Boolean =
+        host.isNotEmpty() && batchAuthExpiredDomains.any { host == it || host.endsWith(".$it") }
 
     /** Release the shared CDP browser connection (disconnects only — does not close the user's Chrome). */
     fun close() = cdpBrowser.close()
@@ -70,6 +81,18 @@ class ScrapeJdNode(
     data class PageContent(val rawHtml: String, val cleanedText: String, val blockReason: String = "", val isCaptchaBlock: Boolean = false, val isBotBlock: Boolean = false, val scrapePath: String = "")
 
     companion object {
+        // Site-agnostic auth-wall markers (see detectAuthWall). URL redirects to these paths are the
+        // strongest signal a CDP-scraped page bounced us to login/verification instead of the JD.
+        private val LOGIN_URL_MARKERS = listOf(
+            "/login", "/signin", "/sign-in", "/authwall", "/uas/login",
+            "/users/sign_in", "/account/login", "/auth/login", "/session/new"
+        )
+        private val CHALLENGE_URL_MARKERS = listOf(
+            "/checkpoint", "/challenge", "/challengesv2", "/security-verification", "captcha"
+        )
+        // A login/verification page is content-thin; a real JD is far longer. Guards the DOM/text backstops.
+        private const val AUTH_WALL_MAX_BODY_CHARS = 2500
+
         private val DEFAULT_SCRAPE_SKILL_PROMPT = """
             Extract structured job details from the following job page content.
             The content may include raw JSON from the page (PAGE_JSON_DATA) and/or visible page text.
@@ -114,11 +137,11 @@ class ScrapeJdNode(
         val host = extractHost(jobUrl)
 
         // ── Batch-skip checks (one attempt per domain per batch) ─────────────
-        if (isLinkedInHost(host) && batchLinkedInSessionExpired) {
-            log("[scrape_jd] Skipping $host — LinkedIn session expired this batch")
+        if (isAuthExpired(host)) {
+            log("[scrape_jd] Skipping $host — auth wall hit earlier this batch (re-auth pending)")
             return input.copy(
                 isChromeSessionExpired = true,
-                error = "scrape_jd: LinkedIn session expired — skipped (re-authenticate Chrome profile)"
+                error = "scrape_jd: $host needs re-authentication — skipped this batch"
             )
         }
         if (host.isNotEmpty() && batchBlockedDomains.contains(host)) {
@@ -147,17 +170,15 @@ class ScrapeJdNode(
         } catch (e: Exception) {
             log("[scrape_jd] Error fetching $jobUrl: ${e.message}")
             when (e) {
-                is LinkedInAuthenticationException -> {
-                    batchLinkedInSessionExpired = true
-                    alerts.reauthRequired("LinkedIn", detail = e.message, linkUrl = reauthLink())
+                is AuthRequiredException -> {
+                    // Any authenticated CDP site (LinkedIn, Glassdoor, Jobright, …) that hit a login
+                    // or challenge wall: skip it for the batch and send ONE phone re-auth alert.
+                    batchAuthExpiredDomains.add(host)
+                    alerts.reauthRequired(e.site, detail = e.message, linkUrl = reauthLink())
                     input.copy(
                         isChromeSessionExpired = true,
                         error = "scrape_jd: ${e.message}"
                     )
-                }
-                is CaptchaBlockedException -> {
-                    batchBlockedDomains.add(host)
-                    input.copy(error = "scrape_jd: captcha — ${e.message}")
                 }
                 else -> input.copy(error = "scrape_jd: ${e.message}")
             }
@@ -166,16 +187,11 @@ class ScrapeJdNode(
 
     private fun fetchPage(url: String): PageContent {
         val host = extractHost(url)
+        if (isAuthExpired(host)) {
+            log("[scrape_jd] Auth wall pending for $host — skipping browser fetch this batch")
+            return PageContent(rawHtml = "", cleanedText = "", blockReason = "auth expired — re-auth pending", scrapePath = "blocked")
+        }
         if (isLinkedInHost(host)) {
-            if (batchLinkedInSessionExpired) {
-                log("[scrape_jd] LinkedIn session expired — skipping $host")
-                return PageContent(
-                    rawHtml = "",
-                    cleanedText = "",
-                    blockReason = "LinkedIn auth expired",
-                    scrapePath = "blocked"
-                )
-            }
             return fetchLinkedInPageWithPlaywright(url)
         }
 
@@ -374,23 +390,15 @@ class ScrapeJdNode(
         log("[scrape_jd] LinkedIn final URL: ${page.url()}")
         log("[scrape_jd] LinkedIn title: ${runCatching { page.title() }.getOrDefault("")}")
 
-        if (isLinkedInLoginPage(page)) {
-            throw LinkedInAuthenticationException(
-                "LinkedIn session is not authenticated in the CDP Chrome (${Config.CHROME_CDP_ENDPOINT}) — sign in to LinkedIn in that browser"
-            )
-        }
-
-        if (isLinkedInCaptchaPage(page)) {
-            throw CaptchaBlockedException("LinkedIn CAPTCHA/security challenge at ${page.url()}")
-        }
+        requireAuthenticated(page, extractHost(url))
 
         dismissLinkedInPopups(page)
         expandLinkedInJobDescription(page)
 
         val rawHtml = page.content()
-        val captchaReason = detectCaptchaInHtml(rawHtml)
-        if (captchaReason != null) {
-            throw CaptchaBlockedException("LinkedIn page blocked — $captchaReason")
+        detectCaptchaInHtml(rawHtml)?.let {
+            val site = siteLabel(extractHost(url))
+            throw AuthRequiredException(site, "$site blocked — $it at ${page.url()}")
         }
 
         val visibleText = extractLinkedInVisibleText(page)
@@ -458,14 +466,63 @@ class ScrapeJdNode(
         }
     }
 
-    private fun isLinkedInLoginPage(page: Page): Boolean {
-        val currentUrl = page.url().lowercase()
-        if (currentUrl.contains("/login") || currentUrl.contains("/checkpoint")) {
-            return true
+    /** Kinds of auth wall a CDP-scraped page can hit. Both fire a phone re-auth alert. */
+    private enum class AuthWall { LOGIN, CHALLENGE }
+
+    /**
+     * Throw [AuthRequiredException] (→ phone re-auth alert) if [page] is an auth/challenge wall.
+     * Site-agnostic — applies to every CDP-scraped page (LinkedIn, forced-CDP, and CDP fallback), so
+     * any authenticated board that drops its session prompts a phone sign-in, not just LinkedIn.
+     */
+    private fun requireAuthenticated(page: Page, host: String) {
+        detectAuthWall(page)?.let { wall ->
+            val site = siteLabel(host)
+            val what = if (wall == AuthWall.LOGIN) "needs sign-in" else "hit a security challenge"
+            throw AuthRequiredException(site, "$site $what at ${page.url()}")
+        }
+    }
+
+    /**
+     * Detect whether a CDP-rendered [page] is a login wall or account challenge, for any site.
+     * URL-redirect markers are the primary, low-false-positive signal (the site bounced us to a
+     * login/checkpoint path); a visible password field on a content-thin page is the DOM backstop;
+     * a few challenge phrases catch verification pages that keep the URL. Returns null for a real JD.
+     */
+    private fun detectAuthWall(page: Page): AuthWall? {
+        val url = runCatching { page.url().lowercase() }.getOrDefault("")
+        if (CHALLENGE_URL_MARKERS.any { url.contains(it) }) return AuthWall.CHALLENGE
+        if (LOGIN_URL_MARKERS.any { url.contains(it) }) return AuthWall.LOGIN
+
+        val hasVisiblePassword = runCatching {
+            val loc = page.locator("input[type='password']")
+            loc.count() > 0 && loc.first().isVisible
+        }.getOrDefault(false)
+        if (hasVisiblePassword) {
+            val bodyLen = runCatching { page.locator("body").innerText().length }.getOrDefault(Int.MAX_VALUE)
+            if (bodyLen < AUTH_WALL_MAX_BODY_CHARS) return AuthWall.LOGIN
         }
 
-        val bodyText = runCatching { page.locator("body").innerText().lowercase() }.getOrDefault("")
-        return bodyText.contains("sign in") && bodyText.contains("linkedin")
+        val body = runCatching { page.locator("body").innerText().lowercase() }.getOrDefault("")
+        if (body.contains("verify you're a human") || body.contains("please verify you are a human") ||
+            body.contains("complete the security check") ||
+            (body.contains("security verification") && body.length < AUTH_WALL_MAX_BODY_CHARS)) {
+            return AuthWall.CHALLENGE
+        }
+        return null
+    }
+
+    /** Human-friendly site name for the re-auth alert, from the host. */
+    private fun siteLabel(host: String): String {
+        val h = host.removePrefix("www.").lowercase()
+        return when {
+            h.contains("linkedin") -> "LinkedIn"
+            h.contains("glassdoor") -> "Glassdoor"
+            h.contains("jobright") -> "Jobright"
+            h.contains("indeed") -> "Indeed"
+            else -> h.split('.').let { p ->
+                if (p.size >= 2) p[p.size - 2].replaceFirstChar { it.uppercase() } else h.ifBlank { "the site" }
+            }
+        }
     }
 
     private fun extractLinkedInVisibleText(page: Page): String {
@@ -964,21 +1021,6 @@ class ScrapeJdNode(
         }
     }
 
-    private fun isLinkedInCaptchaPage(page: Page): Boolean {
-        val currentUrl = page.url().lowercase()
-        if (currentUrl.contains("/checkpoint/challenge") ||
-            currentUrl.contains("/challengesv2") ||
-            currentUrl.contains("/security-verification") ||
-            currentUrl.contains("captcha")) {
-            return true
-        }
-        val bodyText = runCatching { page.locator("body").innerText().lowercase() }.getOrDefault("")
-        return (bodyText.contains("security verification") && bodyText.contains("linkedin")) ||
-            bodyText.contains("verify you're a human") ||
-            bodyText.contains("please verify you are a human") ||
-            bodyText.contains("complete the security check")
-    }
-
     /**
      * Attempts to dismiss common LinkedIn popup overlays that can obscure the job description:
      * sign-in prompts, cookie consent banners, and modal close buttons.
@@ -1074,9 +1116,20 @@ class ScrapeJdNode(
             )
         }
 
+        // Generalized auth/challenge detection for ANY CDP-scraped site (not just LinkedIn) — a
+        // login redirect or account challenge on Glassdoor/Jobright/etc. now prompts phone re-auth.
+        requireAuthenticated(page, extractHost(url))
+
         val rawHtml = page.content()
         val captchaReason = detectCaptchaInHtml(rawHtml)
         if (captchaReason != null) {
+            val host = extractHost(url)
+            // On a gated site (LinkedIn / forced-CDP), a bot-wall is solvable via the phone viewer,
+            // so treat it as re-auth. On a generic fallback site it's just a block.
+            if (isLinkedInHost(host) || isForceCdpHost(host)) {
+                val site = siteLabel(host)
+                throw AuthRequiredException(site, "$site blocked — $captchaReason at ${page.url()}")
+            }
             log("[scrape_jd] Playwright fetch still blocked: $captchaReason")
             return PageContent(rawHtml, "", "Playwright: $captchaReason")
         }
@@ -1090,9 +1143,9 @@ class ScrapeJdNode(
         return buildPageContent(rawHtml, visibleText.takeIf { it.length > 200 })
     }
 
-    private class LinkedInAuthenticationException(message: String) : RuntimeException(message)
-    private class CaptchaBlockedException(message: String) : RuntimeException(message)
+    /** A CDP-scraped, authenticated site hit a login/challenge wall — fires a phone re-auth alert. */
+    private class AuthRequiredException(val site: String, message: String) : RuntimeException(message)
 
-    /** The host CDP Chrome is unconfigured/unreachable — no browser scraping is possible. */
+    /** The browser backend is unconfigured/unreachable — no browser scraping is possible. */
     private class CdpUnavailableException(message: String) : RuntimeException(message)
 }

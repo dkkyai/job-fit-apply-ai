@@ -37,6 +37,7 @@ object Main {
             Command.TestSupabase -> TestSupabaseCommandHandler.run()
             is Command.TestChrome -> TestChromeCommandHandler.run(command)
             is Command.TestSteel -> TestSteelCommandHandler.run(command)
+            is Command.SteelSignin -> SteelSigninCommandHandler.run(command)
             is Command.ScrapeJdTuner -> ScrapeJdTunerCommandHandler.run(command)
             is Command.ResumeGen -> ResumeGenCommandHandler.run(command)
             is Command.InitProfile -> InitProfileCommandHandler.run(command)
@@ -64,6 +65,8 @@ object Main {
               --scrapetuner [file]     Tune the JD scraper
               --signed-in              Report signed-in scraping status
               --test, --test-resume, --test-coverletter, --test-supabase, --test-chrome [url], --test-steel [url]
+              --steel-signin [url]     Open a Steel session, print the phone debug URL, capture cookies on ENTER
+                                       (run with `docker exec -it jobfit-processor …`)
               --notify-timeout <min>   Send a pipeline-timeout alert
 
             Note: email intake, drafts, and Gmail labeling are handled by the Poller service.

@@ -36,6 +36,7 @@ class SteelBrowser(
     private var browser: Browser? = null
     private var session: SteelClient.SteelSession? = null
     private var connectAttempted = false
+    private var everConnected = false
     private val pagesByHost = mutableMapOf<String, Page>()
 
     /** URL fragments that mean a tab is stuck on an auth/challenge page and should be recreated. */
@@ -44,8 +45,33 @@ class SteelBrowser(
     @Synchronized
     override fun isAvailable(): Boolean {
         if (baseUrl.isBlank()) return false
-        ensureConnected()
+        ensureLive()
         return browser?.isConnected == true
+    }
+
+    /**
+     * Ensure a live connection, transparently reconnecting if a previously-established session
+     * dropped mid-batch (Steel idle-releases sessions after [sessionTimeoutMs], so a long/idle batch
+     * can lose one between jobs). A *never*-connected state keeps the single-attempt guard so a down
+     * backend doesn't get hammered every call.
+     */
+    private fun ensureLive() {
+        if (browser?.isConnected == true) return
+        if (everConnected) {
+            log.info("Steel session dropped — reconnecting")
+            resetConnection()
+        }
+        ensureConnected()
+    }
+
+    /** Drop local connection state (session presumed dead) so [ensureConnected] rebuilds it. */
+    private fun resetConnection() {
+        runCatching { playwright?.close() }
+        pagesByHost.clear()
+        browser = null
+        playwright = null
+        session = null
+        connectAttempted = false
     }
 
     private fun ensureConnected() {
@@ -57,6 +83,7 @@ class SteelBrowser(
             browser = pw.chromium().connectOverCDP(hostToIp(resolveWsEndpoint(baseUrl, s.websocketUrl)))
             playwright = pw
             session = s
+            everConnected = true
             log.info("Connected to Steel session {} at {}", s.id, baseUrl)
         } catch (e: Exception) {
             log.warn("Could not connect to Steel at {}: {}", baseUrl, e.message)
@@ -74,6 +101,7 @@ class SteelBrowser(
      */
     @Synchronized
     override fun pageForDomain(host: String): Page {
+        ensureLive()
         val live = browser?.takeIf { it.isConnected }
             ?: error("Steel browser not available — call isAvailable() first")
 
@@ -119,7 +147,9 @@ class SteelBrowser(
     @Synchronized
     override fun close() {
         session?.let { s ->
-            runCatching { client.exportContext(s.id)?.let { store.save(it) } }
+            // Merge (not overwrite) so cookies for boards this batch didn't visit — incl. the shared
+            // Google-SSO session — are preserved. Persist before release to capture natural refresh.
+            runCatching { client.exportContext(s.id)?.let { store.merge(it) } }
             runCatching { client.releaseSession(s.id) }
         }
         pagesByHost.values.forEach { runCatching { it.close() } }
@@ -130,6 +160,7 @@ class SteelBrowser(
         playwright = null
         session = null
         connectAttempted = false
+        everConnected = false
     }
 
     companion object {

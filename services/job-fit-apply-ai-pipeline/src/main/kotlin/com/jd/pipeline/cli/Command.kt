@@ -9,6 +9,8 @@ sealed class Command {
     data class TestChrome(val url: String?) : Command()
     /** Smoke-test the self-hosted Steel Browser backend (session + CDP + debug URL). Optional probe URL. */
     data class TestSteel(val url: String?) : Command()
+    /** Long-lived Steel sign-in: open a session, hand out the phone debug URL, capture cookies on ENTER. */
+    data class SteelSignin(val url: String?) : Command()
     data class ScrapeJdTuner(val file: String?, val maxIterations: Int) : Command()
     data class ResumeGen(val path: String) : Command()
     data class InitProfile(val path: String) : Command()
