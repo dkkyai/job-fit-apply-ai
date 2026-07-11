@@ -160,13 +160,23 @@ services:
       DOMAIN: "${STEEL_DOMAIN:-localhost:3000}"
       CDP_DOMAIN: "${STEEL_CDP_DOMAIN:-localhost:9223}"
     volumes:
-      # Persists Chrome profile/cache across restarts (paired with the app-side storageState store).
+      # PUPPETEER_CACHE_DIR — caches the downloaded Chromium binary across rebuilds. NOTE: this is
+      # NOT the logged-in profile (Steel runs Chrome with an ephemeral userDataDir in /tmp); auth
+      # persistence is the app-side storageState store (processor state/ mount + STEEL_STORAGE_STATE_PATH).
       - steel-data:/app/.cache
     ports:
       # Publish the API/UI (and thus the interactive debug URL) on the Tailscale interface only —
       # set STEEL_BIND_ADDR to the host's tailnet IP in the repo-root .env so a phone can reach it.
       # Defaults to loopback (safe): the Steel UI has NO auth, so never bind it to 0.0.0.0.
       - "${STEEL_BIND_ADDR:-127.0.0.1}:3000:3000"
+    healthcheck:
+      # Node (guaranteed present in the image) — /v1/sessions returns 200 once the API is serving.
+      # start_period covers dbus + Xvfb + first Chrome launch.
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/v1/sessions',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
   processor:
     build: ./services/job-fit-apply-ai-pipeline
@@ -178,7 +188,7 @@ services:
       db:
         condition: service_healthy
       steel:
-        condition: service_started
+        condition: service_healthy
     # Explicit mapping is a no-op on Docker Desktop (the name resolves anyway) but makes the
     # same compose file work on plain Linux Docker.
     extra_hosts:
