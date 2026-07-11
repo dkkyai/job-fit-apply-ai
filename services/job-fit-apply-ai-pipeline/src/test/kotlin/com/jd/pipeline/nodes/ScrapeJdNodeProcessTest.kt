@@ -103,13 +103,14 @@ class ScrapeJdNodeProcessTest {
     inner class LinkedInSessionExpiry {
 
         @Test
-        @DisplayName("returns session-expired error when batchLinkedInSessionExpired is set")
+        @DisplayName("returns re-auth error when the host hit an auth wall earlier this batch")
         fun sessionExpiredReturnsError() {
-            node.batchLinkedInSessionExpired = true
+            node.batchAuthExpiredDomains.add("linkedin.com")
             val input = JDState(isJobPosting = true, jobUrl = "https://www.linkedin.com/jobs/view/12345")
             val result = node.process(input)
             assertTrue(result.isChromeSessionExpired, "Expected isChromeSessionExpired flag")
-            assertTrue(result.error.contains("LinkedIn"), "Error should mention LinkedIn")
+            assertTrue(result.error.contains("linkedin", ignoreCase = true), "Error should name the host")
+            assertTrue(node.batchLinkedInSessionExpired, "LinkedIn back-compat accessor should be true")
         }
     }
 
@@ -120,12 +121,13 @@ class ScrapeJdNodeProcessTest {
     inner class BatchState {
 
         @Test
-        @DisplayName("resetBatch clears batchBlockedDomains and batchLinkedInSessionExpired")
+        @DisplayName("resetBatch clears batchBlockedDomains and batchAuthExpiredDomains")
         fun resetBatchClearsState() {
             node.batchBlockedDomains.add("example.com")
-            node.batchLinkedInSessionExpired = true
+            node.batchAuthExpiredDomains.add("linkedin.com")
             node.resetBatch()
             assertTrue(node.batchBlockedDomains.isEmpty())
+            assertTrue(node.batchAuthExpiredDomains.isEmpty())
             assertFalse(node.batchLinkedInSessionExpired)
         }
 

@@ -5,179 +5,144 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Tests Jackson deserialization of [TailorModels].
- * Pure data-layer tests — no LLM required.
+ * Tests Jackson deserialization of the tailor data contracts plus the small pure
+ * helpers ([BulletMeta.score], [roleKey], [AtsReport.needsRefinement]). No LLM required.
  */
 @DisplayName("TailorModelsTest")
 class TailorModelsTest {
 
     private val mapper = ObjectMapper().registerKotlinModule()
 
+    // ── JdRequirements ────────────────────────────────────────────────────────
+
     @Test
-    @DisplayName("JdStructured deserializes from complete JSON with all fields")
-    fun jdStructuredComplete() {
+    @DisplayName("JdRequirements deserializes from complete JSON with all fields")
+    fun jdRequirementsComplete() {
         val json = """
             {
-              "role_title": "Staff Engineer",
-              "seniority": "Staff",
-              "required_skills": ["Kotlin", "Java"],
-              "preferred_skills": ["Rust"],
-              "domain_keywords": ["FinTech"],
-              "ats_exact_phrases": ["distributed systems"],
+              "target_title": "Staff Software Development Engineer in Test",
+              "seniority_signals": ["set standards", "mentor senior engineers"],
+              "must_have": ["Kotlin", "cross-functional collaboration"],
+              "nice_to_have": ["Kotlin Multiplatform (KMP)"],
+              "exact_match_terms": ["Espresso", "GitHub Actions"],
+              "skill_groupings": [ {"label": "Testing", "items": ["Espresso", "XCUITest"]} ],
+              "domain_keywords": ["device farms"],
               "company_value_signals": ["move fast"]
             }
         """.trimIndent()
 
-        val parsed = mapper.readValue(json, JdStructured::class.java)
-        assertEquals("Staff Engineer", parsed.roleTitle)
-        assertEquals("Staff", parsed.seniority)
-        assertEquals(listOf("Kotlin", "Java"), parsed.requiredSkills)
-        assertEquals(listOf("Rust"), parsed.preferredSkills)
-        assertEquals(listOf("FinTech"), parsed.domainKeywords)
-        assertEquals(listOf("distributed systems"), parsed.atsExactPhrases)
+        val parsed = mapper.readValue(json, JdRequirements::class.java)
+        assertEquals("Staff Software Development Engineer in Test", parsed.targetTitle)
+        assertEquals(listOf("set standards", "mentor senior engineers"), parsed.senioritySignals)
+        assertEquals(listOf("Kotlin", "cross-functional collaboration"), parsed.mustHave)
+        assertEquals(listOf("Kotlin Multiplatform (KMP)"), parsed.niceToHave)
+        assertEquals(listOf("Espresso", "GitHub Actions"), parsed.exactMatchTerms)
+        assertEquals("Testing", parsed.skillGroupings[0].label)
+        assertEquals(listOf("Espresso", "XCUITest"), parsed.skillGroupings[0].items)
+        assertEquals(listOf("device farms"), parsed.domainKeywords)
         assertEquals(listOf("move fast"), parsed.companyValueSignals)
     }
 
     @Test
-    @DisplayName("SkillGap deserializes with valid action values")
-    fun skillGapActions() {
-        val actions = listOf("highlight", "add_if_honest", "omit")
-        actions.forEach { action ->
-            val json = """{"skill":"Kotlin","in_jd":true,"on_resume":true,"action":"$action"}"""
-            val parsed = mapper.readValue(json, SkillGap::class.java)
-            assertEquals(action, parsed.action, "action '$action' should round-trip")
-        }
+    @DisplayName("JdRequirements tolerates missing fields and unknown extras")
+    fun jdRequirementsSparse() {
+        val parsed = mapper.readValue(
+            """{"target_title": "SDET", "must_have": ["Kotlin"], "hallucinated_extra": 42}""",
+            JdRequirements::class.java
+        )
+        assertEquals("SDET", parsed.targetTitle)
+        assertEquals(listOf("Kotlin"), parsed.mustHave)
+        assertTrue(parsed.niceToHave.isEmpty())
+        assertTrue(parsed.skillGroupings.isEmpty())
     }
 
+    // ── GapAnalysis ───────────────────────────────────────────────────────────
+
     @Test
-    @DisplayName("GapAnalysis deserializes nested skills_table array")
-    fun gapAnalysisNested() {
+    @DisplayName("GapAnalysis deserializes the supported/unsupported/missing partition")
+    fun gapAnalysisComplete() {
         val json = """
             {
-              "skills_table": [
-                {"skill":"Kotlin","in_jd":true,"on_resume":true,"action":"highlight"}
-              ],
-              "keyword_coverage_score": 75,
-              "top_gaps": ["Rust"],
-              "top_strengths": ["Kotlin"],
-              "bullets_to_promote": ["Built microservices"]
+              "supported": [ {"term": "Kotlin", "evidence": "rewrote entire Android framework in Kotlin"} ],
+              "unsupported": ["Pact", "gRPC"],
+              "missing_but_supported": [ {"term": "Firebase Test Lab", "evidence": "integrated with Firebase"} ]
             }
         """.trimIndent()
 
         val parsed = mapper.readValue(json, GapAnalysis::class.java)
-        assertEquals(1, parsed.skillsTable.size)
-        assertEquals("Kotlin", parsed.skillsTable.first().skill)
-        assertEquals(75, parsed.keywordCoverageScore)
-        assertEquals(listOf("Rust"), parsed.topGaps)
-        assertEquals(listOf("Built microservices"), parsed.bulletsToPromote)
+        assertEquals("Kotlin", parsed.supported[0].term)
+        assertEquals("rewrote entire Android framework in Kotlin", parsed.supported[0].evidence)
+        assertEquals(listOf("Pact", "gRPC"), parsed.unsupported)
+        assertEquals("Firebase Test Lab", parsed.missingButSupported[0].term)
     }
 
-    @Test
-    @DisplayName("TailoredBullet deserializes with jdAlignmentScore")
-    fun tailoredBullet() {
-        val json = """{"original":"foo","rewritten":"bar","jd_alignment_score":88}"""
-        val parsed = mapper.readValue(json, TailoredBullet::class.java)
-        assertEquals("foo", parsed.original)
-        assertEquals("bar", parsed.rewritten)
-        assertEquals(88, parsed.jdAlignmentScore)
-    }
+    // ── RestructuredSkills ────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("RestructuredSkills deserializes with groupedByCategory Map")
-    fun restructuredSkillsWithMap() {
+    @DisplayName("RestructuredSkills preserves category order and parses all fields")
+    fun restructuredSkillsOrderPreserved() {
         val json = """
             {
-              "restructured_text": "Languages: Kotlin, Java",
-              "removed_for_this_role": ["PHP"],
-              "jd_matched_skills": ["Kotlin"],
               "grouped_by_category": {
-                "Languages": ["Kotlin", "Java"],
-                "Frameworks": ["Spring"]
-              }
+                "Testing & Automation": ["Espresso", "XCUITest"],
+                "CI/CD": ["GitHub Actions"],
+                "Languages": ["Kotlin"]
+              },
+              "jd_matched_skills": ["Espresso", "Kotlin"],
+              "removed_for_this_role": ["SAP systems"]
             }
         """.trimIndent()
 
         val parsed = mapper.readValue(json, RestructuredSkills::class.java)
-        assertEquals("Languages: Kotlin, Java", parsed.restructuredText)
-        assertEquals(listOf("PHP"), parsed.removedForThisRole)
-        assertEquals(listOf("Kotlin"), parsed.jdMatchedSkills)
-        assertEquals(listOf("Kotlin", "Java"), parsed.groupedByCategory["Languages"])
-        assertEquals(listOf("Spring"), parsed.groupedByCategory["Frameworks"])
+        assertEquals(listOf("Testing & Automation", "CI/CD", "Languages"), parsed.groupedByCategory.keys.toList())
+        assertEquals(listOf("Espresso", "XCUITest"), parsed.groupedByCategory["Testing & Automation"])
+        assertEquals(listOf("Espresso", "Kotlin"), parsed.jdMatchedSkills)
+        assertEquals(listOf("SAP systems"), parsed.removedForThisRole)
     }
 
-    @Test
-    @DisplayName("AtsScore deserializes with all sub-scores")
-    fun atsScoreComplete() {
-        val json = """
-            {
-              "overall_score": 82,
-              "keyword_match": 90,
-              "skill_coverage": 80,
-              "seniority_alignment": 75,
-              "quantification": 85,
-              "format_safety": 95,
-              "remaining_gaps": ["Rust"],
-              "top_3_improvements": ["Add metrics"]
-            }
-        """.trimIndent()
-
-        val parsed = mapper.readValue(json, AtsScore::class.java)
-        assertEquals(82, parsed.overallScore)
-        assertEquals(90, parsed.keywordMatch)
-        assertEquals(80, parsed.skillCoverage)
-        assertEquals(75, parsed.seniorityAlignment)
-        assertEquals(85, parsed.quantification)
-        assertEquals(95, parsed.formatSafety)
-        assertEquals(listOf("Rust"), parsed.remainingGaps)
-        assertEquals(listOf("Add metrics"), parsed.top3Improvements)
-    }
+    // ── AtsLlmScores ─────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("All models ignore unknown JSON properties")
-    fun ignoreUnknownProperties() {
-        val models = listOf(
-            JdStructured::class.java to """{"role_title":"X","extra_field":123}""",
-            SkillGap::class.java to """{"skill":"X","unknown":true}""",
-            GapAnalysis::class.java to """{"keyword_coverage_score":50,"unexpected":"val"}""",
-            TailoredBullet::class.java to """{"original":"X","bonus":42}""",
-            RestructuredSkills::class.java to """{"restructured_text":"X","foo":"bar"}""",
-            AtsScore::class.java to """{"overall_score":50,"baz":[]}"""
+    @DisplayName("AtsLlmScores deserializes sub-scores and improvements")
+    fun atsLlmScores() {
+        val parsed = mapper.readValue(
+            """{"seniority_alignment": 85, "quantification": 70, "format_safety": 95, "top_improvements": ["add Pact"]}""",
+            AtsLlmScores::class.java
         )
+        assertEquals(85, parsed.seniorityAlignment)
+        assertEquals(70, parsed.quantification)
+        assertEquals(95, parsed.formatSafety)
+        assertEquals(listOf("add Pact"), parsed.topImprovements)
+    }
 
-        models.forEach { (clazz, json) ->
-            val parsed = mapper.readValue(json, clazz)
-            assertTrue(parsed != null, "$clazz should deserialize despite unknown fields")
-        }
+    // ── pure helpers ─────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("BulletMeta.score ranks relevance over quantification over seniority")
+    fun bulletMetaScore() {
+        val oneHit = BulletMeta(mustHaveHits = 1, quantified = false, senioritySignal = false)
+        val quantifiedAndSenior = BulletMeta(mustHaveHits = 0, quantified = true, senioritySignal = true)
+        assertTrue(oneHit.score > quantifiedAndSenior.score, "one must-have hit outranks quantified+seniority")
+        assertEquals(4 + 2 + 1, BulletMeta(1, quantified = true, senioritySignal = true).score)
+        assertEquals(0, BulletMeta().score)
     }
 
     @Test
-    @DisplayName("Default values populate when fields are absent from JSON")
-    fun defaultValues() {
-        val jd = mapper.readValue("{}", JdStructured::class.java)
-        assertEquals("", jd.roleTitle)
-        assertTrue(jd.requiredSkills.isEmpty())
+    @DisplayName("roleKey normalises case and whitespace")
+    fun roleKeyNormalises() {
+        assertEquals(roleKey("Staff SDET", "Acme Corp", "2024-09"), roleKey(" staff sdet ", " ACME CORP ", " 2024-09 "))
+    }
 
-        val gap = mapper.readValue("{}", SkillGap::class.java)
-        assertEquals("", gap.skill)
-        assertEquals(false, gap.inJd)
-
-        val analysis = mapper.readValue("{}", GapAnalysis::class.java)
-        assertTrue(analysis.skillsTable.isEmpty())
-        assertEquals(0, analysis.keywordCoverageScore)
-
-        val bullet = mapper.readValue("{}", TailoredBullet::class.java)
-        assertEquals("", bullet.original)
-        assertEquals(0, bullet.jdAlignmentScore)
-
-        val skills = mapper.readValue("{}", RestructuredSkills::class.java)
-        assertEquals("", skills.restructuredText)
-        assertTrue(skills.groupedByCategory.isEmpty())
-
-        val score = mapper.readValue("{}", AtsScore::class.java)
-        assertEquals(0, score.overallScore)
-        assertTrue(score.remainingGaps.isEmpty())
+    @Test
+    @DisplayName("AtsReport.needsRefinement fires on leaks, doubled words, or missing terms — not on score")
+    fun needsRefinement() {
+        assertFalse(AtsReport(mustHaveCoveragePct = 10, overallScore = 5).needsRefinement, "low score alone is not actionable")
+        assertTrue(AtsReport(missingTerms = listOf("Kotlin")).needsRefinement)
+        assertTrue(AtsReport(leakedUnsupportedTerms = listOf("Pact")).needsRefinement)
+        assertTrue(AtsReport(doubledWords = listOf("reducing")).needsRefinement)
     }
 }

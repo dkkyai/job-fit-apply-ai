@@ -7,7 +7,7 @@ import com.jd.pipeline.client.LlmClient
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.models.EvidenceItem
 import com.jd.pipeline.models.CandidateProfile
-import com.jd.pipeline.nodes.tailor.JdStructured
+import com.jd.pipeline.models.JdStructured
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import java.nio.file.Files
@@ -117,6 +117,7 @@ class ScoreFitNode(
                 gapsWithEvidence = gapsWithEvidence,
                 dimensionScores = dimensionScores,
                 hardGateViolations = allHardGates,
+                salaryRange = input.salaryRange.ifBlank { formatCompRange(compMin, compMax) },
                 postedCompMin = compMin,
                 postedCompMax = compMax,
                 workArrangement = workArrangement,
@@ -134,6 +135,21 @@ class ScoreFitNode(
                 pipelineAction = PipelineAction.SKIP,
                 error = "score_fit: Parse failed. Raw: ${cleaned.take(200)}"
             )
+        }
+    }
+
+    /**
+     * Builds a human-readable salary string from the numeric posted-comp fields.
+     * Used as a fallback when no salaryRange display string survived scraping.
+     * Comp values are full-dollar integers (e.g. 150000 → "$150K").
+     */
+    private fun formatCompRange(min: Int?, max: Int?): String {
+        fun k(v: Int) = if (v >= 1000) "$${v / 1000}K" else "$$v"
+        return when {
+            min != null && max != null -> "${k(min)} – ${k(max)}"
+            min != null -> "${k(min)}+"
+            max != null -> "up to ${k(max)}"
+            else -> ""
         }
     }
 

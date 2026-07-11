@@ -19,7 +19,7 @@ class CandidateProfileRendererTest {
     private fun makeProfile(
         identity: CandidateIdentity = makeIdentity(),
         background: CandidateBackground = makeBackground(),
-        skills: CandidateSkills = makeSkills(),
+        skills: List<SkillGroup> = makeSkills(),
         preferences: CandidatePreferences = CandidatePreferences(),
         projects: List<CareerEntry> = emptyList()
     ) = CandidateProfile(identity, background, skills, preferences, projects)
@@ -48,13 +48,13 @@ class CandidateProfileRendererTest {
         languages = languages, domainExpertise = domainExpertise
     )
 
-    private fun makeSkills() = CandidateSkills(
-        primaryStack = listOf("Kotlin", "Java"),
-        mobileAutomation = listOf("Appium"),
-        ciCdPlatforms = listOf("GitHub Actions"),
-        webApiAutomation = listOf("Playwright"),
-        infrastructureObservability = listOf("Kubernetes"),
-        leadershipAbilities = listOf("Mentoring")
+    private fun makeSkills() = listOf(
+        SkillGroup("Primary Stack", listOf("Kotlin", "Java")),
+        SkillGroup("Mobile Automation", listOf("Appium")),
+        SkillGroup("CI/CD Platforms", listOf("GitHub Actions")),
+        SkillGroup("Web & API Automation", listOf("Playwright")),
+        SkillGroup("Infrastructure & Observability", listOf("Kubernetes")),
+        SkillGroup("Leadership", listOf("Mentoring"))
     )
 
     private fun makeCareer(
@@ -63,16 +63,15 @@ class CandidateProfileRendererTest {
         location: String = "Remote",
         startDate: String = "2020-01",
         endDate: String? = null,
-        bullets: List<String> = listOf("Did thing A", "Did thing B")
+        bullets: List<Bullet> = listOf(Bullet("", "Did thing A"), Bullet("", "Did thing B"))
     ) = CareerEntry(role, company, location, startDate, endDate, bullets)
 
     private fun makeEducation(
         degree: String = "B.S.",
         school: String = "Test U",
         location: String? = null,
-        startDate: String = "2010",
-        endDate: String = "2014"
-    ) = EducationEntry(degree, school, location, startDate, endDate)
+        year: String = "2014"
+    ) = EducationEntry(degree = degree, school = school, location = location, year = year)
 
     // ── renderForScoring ───────────────────────────────────────────────────────
 
@@ -153,14 +152,7 @@ class CandidateProfileRendererTest {
                 domainExpertise = emptyList()
             ),
             projects = emptyList(),
-            skills = CandidateSkills(
-                primaryStack = emptyList(),
-                mobileAutomation = emptyList(),
-                ciCdPlatforms = emptyList(),
-                webApiAutomation = emptyList(),
-                infrastructureObservability = emptyList(),
-                leadershipAbilities = emptyList()
-            )
+            skills = emptyList()
         )
         val md = CandidateProfileRenderer.renderForScoring(profile)
 

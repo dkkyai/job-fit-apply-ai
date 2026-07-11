@@ -1,13 +1,11 @@
 package com.jd.pipeline.state
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.models.EvidenceItem
 import com.jd.pipeline.models.CandidateProfile
-import com.jd.pipeline.nodes.tailor.JdStructured
+import com.jd.pipeline.models.ProfileLoader
+import com.jd.pipeline.models.JdStructured
 import com.jd.pipeline.source.IntakeContext
-import java.nio.file.Files
 
 /**
  * JDState — typed, immutable pipeline state.
@@ -27,11 +25,15 @@ data class JDState(
     val scrapeJdTuningOutputDir: String = "",
     val scrapeJdComparisonReport: String = "",
     val jobUrl: String = "",
+    // Pre-rendered page text supplied by the browser extension. When present, ScrapeJdNode
+    // skips fetching (no server-side auth needed) and LLM-extracts directly from this text.
+    val capturedText: String = "",
 
     // ── Scan node output ──────────────────────────────────────────────────────
     val isJobPosting: Boolean = false,
     val scrapedContent: String = "",
     val rawPageContent: String = "",
+    val scrapePath: String = "",
     val jdText: String = "",
     val company: String = "",
     val roleTitle: String = "",
@@ -76,6 +78,8 @@ data class JDState(
     val outputPath: String = "",
     val artifactUrl: String = "",
     val metadataUrl: String = "",
+    // Tailoring nodes that failed and fell back to base content (empty = fully generated).
+    val tailoringDegradedNodes: List<String> = emptyList(),
     val coverLetter: String = "",
 
     // ── HTML pipeline output ──────────────────────────────────────────────────
@@ -83,7 +87,6 @@ data class JDState(
 
     // ── Supabase tracking output ──────────────────────────────────────────────
     val trackId: Int? = null,
-    val trackUrl: String = "",
     val isSupabaseTracked: Boolean = false,
     val isDuplicate: Boolean = false,
     val duplicateId: Int? = null,
@@ -100,29 +103,19 @@ data class JDState(
     val skippedReason: String = "",
     val isChromeSessionExpired: Boolean = false,
     val isRecruiterResponseRequired: Boolean = false,
-    val draftId: String = ""
+    val draftId: String = "",
+    // Recruiter reply body, generated Gmail-free by the Processor. The Poller delivers it
+    // (creates the Gmail draft) via the bridge completed feed. Empty when not a recruiter reply.
+    val draftText: String = ""
 ) {
     companion object {
-        private val MAPPER = ObjectMapper().registerKotlinModule()
 
         /**
-         * Lazily load the user profile once per JVM invocation.
-         * Returns null if the file is missing or malformed (nodes handle null gracefully).
+         * Lazily load + merge the résumé (`resume.yaml`) and pipeline config
+         * (`candidate_profile.yaml`) into one [CandidateProfile], once per JVM invocation.
+         * Returns null if the résumé is missing or malformed (nodes handle null gracefully).
          */
-        fun loadCandidateProfile(): CandidateProfile? {
-            val path = Config.CANDIDATE_PROFILE_PATH
-            if (!Files.exists(path)) {
-                System.err.println("[JDState] CANDIDATE_PROFILE_PATH not found: $path — create config/candidate_profile.json to enable structured user data")
-                return null
-            }
-            return try {
-                val json = Files.readString(path)
-                MAPPER.readValue(json, CandidateProfile::class.java)
-            } catch (e: Exception) {
-                System.err.println("[JDState] Failed to parse candidate_profile.json: ${e.message}")
-                null
-            }
-        }
+        fun loadCandidateProfile(): CandidateProfile? = ProfileLoader.loadMergedProfile()
 
         // Singleton, loaded once per JVM — shared across all JDState instances
         private val SINGLETON_CANDIDATE_PROFILE: CandidateProfile? by lazy { loadCandidateProfile() }

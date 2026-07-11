@@ -20,12 +20,12 @@ class BulletRewriteNodeProcessTest {
             targetTitle = "Eng", yearsExperience = 5,
             summary = "", education = emptyList(),
             careerHistory = listOf(
-                CareerEntry("Eng", "Acme", "SF", "2020", null, listOf("B1", "B2"))
+                CareerEntry("Eng", "Acme", "SF", "2020", null, listOf(Bullet("", "B1"), Bullet("", "B2")))
             ),
             coreStrengths = emptyList(), languages = emptyList(), domainExpertise = emptyList()
         ),
-        skills = CandidateSkills(emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList()),
-        projects = listOf(CareerEntry("Maintainer", "OSS", "", "2022", null, listOf("P1")))
+        skills = emptyList(),
+        projects = listOf(CareerEntry("Maintainer", "OSS", "", "2022", null, listOf(Bullet("", "P1"))))
     )
 
     private val baseState = TailorState(
@@ -34,15 +34,15 @@ class BulletRewriteNodeProcessTest {
         fitScore = 80f,
         strengths = emptyList(), gaps = emptyList(),
         company = "Acme", roleTitle = "Eng", trackId = 1,
-        jdStructured = JdStructured("Eng", "Sr", listOf("Kotlin")),
+        jdRequirements = JdRequirements(targetTitle = "Eng", mustHave = listOf("Kotlin")),
         gapAnalysis = GapAnalysis()
     )
 
     @Test
-    @DisplayName("process returns error when jdStructured is null")
-    fun errorWhenJdStructuredNull() {
-        val result = BulletRewriteNode().process(baseState.copy(jdStructured = null))
-        assertTrue(result.error.contains("jdStructured is null"))
+    @DisplayName("process returns error when jdRequirements is null")
+    fun errorWhenJdRequirementsNull() {
+        val result = BulletRewriteNode().process(baseState.copy(jdRequirements = null))
+        assertTrue(result.error.contains("jdRequirements is null"))
     }
 
     @Test
@@ -60,29 +60,32 @@ class BulletRewriteNodeProcessTest {
     }
 
     @Test
-    @DisplayName("buildPrompt includes job-level rewrite requirements")
+    @DisplayName("prompt includes job-level rewrite requirements")
     fun buildPromptContent() {
-        val node = BulletRewriteNode()
-        val m = BulletRewriteNode::class.java.getDeclaredMethod(
-            "buildPrompt", JdStructured::class.java, GapAnalysis::class.java, TailorState::class.java, CandidateProfile::class.java
-        )
-        m.isAccessible = true
-        val prompt = m.invoke(node, baseState.jdStructured, baseState.gapAnalysis, baseState, baseProfile) as String
-        assertTrue(prompt.contains("TARGET ROLE"), "should include TARGET ROLE")
-        assertTrue(prompt.contains("CANDIDATE ROLES"), "should include candidate roles")
+        var captured = ""
+        BulletRewriteNode(llm = LlmCaller { prompt ->
+            captured = prompt
+            "[]"
+        }).process(baseState)
+        assertTrue(captured.contains("TARGET TITLE"), "should include TARGET TITLE")
+        assertTrue(captured.contains("MUST-HAVE TERMS"), "should include must-have terms")
+        assertTrue(captured.contains("CANDIDATE ROLES"), "should include candidate roles")
     }
 
     @Test
-    @DisplayName("mocked LLM rewrites bullets and populates career + projects")
+    @DisplayName("mocked LLM rewrites bullets; hits/quantified are re-verified against the rewritten text")
     fun mockedLlmRewritesBullets() {
+        // R1 genuinely contains "Kotlin" + a number; R2 claims nothing; P1R claims a Kotlin
+        // hit the text does NOT contain (and a bogus quantified=false with no digits) — the
+        // deterministic verification must correct the metadata, not echo the LLM's claims.
         val json = """
             [
                 {"role":"Eng","company":"Acme","start_date":"2020","bullets":[
-                    {"original":"B1","rewritten":"R1","jd_alignment_score":90},
-                    {"original":"B2","rewritten":"R2","jd_alignment_score":80}
+                    {"original":"B1","category":"Impact","rewritten":"Rebuilt Kotlin suites, cutting runtime 40%","must_have_hits":["Kotlin"],"quantified":true,"seniority_signal":false},
+                    {"original":"B2","category":"Scale","rewritten":"Standardized flaky-test triage across teams","must_have_hits":[],"quantified":false,"seniority_signal":true}
                 ]},
                 {"role":"Maintainer","company":"OSS","start_date":"2022","bullets":[
-                    {"original":"P1","rewritten":"P1R","jd_alignment_score":85}
+                    {"original":"P1","category":"Ownership","rewritten":"Maintained an open-source test library","must_have_hits":["Kotlin"],"quantified":false,"seniority_signal":true}
                 ]}
             ]
         """.trimIndent()
@@ -91,9 +94,26 @@ class BulletRewriteNodeProcessTest {
         assertNotNull(result.tailoredCareerHistory)
         assertNotNull(result.tailoredProjects)
         assertNotNull(result.tailoredBullets)
-        assertEquals(2, result.tailoredCareerHistory!!.first().bullets.size)
-        assertEquals("R1", result.tailoredCareerHistory!!.first().bullets[0])
-        assertEquals("P1R", result.tailoredProjects!!.first().bullets[0])
+        assertNotNull(result.bulletMeta)
+
+        val careerBullets = result.tailoredCareerHistory!!.first().bullets
+        assertEquals(2, careerBullets.size)
+        assertEquals("Rebuilt Kotlin suites, cutting runtime 40%", careerBullets[0].text)
+        assertEquals("Impact", careerBullets[0].category)
+
         assertEquals(3, result.tailoredBullets!!.size)
+        val first = result.tailoredBullets!!.first()
+        assertEquals("B1", first.original)
+        assertEquals(listOf("Kotlin"), first.mustHaveHits, "verified hit: 'Kotlin' is literally present")
+        assertTrue(first.quantified, "verified: digits present")
+
+        val engMeta = result.bulletMeta!![roleKey("Eng", "Acme", "2020")]
+        assertNotNull(engMeta)
+        assertEquals(2, engMeta!!.size)
+        assertEquals(1, engMeta[0].mustHaveHits)
+
+        // The bogus project claim is corrected: no literal "Kotlin" in the text → 0 hits.
+        val projMeta = result.bulletMeta!![roleKey("Maintainer", "OSS", "2022")]!!
+        assertEquals(0, projMeta[0].mustHaveHits, "LLM-claimed hit absent from text is discarded")
     }
 }

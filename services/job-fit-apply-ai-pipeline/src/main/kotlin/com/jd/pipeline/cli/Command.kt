@@ -5,23 +5,22 @@ sealed class Command {
     object TestResume : Command()
     object TestCoverLetter : Command()
     object TestSupabase : Command()
-    object TestGmail : Command()
-    object Reauth : Command()
-    object CheckToken : Command()
-    data class ScanTuner(val file: String?, val maxIterations: Int, val debug: Boolean) : Command()
+    /** Smoke-test the persistent Chrome (CDP) scraping setup. Optional probe URL. */
+    data class TestChrome(val url: String?) : Command()
+    /** Smoke-test the self-hosted Steel Browser backend (session + CDP + debug URL). Optional probe URL. */
+    data class TestSteel(val url: String?) : Command()
+    /** Long-lived Steel sign-in: open a session, hand out the phone debug URL, capture cookies on ENTER. */
+    data class SteelSignin(val url: String?) : Command()
     data class ScrapeJdTuner(val file: String?, val maxIterations: Int) : Command()
     data class ResumeGen(val path: String) : Command()
     data class InitProfile(val path: String) : Command()
-    data class SingleEmail(
-        val subject: String,
-        val expectedData: String?,
-        val expectedDataFile: String?,
-        val maxIterations: Int,
-        val debug: Boolean,
-    ) : Command()
     object SignedIn : Command()
-    object JSearch : Command()
-    data class Batch(val maxEmails: Int, val debug: Boolean) : Command()
-    data class TokenFromUrl(val redirectUrl: String) : Command()
-    object Worker : Command()
+    /** Long-running Processor loop: claim work items from the bridge and process them (no Gmail). */
+    object Processor : Command()
+    /** Exit 0 iff the processor loop's heartbeat is fresh — container healthcheck. */
+    object Health : Command()
+    /** Send a pipeline-timeout alert to Discord/Telegram. Invoked by run_jd_pipeline.sh. */
+    data class NotifyTimeout(val minutes: Int) : Command()
+    /** No recognized command — print usage. */
+    object Usage : Command()
 }

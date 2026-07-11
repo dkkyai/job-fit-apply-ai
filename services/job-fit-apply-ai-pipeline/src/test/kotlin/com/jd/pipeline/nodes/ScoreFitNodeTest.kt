@@ -32,7 +32,7 @@ class ScoreFitNodeTest {
         // Career history table
         assertTrue(out.contains("| Senior SDET | Acme | — | 2020-01 – 2024-01 |"), "expected career row with location column; got:\n$out")
         // Skills section
-        assertTrue(out.contains("Mobile automation:") && out.contains("Espresso"))
+        assertTrue(out.contains("Mobile Automation:") && out.contains("Espresso"))
         // Preferences block
         assertTrue(out.contains("Target total compensation"))
         assertTrue(out.contains("\$200,000"))
@@ -58,14 +58,7 @@ class ScoreFitNodeTest {
                 languages = emptyList(),
                 domainExpertise = emptyList()
             ),
-            skills = CandidateSkills(
-                primaryStack = emptyList(),
-                mobileAutomation = emptyList(),
-                ciCdPlatforms = emptyList(),
-                webApiAutomation = emptyList(),
-                infrastructureObservability = emptyList(),
-                leadershipAbilities = emptyList()
-            )
+            skills = emptyList()
         )
         val out = ScoreFitNode.renderCandidateProfile(profile)
         assertTrue(out.contains("Jane Doe"))
@@ -229,7 +222,7 @@ class ScoreFitNodeTest {
             targetTitle = "Staff SDET",
             yearsExperience = 12,
             education = listOf(
-                EducationEntry(degree = "B.S. CS", school = "Test U", location = "Test City, TC", startDate = "2008-09", endDate = "2012-05")
+                EducationEntry(degree = "B.S. CS", school = "Test U", location = "Test City, TC", year = "2012")
             ),
             careerHistory = listOf(
                 CareerEntry(
@@ -237,20 +230,20 @@ class ScoreFitNodeTest {
                     company = "Acme",
                     startDate = "2020-01",
                     endDate = "2024-01",
-                    bullets = listOf("KMP framework")
+                    bullets = listOf(Bullet("", "KMP framework"))
                 )
             ),
             coreStrengths = listOf("Mobile Test Automation"),
             languages = listOf("Kotlin", "Swift"),
             domainExpertise = listOf("retail/commerce")
         ),
-        skills = CandidateSkills(
-            primaryStack = listOf("Kotlin", "Swift"),
-            mobileAutomation = listOf("Espresso", "XCUITest"),
-            ciCdPlatforms = listOf("GitHub Actions"),
-            webApiAutomation = listOf("Playwright"),
-            infrastructureObservability = listOf("Docker"),
-            leadershipAbilities = listOf("Mentoring")
+        skills = listOf(
+            SkillGroup("Primary Stack", listOf("Kotlin", "Swift")),
+            SkillGroup("Mobile Automation", listOf("Espresso", "XCUITest")),
+            SkillGroup("CI/CD Platforms", listOf("GitHub Actions")),
+            SkillGroup("Web & API Automation", listOf("Playwright")),
+            SkillGroup("Infrastructure & Observability", listOf("Docker")),
+            SkillGroup("Leadership", listOf("Mentoring"))
         ),
         preferences = CandidatePreferences(
             willingToRelocate = false,

@@ -222,6 +222,25 @@ jobs:
           flags: pipeline
           token: ${{ secrets.CODECOV_TOKEN }}
 
+  # ── 4b. Run-analyzer (Python unittest, stdlib-only) ─────────────────────────
+  run-analyzer:
+    name: Run-analyzer — unittest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/job-fit-apply-ai-pipeline/tuner/run-analyzer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # No third-party deps — the analyzer and its tests are stdlib-only.
+      - name: Unit + integration tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+
   # ── 5. Allure Report — collect, generate, publish ───────────────────────────
   allure-report:
     name: Allure Report → GitHub Pages

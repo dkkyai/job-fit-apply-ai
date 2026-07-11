@@ -7,7 +7,15 @@ import com.jd.pipeline.config.Config
 import java.nio.file.Files
 
 /**
- * Tailor subgraph node 1/6: JD Extraction
+ * Tailor subgraph node A (1/7): JD extraction.
+ *
+ * Parses the raw JD once into a structured [JdRequirements] set — must-have vs
+ * nice-to-have terms in the JD's exact phrasing, literal-match tools, the JD's own skill
+ * groupings, and seniority signals. Every downstream node consumes this object instead
+ * of re-reading the raw JD.
+ *
+ * Always runs its own LLM call — score_fit's leaner extraction (JdStructured) serves
+ * scoring only and is not reused here.
  */
 class JdExtractionNode(
     private val llm: LlmCaller = LlmClient.orchestrationClient(nodeKey = "jd_extraction")
@@ -15,25 +23,21 @@ class JdExtractionNode(
     private val mapper = ObjectMapper()
 
     fun process(state: TailorState): TailorState {
-        // Skip if score_fit already produced JdStructured (combined call path)
-        if (state.jdStructured != null) {
-            println("[jd_extraction] Already extracted by score_fit — skipping LLM call")
-            return state
-        }
-
         if (state.jdText.isBlank()) {
             return state.copy(error = "jd_extraction: jdText is empty")
         }
 
-        println("[jd_extraction] Extracting structure for: ${state.roleTitle} @ ${state.company}")
+        println("[jd_extraction] Extracting requirement set for: ${state.roleTitle} @ ${state.company}")
 
         return try {
-            val prompt = "${loadSkillPrompt()}\n\n<job_description>\n${state.jdText}\n</job_description>"
+            val prompt = "${TailorRubric.prepend(loadSkillPrompt())}\n\n<job_description>\n${state.jdText}\n</job_description>"
             val response = llm.call(prompt)
-            val cleaned = stripJsonFences(response)
-            val parsed = mapper.readValue(cleaned, JdStructured::class.java)
-            println("[jd_extraction] Required skills: ${parsed.requiredSkills.size}, ATS phrases: ${parsed.atsExactPhrases.size}")
-            state.copy(jdStructured = parsed)
+            val parsed = mapper.readValue(stripJsonFences(response), JdRequirements::class.java)
+            if (parsed.mustHave.isEmpty() && parsed.targetTitle.isBlank()) {
+                return state.copy(error = "jd_extraction: LLM returned an empty requirement set")
+            }
+            println("[jd_extraction] must-have: ${parsed.mustHave.size}, nice-to-have: ${parsed.niceToHave.size}, exact-match terms: ${parsed.exactMatchTerms.size}")
+            state.copy(jdRequirements = parsed)
         } catch (e: Exception) {
             state.copy(error = "jd_extraction: ${e.message}")
         }
@@ -50,25 +54,20 @@ class JdExtractionNode(
 
     companion object {
         private val DEFAULT_PROMPT = """
-            |You are a structured JD parser. Extract the following from the job description below.
+            |Extract the job description below into a structured requirement set. Quote the JD's
+            |EXACT phrasing for every term — downstream ATS matching is literal.
             |Return ONLY valid JSON with no markdown fences or preamble:
             |{
-            |  "role_title": "string",
-            |  "seniority": "string (e.g. Staff, Senior, Principal, IC5)",
-            |  "required_skills": ["string", ...],
-            |  "preferred_skills": ["string", ...],
-            |  "domain_keywords": ["string", ...],
-            |  "ats_exact_phrases": ["string", ...],
-            |  "company_value_signals": ["string", ...]
+            |  "target_title": "the JD's title verbatim",
+            |  "seniority_signals": ["seniority phrases quoted from the JD", ...],
+            |  "must_have": ["hard requirement, JD's exact phrasing", ...],
+            |  "nice_to_have": ["preferred/plus item, JD's exact phrasing", ...],
+            |  "exact_match_terms": ["tools/certs/protocols parsers match literally", ...],
+            |  "skill_groupings": [ {"label": "the JD's own grouping label", "items": ["...", ...]} ],
+            |  "domain_keywords": ["industry terms", ...],
+            |  "company_value_signals": ["culture clues", ...]
             |}
-            |
-            |Guidelines:
-            |- required_skills: explicitly stated requirements
-            |- preferred_skills: nice-to-haves or "plus" items
-            |- domain_keywords: industry-specific terms (acronyms, platform names, methodologies)
-            |- ats_exact_phrases: multi-word phrases to include verbatim in the resume for ATS matching
-            |- company_value_signals: culture/values clues ("move fast", "data-driven", "customer obsessed")
-            |Do not invent skills not present in the JD.
+            |Do not invent terms not present in the JD. Empty arrays for absent fields.
         """.trimMargin()
     }
 }

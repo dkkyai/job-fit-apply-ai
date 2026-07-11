@@ -1,5 +1,6 @@
 package com.jd.pipeline.cli.commands
 
+import com.jd.pipeline.config.Config
 import com.jd.pipeline.nodes.RenderResumePdfNode
 import com.jd.pipeline.nodes.tailor.ResumeTailoringSubgraph
 import com.jd.pipeline.state.JDState
@@ -9,8 +10,20 @@ object TestResumeCommandHandler {
     fun run() {
         println("[INFO] Testing resume tailoring subgraph + PDF render...")
 
+        // The tailoring subgraph requires a candidate profile. Load the same
+        // config/candidate_profile.json the worker uses so --test-resume exercises
+        // the real summary/bullet/skills rewrite nodes (not just a bare mock).
+        val candidateProfile = JDState.loadCandidateProfile()
+        if (candidateProfile == null) {
+            System.err.println(
+                "[ERROR] No candidate profile at ${Config.CANDIDATE_PROFILE_PATH} — run --init-profile first"
+            )
+            return
+        }
+
         val mockState = JDState(
             isJobPosting = true,
+            candidateProfile = candidateProfile,
             company = "Acme Corp",
             roleTitle = "Staff Software Engineer in Test",
             location = "Remote (US)",
@@ -56,7 +69,7 @@ object TestResumeCommandHandler {
             techStack = listOf("Kotlin", "Espresso", "XCUITest", "Bitrise", "GitHub Actions", "KMP", "Firebase Test Lab")
         )
 
-        // Step 1: Run tailoring subgraph (produces tailored_resume.html + .txt files)
+        // Step 1: Run tailoring subgraph (produces tailored_resume.{html,yaml} + .txt files)
         val subgraph = ResumeTailoringSubgraph()
         val tailored = subgraph.process(mockState)
 
@@ -66,7 +79,7 @@ object TestResumeCommandHandler {
         }
         println("[OK] Tailoring complete → ${tailored.outputPath}")
 
-        // Step 2: Render PDF from tailored_resume.html
+        // Step 2: Render PDF from tailored_resume.yaml (LaTeX — needs python3+jinja2+pyyaml+tectonic)
         val rendered = RenderResumePdfNode().process(tailored)
 
         if (rendered.error.isNotEmpty()) {

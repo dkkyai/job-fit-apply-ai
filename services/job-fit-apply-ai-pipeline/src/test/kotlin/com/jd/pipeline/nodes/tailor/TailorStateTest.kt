@@ -4,7 +4,6 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * Unit tests for [TailorState].
@@ -24,14 +23,15 @@ class TailorStateTest {
     @DisplayName("progressive outputs default to null")
     fun progressiveDefaults() {
         val state = makeTailorState()
-        assertNull(state.jdStructured)
+        assertNull(state.jdRequirements)
         assertNull(state.gapAnalysis)
         assertNull(state.tailoredSummary)
         assertNull(state.tailoredCareerHistory)
         assertNull(state.tailoredProjects)
+        assertNull(state.bulletMeta)
         assertNull(state.tailoredBullets)
         assertNull(state.restructuredSkills)
-        assertNull(state.atsScore)
+        assertNull(state.atsReport)
     }
 
     private fun makeTailorState() = TailorState(

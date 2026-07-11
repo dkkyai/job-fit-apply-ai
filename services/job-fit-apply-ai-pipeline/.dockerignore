@@ -1,0 +1,36 @@
+# Build outputs / caches
+build/
+.gradle/
+bin/
+.idea/
+*.log
+.DS_Store
+.kilo
+node_modules/
+
+# Env + credentials — never in the build context
+.env
+.env.*
+!.env.example
+token.json
+tokens/
+*_credentials.json
+
+# Not needed in the image
+output/
+models/
+tuner/
+
+# ── Personal-file protection (load-bearing) ─────────────────────────────────
+# Images are built from checkouts where these gitignored personal files exist on
+# disk. `COPY src/main/resources` and `COPY config/...` must never capture them
+# into image layers.
+config/candidate_profile.yaml
+src/main/resources/resume/resume.yaml
+src/main/resources/resume/generated_resume.html
+src/main/resources/resume/*-generated*.html
+src/main/resources/resume/*.tex
+src/main/resources/resume/*.pdf
+# Any résumé YAML other than the committed template is personal
+src/main/resources/resume/*.yaml
+!src/main/resources/resume/resume.template.yaml

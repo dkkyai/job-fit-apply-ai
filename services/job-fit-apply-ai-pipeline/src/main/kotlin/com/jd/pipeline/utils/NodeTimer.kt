@@ -19,7 +19,7 @@ object NodeTimer {
         "scan_email", "scrape_jd", "score_fit",
         "jd_extraction", "gap_analysis", "summary_rewrite",
         "bullet_rewrite", "skills_restructure", "ats_scoring",
-        "cover_letter", "resume_gen", "draft_reply"
+        "cover_letter", "draft_reply"
     )
 
     private val DISPLAY_NAMES = mapOf(
@@ -33,7 +33,6 @@ object NodeTimer {
         "skills_restructure" to "SkillsRestructure",
         "ats_scoring"        to "AtsScoring",
         "cover_letter"       to "CoverLetter",
-        "resume_gen"         to "ResumeGen",
         "draft_reply"        to "DraftReply"
     )
 
@@ -71,7 +70,6 @@ object NodeTimer {
                 "skills_restructure" to Config.SKILLS_MODEL,
                 "ats_scoring"        to Config.SCORE_MODEL,
                 "cover_letter"       to Config.COVER_LETTER_MODEL,
-                "resume_gen"         to Config.RESUME_GEN_MODEL,
                 "draft_reply"        to Config.DRAFT_REPLY_MODEL
             )
         }

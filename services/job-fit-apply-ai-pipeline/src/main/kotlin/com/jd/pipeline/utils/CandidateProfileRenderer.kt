@@ -33,6 +33,7 @@ object CandidateProfileRenderer {
         appendCareerHistoryWithBullets(profile)
         appendProjectsWithBullets(profile)
         appendStrengthsAndSkills(profile)
+        appendEvidenceBank(profile)
     }.trimEnd() + "\n"
 
     // ── header (identity + summary) ──────────────────────────────────────────
@@ -49,7 +50,7 @@ object CandidateProfileRenderer {
             append("**Education:** ")
             append(bg.education.joinToString("; ") {
                 val loc = it.location?.let { loc -> ", $loc" } ?: ""
-                "${it.degree}, ${it.school}${loc} (${it.dateRange})"
+                "${it.degreeLine}, ${it.school}${loc} (${it.year})"
             })
             append("\n")
         }
@@ -80,7 +81,9 @@ object CandidateProfileRenderer {
             append("**${e.role} — ${e.company}** (${e.dateRange})")
             if (e.location.isNotBlank()) append(" · ${e.location}")
             append("\n")
-            e.bullets.forEach { append("- $it\n") }
+            e.bullets.forEach { b ->
+                if (b.category.isNotBlank()) append("- ${b.category}: ${b.text}\n") else append("- ${b.text}\n")
+            }
             append("\n")
         }
     }
@@ -104,7 +107,9 @@ object CandidateProfileRenderer {
             append("**${e.role} — ${e.company}** (${e.dateRange})")
             if (e.location.isNotBlank()) append(" · ${e.location}")
             append("\n")
-            e.bullets.forEach { append("- $it\n") }
+            e.bullets.forEach { b ->
+                if (b.category.isNotBlank()) append("- ${b.category}: ${b.text}\n") else append("- ${b.text}\n")
+            }
             append("\n")
         }
     }
@@ -113,7 +118,6 @@ object CandidateProfileRenderer {
 
     private fun StringBuilder.appendStrengthsAndSkills(profile: CandidateProfile) {
         val bg = profile.background
-        val sk = profile.skills
 
         if (bg.coreStrengths.isNotEmpty()) {
             append("### Core Strengths\n")
@@ -121,16 +125,10 @@ object CandidateProfileRenderer {
             append("\n")
         }
 
-        fun appendSkillSection(label: String, items: List<String>) {
-            if (items.isNotEmpty()) append("- **$label:** ${items.joinToString(", ")}\n")
-        }
         append("### Skills\n")
-        appendSkillSection("Primary stack", sk.primaryStack)
-        appendSkillSection("Mobile automation", sk.mobileAutomation)
-        appendSkillSection("CI/CD platforms", sk.ciCdPlatforms)
-        appendSkillSection("Web & API automation", sk.webApiAutomation)
-        appendSkillSection("Infrastructure & observability", sk.infrastructureObservability)
-        appendSkillSection("Leadership", sk.leadershipAbilities)
+        profile.skills.forEach { group ->
+            if (group.items.isNotEmpty()) append("- **${group.label}:** ${group.items.joinToString(", ")}\n")
+        }
         append("\n")
 
         if (bg.languages.isNotEmpty()) {
@@ -139,6 +137,21 @@ object CandidateProfileRenderer {
         if (bg.domainExpertise.isNotEmpty()) {
             append("**Domain Expertise:** ${bg.domainExpertise.joinToString(", ")}\n")
         }
+        append("\n")
+    }
+
+    // ── evidence bank (tailoring only) ───────────────────────────────────────
+
+    /**
+     * Candidate-curated facts that are true but not on the résumé — rendered so gap
+     * analysis can quote them as evidence (the tailor nodes may only claim what this
+     * markdown supports).
+     */
+    private fun StringBuilder.appendEvidenceBank(profile: CandidateProfile) {
+        val bank = profile.tailoring.evidenceBank
+        if (bank.isEmpty()) return
+        append("### Additional Verified Evidence (candidate-provided facts not on the résumé — valid evidence, same integrity rules)\n")
+        bank.forEach { append("- $it\n") }
         append("\n")
     }
 

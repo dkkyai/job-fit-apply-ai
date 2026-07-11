@@ -67,9 +67,18 @@ class IngestionPipeline {
         source       = IngestionSource.EMAIL,
         idempotencyKey = idempotencyKey,
         intakeMeta   = state.intake,
+        salaryRange    = state.salaryRange.ifBlank { null },
+        remotePolicy   = state.remotePolicy.ifBlank { null },
+        employmentType = state.employmentType.ifBlank { null },
+        seniorityLevel = state.seniorityLevel.ifBlank { null },
+        yoeRequired    = state.yoeRequired,
+        techStack      = state.techStack.ifEmpty { null },
     )
 
     fun resetBatch() = scrapeNode.resetBatch()
     fun batchBlockedDomains(): Set<String> = scrapeNode.batchBlockedDomains.toSet()
     fun batchLinkedInSessionExpired(): Boolean = scrapeNode.batchLinkedInSessionExpired
+
+    /** Release the scraper's shared CDP browser connection. Call when the batch is done. */
+    fun close() = scrapeNode.close()
 }

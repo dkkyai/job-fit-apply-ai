@@ -29,7 +29,6 @@ object CliOutput {
         println("║  RESUME_REASONING_MODEL│ ${Config.RESUME_REASONING_MODEL} - Resume tailoring (rewrite).")
         println("║  COVER_LETTER_MODEL    │ ${Config.COVER_LETTER_MODEL} - Cover letter.")
         println("║  DRAFT_REPLY_MODEL     │ ${Config.DRAFT_REPLY_MODEL} - Recruiter reply.")
-        println("║  RESUME_GEN_MODEL      │ ${Config.RESUME_GEN_MODEL} - DOCX/PDF → HTML resume gen.")
         println("╚═══════════════════════════════════════════════════════════╝")
         println()
     }
@@ -74,11 +73,6 @@ object CliOutput {
         val jobUrl = result.jobUrl
         if (jobUrl.isNotEmpty()) {
             println("    → job_url: $jobUrl")
-        }
-
-        val trackUrl = result.trackUrl
-        if (trackUrl.isNotEmpty()) {
-            println("    → supabase: $trackUrl")
         }
 
         if (result.isRecruiterResponseRequired) {
@@ -174,7 +168,6 @@ object CliOutput {
         obj["output_path"] = state["output_path"] ?: ""
         obj["fit_score"] = state["fit_score"] ?: 0
         obj["pipeline_action"] = state["pipeline_action"] ?: "skip"
-        obj["track_url"] = state["track_url"] ?: ""
         obj["artifact_url"] = state["artifact_url"] ?: ""
         obj["error"] = state["error"] ?: ""
         val mapper = ObjectMapper()
@@ -186,7 +179,6 @@ object CliOutput {
         obj["output_path"] = state.outputPath
         obj["fit_score"] = state.fitScore?.toDouble() ?: 0
         obj["pipeline_action"] = state.pipelineAction.asDbValue()
-        obj["track_url"] = state.trackUrl
         obj["artifact_url"] = state.artifactUrl
         obj["error"] = state.error
         val mapper = ObjectMapper()

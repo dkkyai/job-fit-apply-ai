@@ -1,0 +1,8 @@
+# Generated per-run analyzer outputs + runtime state — not source.
+findings/
+state/
+last_metrics.json
+
+# Python bytecode cache (created by running analyze.py / the test suite).
+__pycache__/
+*.pyc

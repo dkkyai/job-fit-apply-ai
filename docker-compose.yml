@@ -1,0 +1,260 @@
+# Root compose for the job-fit-apply-ai migration into Docker.
+#
+# Services so far: db (Postgres) and markserv (renders the pipeline output dir).
+# App services (bridge, frontend, pipeline) get added in later steps.
+#
+# Config comes from a root .env file (see .env.example); every value has a sane
+# default so `docker compose up -d` works with no .env at all.
+
+services:
+  db:
+    # Swap to pgvector/pgvector:pg16 when you want embeddings/similarity search
+    # (semantic job<->resume matching) in the same database — drop-in, no data change.
+    image: postgres:16-alpine
+    container_name: jobfit-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jobfit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobfit}
+      POSTGRES_DB: ${POSTGRES_DB:-jobfit}
+    ports:
+      # Host apps connect via localhost:${POSTGRES_PORT}; containers use host "db".
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - jobfit-db-data:/var/lib/postgresql/data
+      # Runs ONLY on first boot against an empty data volume (initdb convention).
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobfit} -d ${POSTGRES_DB:-jobfit}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  bridge:
+    build: ./services/job-fit-apply-ai-bridge
+    container_name: jobfit-bridge
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Cap the JVM heap. Without this (and with no container mem-limit) the JVM sizes MaxHeap at
+      # 25% of host RAM (~14.7 GiB) and grows into it. The bridge is the HTTP server (Ktor/Netty +
+      # SQLite + artifact serving) so it gets the most headroom of the JVM services.
+      JAVA_TOOL_OPTIONS: "-Xmx448m -XX:MaxMetaspaceSize=128m -XX:+ExitOnOutOfMemoryError"
+      JD_BRIDGE_HOST: "0.0.0.0"          # single wildcard connector inside the container
+      JD_BRIDGE_PORT: "8765"
+      JD_BRIDGE_STORE_DIR: "/data"       # SQLite queue + artifacts live on the mounted volume
+      # Same DB as the host apps, addressed by the compose service name — one source of truth.
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-jobfit}:${POSTGRES_PASSWORD:-jobfit}@db:5432/${POSTGRES_DB:-jobfit}"
+    ports:
+      # Loopback only; reached over the tailnet via `tailscale serve` (see docs/tailscale-serve.md).
+      - "127.0.0.1:${JD_BRIDGE_PORT:-8765}:8765"
+    volumes:
+      # Preserve the existing host queue + uploaded artifacts.
+      - "${JD_BRIDGE_STORE_HOST:-${HOME}/.openclaw/jd-bridge}:/data"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8765/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./apps/job-fit-apply-ai-backlog
+      args:
+        # Baked into the bundle: the bridge URL the browser calls over the tailnet.
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://richards-macbook-m1-max.tail02d0e.ts.net:8765}"
+    container_name: jobfit-frontend
+    restart: unless-stopped
+    ports:
+      # Loopback only; reached over the tailnet via `tailscale serve` (docs/tailscale-serve.md).
+      - "127.0.0.1:${FRONTEND_PORT:-3030}:3030"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3030/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  markserv:
+    build: ./docker/markserv
+    container_name: jobfit-markserv
+    restart: unless-stopped
+    ports:
+      # Loopback ONLY — no LAN / 0.0.0.0 exposure. Reached over the tailnet via
+      # `tailscale serve` on the host (see docs/tailscale-serve.md), which keeps the
+      # exact URL: http://<tailscale-name>:8081/...  This is the pattern for every
+      # tailnet-exposed container (bridge/frontend next): bind 127.0.0.1, front with serve.
+      - "127.0.0.1:${MARKSERV_PORT:-8081}:8081"
+    volumes:
+      # The pipeline (host, or a container later) writes reports here; markserv only reads.
+      - ./services/job-fit-apply-ai-pipeline/output:/data:ro
+    healthcheck:
+      # 127.0.0.1 (not localhost): markserv binds IPv4 only, and localhost resolves to ::1 first.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8081/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  poller:
+    build: ./services/job-fit-apply-ai-poller
+    container_name: jobfit-poller
+    restart: unless-stopped
+    depends_on:
+      bridge:
+        condition: service_healthy
+    environment:
+      # Heap cap (see bridge). Poller does Gmail fetch + MIME parsing — modest working set.
+      JAVA_TOOL_OPTIONS: "-Xmx320m -XX:MaxMetaspaceSize=128m -XX:+ExitOnOutOfMemoryError"
+      # Reaches the bridge over the compose network by service name (host publish stays loopback).
+      JD_BRIDGE_URL: "http://bridge:8765"
+      GMAIL_CREDENTIALS_FILE: "/secrets/dkkytech_credentials.json"
+      GMAIL_TOKEN_FILE: "/secrets/tokens/gmail_token.json"
+      GMAIL_MAX_EMAILS: "${GMAIL_MAX_EMAILS:-10}"
+    volumes:
+      # Gmail credentials + token. RW so the ~weekly OAuth refresh persists across restarts.
+      # Seed once from the existing token; the container is the sole Gmail owner after cutover.
+      - "${JD_POLLER_SECRETS_HOST:-${HOME}/.openclaw/jd-poller-secrets}:/secrets"
+    # No ports — the Poller only makes outbound calls (Gmail + bridge). Healthcheck (exec `--health`)
+    # is baked into the image.
+
+  jsearch:
+    build: ./services/job-fit-apply-ai-jsearch
+    container_name: jobfit-jsearch
+    restart: unless-stopped
+    depends_on:
+      bridge:
+        condition: service_healthy
+    environment:
+      # Heap cap (see bridge). jsearch is a once/day one-shot fetch — small.
+      JAVA_TOOL_OPTIONS: "-Xmx320m -XX:MaxMetaspaceSize=128m -XX:+ExitOnOutOfMemoryError"
+      JD_BRIDGE_URL: "http://bridge:8765"
+      # RapidAPI key — put JSEARCH_API_KEY=... in the repo-root .env (gitignored). Required to fetch.
+      JSEARCH_API_KEY: "${JSEARCH_API_KEY:-}"
+      # Once/day fetch (4 calls) → ~120 of a 150/month quota. The persisted last-run makes restarts free.
+      JSEARCH_INTERVAL_MS: "${JSEARCH_INTERVAL_MS:-86400000}"
+    volumes:
+      # Persisted last-run state so restarts don't re-fetch (and burn quota).
+      - "${JD_JSEARCH_STATE_HOST:-${HOME}/.openclaw/jd-jsearch-state}:/state"
+    # No ports — outbound only (JSearch API + bridge). Shell-loop entrypoint + heartbeat healthcheck
+    # are baked into the image; the JVM only runs ~once/day and exits.
+
+  # Self-hosted Steel Browser — the CDP scraping backend (replaces host Chrome).
+  # Built FROM SOURCE at a pinned commit: the prebuilt steel-browser images fail to launch Chrome
+  # on Apple Silicon under Docker Desktop (bundled Chromium SIGTRAPs); Steel's own api/Dockerfile
+  # (apt Debian arm64 Chromium + xvfb) works. Verified end-to-end at this SHA.
+  steel:
+    build:
+      context: "https://github.com/steel-dev/steel-browser.git#c0f226b8e3b16d0bc2c76a222863d4db6f1aa8f2"
+      dockerfile: api/Dockerfile
+      args:
+        NODE_VERSION: "22.13.0"
+    container_name: jobfit-steel
+    restart: unless-stopped
+    environment:
+      DEBUG: "true"                  # entrypoint only initialises dbus when DEBUG=true; Chrome needs it
+      DOMAIN: "${STEEL_DOMAIN:-localhost:3000}"
+      CDP_DOMAIN: "${STEEL_CDP_DOMAIN:-localhost:9223}"
+    volumes:
+      # PUPPETEER_CACHE_DIR — caches the downloaded Chromium binary across rebuilds. NOTE: this is
+      # NOT the logged-in profile (Steel runs Chrome with an ephemeral userDataDir in /tmp); auth
+      # persistence is the app-side storageState store (processor state/ mount + STEEL_STORAGE_STATE_PATH).
+      - steel-data:/app/.cache
+    ports:
+      # Publish the API/UI (and thus the interactive debug URL) on the Tailscale interface only —
+      # set STEEL_BIND_ADDR to the host's tailnet IP in the repo-root .env so a phone can reach it.
+      # Defaults to loopback (safe): the Steel UI has NO auth, so never bind it to 0.0.0.0.
+      - "${STEEL_BIND_ADDR:-127.0.0.1}:3000:3000"
+    healthcheck:
+      # Node (guaranteed present in the image) — /v1/sessions returns 200 once the API is serving.
+      # start_period covers dbus + Xvfb + first Chrome launch.
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/v1/sessions',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  processor:
+    build: ./services/job-fit-apply-ai-pipeline
+    container_name: jobfit-processor
+    restart: unless-stopped
+    depends_on:
+      bridge:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      steel:
+        condition: service_healthy
+    # Explicit mapping is a no-op on Docker Desktop (the name resolves anyway) but makes the
+    # same compose file work on plain Linux Docker.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Heap cap (see bridge). Most headroom of the JVM services — the tailoring subgraph holds
+      # the profile + large LLM JSON responses through Jackson. NB: this bounds only the JVM heap;
+      # the tectonic + python PDF-render subprocesses have their own (transient) memory outside it.
+      JAVA_TOOL_OPTIONS: "-Xmx640m -XX:MaxMetaspaceSize=160m -XX:+ExitOnOutOfMemoryError"
+      JD_BRIDGE_URL: "http://bridge:8765"
+      DB_BACKEND: "postgres"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-jobfit}:${POSTGRES_PASSWORD:-jobfit}@db:5432/${POSTGRES_DB:-jobfit}"
+      # Host-loopback services, reached directly via host.docker.internal (verified working on
+      # Docker Desktop 29.x — no socat shim needed). The entrypoint rewrites the CDP endpoint's
+      # hostname to an IP because Chrome DevTools rejects non-IP/localhost Host headers.
+      MLX_LOCAL_BASE_URL: "http://host.docker.internal:11436/v1"
+      OLLAMA_LOCAL_BASE_URL: "http://host.docker.internal:11434"
+      CHROME_CDP_ENDPOINT: "http://host.docker.internal:${CHROME_DEBUG_PORT:-9222}"
+      # Steel Browser backend. Set STEEL_BASE_URL=http://steel:3000 in the repo-root .env to route
+      # scraping through Steel (sessions + persisted auth + phone re-auth); blank/unset falls back to
+      # the host-Chrome CDP path above. STEEL_UI_URL is the tailnet base for the debug link in re-auth
+      # alerts (e.g. http://<tailscale-host>:3000). Sourced from root .env — not the pipeline .env —
+      # so the empty-override caveat below does not apply.
+      STEEL_BASE_URL: "${STEEL_BASE_URL:-}"
+      STEEL_UI_URL: "${STEEL_UI_URL:-}"
+      # ARTIFACT_BASE_URL is intentionally NOT set here: an empty `${ARTIFACT_BASE_URL:-}` override
+      # would win over the mounted /app/.env (real env beats dotenv in Config.get), blanking the
+      # report/notification links. The value lives in services/.../pipeline/.env (markserv tailnet URL).
+    volumes:
+      # Same host dir markserv serves read-only at :8081 — reports/PDFs keep their URLs.
+      - ./services/job-fit-apply-ai-pipeline/output:/app/output
+      # Steel persisted session state (STEEL_STORAGE_STATE_PATH, PROJECT_DIR/state). Host-mounted so
+      # the exported cookies survive processor restarts and are backup-able. Gitignored (state/).
+      - ./services/job-fit-apply-ai-pipeline/state:/app/state
+      # Pipeline secrets + per-node model config (gitignored). dotenv reads /app/.env; real env
+      # vars above win over it (Config.get precedence), so host-specific endpoints inside are
+      # safely overridden.
+      - ./services/job-fit-apply-ai-pipeline/.env:/app/.env:ro
+      # Personal, gitignored inputs at their default PROJECT_DIR-relative locations.
+      - ./services/job-fit-apply-ai-pipeline/src/main/resources/resume/resume.yaml:/app/src/main/resources/resume/resume.yaml:ro
+      - ./services/job-fit-apply-ai-pipeline/config/candidate_profile.yaml:/app/config/candidate_profile.yaml:ro
+    # No ports — outbound only (bridge, db, host LLMs/CDP, cloud APIs). Healthcheck (exec
+    # --health, heartbeat freshness) is baked into the image.
+
+  notifier:
+    build: ./services/job-fit-apply-ai-notifier
+    container_name: jobfit-notifier
+    restart: unless-stopped
+    depends_on:
+      bridge:
+        condition: service_healthy
+    environment:
+      # Heap cap (see bridge). Notifier is a lightweight completed-event consumer.
+      JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=128m -XX:+ExitOnOutOfMemoryError"
+      JD_BRIDGE_URL: "http://bridge:8765"
+      # Discord/Telegram creds — put these in the repo-root .env (gitignored). Blank → nothing sent.
+      DISCORD_BOT_TOKEN: "${DISCORD_BOT_TOKEN:-}"
+      DISCORD_CHANNEL_ID: "${DISCORD_CHANNEL_ID:-}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
+      NOTIFICATION_FIT_THRESHOLD: "${NOTIFICATION_FIT_THRESHOLD:-50}"
+    volumes:
+      # Persisted consumer cursor (max completed_seq notified) — survives restarts.
+      - "${JD_NOTIFIER_STATE_HOST:-${HOME}/.openclaw/jd-notifier-state}:/state"
+    # No ports — a completed-feed event consumer. Healthcheck (exec --health) baked into the image.
+
+volumes:
+  jobfit-db-data:
+  steel-data:

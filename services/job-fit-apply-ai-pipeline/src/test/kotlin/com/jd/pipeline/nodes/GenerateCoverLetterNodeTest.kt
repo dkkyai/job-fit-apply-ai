@@ -254,14 +254,7 @@ class GenerateCoverLetterNodeTest {
                 languages = emptyList(),
                 domainExpertise = emptyList()
             ),
-            skills = CandidateSkills(
-                primaryStack = emptyList(),
-                mobileAutomation = emptyList(),
-                ciCdPlatforms = emptyList(),
-                webApiAutomation = emptyList(),
-                infrastructureObservability = emptyList(),
-                leadershipAbilities = emptyList()
-            )
+            skills = emptyList()
         )
     }
 }

@@ -4,6 +4,7 @@ import com.jd.pipeline.nodes.Node
 import com.jd.pipeline.nodes.AddArtifactUrlNode
 import com.jd.pipeline.nodes.CheckDuplicateNode
 import com.jd.pipeline.nodes.GenerateCoverLetterNode
+import com.jd.pipeline.nodes.DraftReplyComposer
 import com.jd.pipeline.nodes.RenderResumePdfNode
 import com.jd.pipeline.nodes.ScoreFitNode
 import com.jd.pipeline.nodes.SupabaseTrackNode
@@ -13,7 +14,9 @@ import com.jd.pipeline.source.JdRecord
 import com.jd.pipeline.source.ProcessingResult
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
+import com.jd.pipeline.state.emailIntake
 import com.jd.pipeline.state.isRecruiterEmail
+import com.jd.pipeline.utils.MetadataUtils
 import java.io.File
 
 /**
@@ -30,6 +33,7 @@ class ProcessingPipeline(
     private val renderResumePdf: Node<JDState>     = RenderResumePdfNode(),
     private val addArtifactUrl: Node<JDState>      = AddArtifactUrlNode(),
     private val supabaseTrack: Node<JDState>       = SupabaseTrackNode(),
+    private val draftComposer: DraftReplyComposer  = DraftReplyComposer(),
 ) {
 
     fun invoke(record: JdRecord): ProcessingResult {
@@ -45,6 +49,9 @@ class ProcessingPipeline(
                 outputPath     = null,
                 hasCoverLetter = false,
                 error          = e.message ?: "ProcessingPipeline failed",
+                company        = record.company,
+                roleTitle      = record.roleTitle,
+                jobUrl         = record.jobUrl,
             )
         }
     }
@@ -61,6 +68,12 @@ class ProcessingPipeline(
             roleTitle        = record.roleTitle ?: "",
             location         = record.location ?: "",
             jobUrl           = record.jobUrl ?: "",
+            salaryRange      = record.salaryRange ?: "",
+            remotePolicy     = record.remotePolicy ?: "unknown",
+            employmentType   = record.employmentType ?: "",
+            seniorityLevel   = record.seniorityLevel ?: "",
+            yoeRequired      = record.yoeRequired,
+            techStack        = record.techStack ?: emptyList(),
             candidateProfile = profile,
         )
 
@@ -95,10 +108,19 @@ class ProcessingPipeline(
             return toResult(state)
         }
 
-        // 4. Cover letter, PDF, artifact URL, Supabase
+        // 4. Cover letter, PDF, artifact URL
         state = generateCoverLetter.process(state)
         state = renderResumePdf.process(state)
         state = addArtifactUrl.process(state)
+
+        // 5. Recruiter reply: compose the draft body Gmail-free (the Poller delivers it).
+        if (isRecruiter) {
+            draftComposer.compose(state)?.let { body ->
+                state = state.copy(draftText = body, isRecruiterResponseRequired = true)
+            }
+        }
+
+        MetadataUtils.writeMetadata(state)
         state = supabaseTrack.process(state)
 
         return toResult(state)
@@ -117,6 +139,17 @@ class ProcessingPipeline(
             outputPath     = outputPath,
             hasCoverLetter = hasCoverLetter,
             error          = state.error.takeIf { it.isNotBlank() },
+            artifactUrl    = state.artifactUrl.takeIf { it.isNotBlank() },
+            // Processed-posting identity — for completed-feed consumers (Notifier).
+            company        = state.company.takeIf { it.isNotBlank() },
+            roleTitle      = state.roleTitle.takeIf { it.isNotBlank() },
+            jobUrl         = state.jobUrl.takeIf { it.isNotBlank() },
+            // Gmail write-back — the Poller labels the email and delivers any recruiter draft.
+            terminalLabel  = TerminalLabel.forState(state),
+            draftText      = state.draftText.takeIf { it.isNotBlank() },
+            isRecruiter    = state.isRecruiterEmail,
+            messageId      = state.emailIntake?.emailId,
+            scrapePath     = state.scrapePath,
         )
     }
 }

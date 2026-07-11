@@ -1,6 +1,6 @@
 /**
  * tests/setup.js – Jest setup for jsdom environment.
- * Mocks the Chrome extension API for both content_script and background tests.
+ * Mocks the Chrome extension API used by the background service worker.
  */
 
 const { TextEncoder, TextDecoder } = require('util');

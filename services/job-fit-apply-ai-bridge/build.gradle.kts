@@ -27,10 +27,13 @@ dependencies {
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
 
-    // Exposed + SQLite
+    // Exposed + SQLite (bridge's own job queue)
     implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
     implementation("org.xerial:sqlite-jdbc:3.46.1.3")
+
+    // Postgres JDBC driver (shared `tracks` table — backlog UI data)
+    implementation("org.postgresql:postgresql:42.7.4")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")

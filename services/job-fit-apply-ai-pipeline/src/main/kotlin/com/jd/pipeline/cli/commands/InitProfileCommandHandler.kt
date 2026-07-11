@@ -1,7 +1,6 @@
 package com.jd.pipeline.cli.commands
 
 import com.jd.pipeline.cli.Command
-import com.jd.pipeline.config.Config
 import com.jd.pipeline.nodes.GenerateCandidateProfileNode
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -19,7 +18,6 @@ object InitProfileCommandHandler {
             return
         }
         println("[INFO] Initialising candidate profile from: ${path.fileName}")
-        println("[INFO] Profile model: ${Config.PROFILE_GEN_MODEL}")
         try {
             GenerateCandidateProfileNode().init(path)
         } catch (e: Exception) {
