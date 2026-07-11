@@ -17,6 +17,15 @@ def compute_metrics(recs):
     durs = sorted((r.get("durationMs", 0) or 0) for r in recs)
     p95 = durs[int(len(durs) * 0.95)] if durs else 0
 
+    # Scrape transport mix — how each JD was obtained. Confirms the browser path (Steel/CDP)
+    # is actually carrying LinkedIn/forced domains vs. plain HTTP doing the bulk of the work.
+    scrape_paths = {}
+    for r in recs:
+        sp = r.get("scrapePath") or "unknown"
+        scrape_paths[sp] = scrape_paths.get(sp, 0) + 1
+    scrape_via_http = scrape_paths.get("http", 0)
+    scrape_via_cdp = sum(v for k, v in scrape_paths.items() if k.startswith("cdp_"))
+
     errors = sum(1 for r in recs if r.get("error"))
     zero_score = sum(
         1 for r in recs if (r.get("score", 0) or 0) == 0 and not r.get("isDuplicate")
@@ -33,6 +42,9 @@ def compute_metrics(recs):
         "zero_score": zero_score,
         "thin_digest": thin_digest,
         "scrape_blocked": sum(1 for r in recs if _has(r, "block", "captcha", "403")),
+        "scrape_paths": scrape_paths,
+        "scrape_via_http": scrape_via_http,
+        "scrape_via_cdp": scrape_via_cdp,
         "timeouts": sum(1 for r in recs if _has(r, "timed out", "timeout")),
         "ollama_oom": sum(1 for r in recs if _has(r, "unexpectedly stopped")),
         "run_log_missing": sum(1 for r in recs if r.get("run_log_missing")),

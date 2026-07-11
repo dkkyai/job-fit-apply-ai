@@ -17,6 +17,10 @@ analyze what happened, judge whether the pipeline is healthy and producing good 
    - `action` (TAILOR / SKIP), `score` (0–100)
    - `error` (captured failure string, or null)
    - `jdTextLen` — length of the JD the job was **scored on** (the key thin-JD signal)
+   - `scrapePath` — how the JD text was obtained: `http` (plain fetch, no browser), `cdp_profile`
+     (LinkedIn via browser), `cdp_forced` (forced-CDP domain e.g. Glassdoor), `cdp_fallback`
+     (HTTP blocked/thin → browser retry), `captured` (browser-extension text), `blocked`/`empty`.
+     Confirms the browser path (Steel/CDP) is carrying LinkedIn/forced domains vs. plain HTTP.
    - `hasJobUrl`, `job_url`, `artifact_url`, `outputPath`, `durationMs`
    - `run_log_missing` — true when the bridge saw the job terminal but the processor wrote no
      run_log record for it (the enrichment fields will be empty; a possible finding on its own).
@@ -40,6 +44,10 @@ Compute these and reason over them:
   - `score == 0` with `jdTextLen` large (a real JD scored 0) → a scoring or extraction bug, NOT a genuine non-fit. Flag and drill into `score_fit.txt`.
   - `isDigest == true` with small `jdTextLen` (< ~400) → the digest job was scored on a thin summary because its scrape failed/was blocked. Group these by `board`.
   - Score distribution skew (e.g. everything 0, or everything below threshold) → systemic.
+- **Scrape transport (`scrape_paths` / `scrape_via_http` / `scrape_via_cdp` in metrics):** a LinkedIn
+  or forced-CDP (`glassdoor.com`) job served via `http` — or `scrape_via_cdp` collapsing toward 0 —
+  means the browser path is down (Steel/CDP unreachable or session expired); correlate with `blocked`
+  errors and re-auth alerts.
 - **Pipeline completeness:** `action == TAILOR` but `error != null` → tailoring/render failed after a positive score.
 - **Per-board patterns:** group failures/thin-JDs by `board`. "All `glassdoor.com` digests thin" is one finding, not eleven.
 - **Latency:** unusually high `durationMs`, or a regression vs `PRIOR_METRICS`.

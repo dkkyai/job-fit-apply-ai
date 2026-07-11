@@ -51,6 +51,10 @@ object RunReport {
         val hasJobUrl: Boolean,
         val outputPath: String?,
         val durationMs: Long,
+        // How the JD text was obtained ("http" | "cdp_profile" | "cdp_forced" | "cdp_fallback" |
+        // "captured" | "blocked" | "empty" | ""). Lets the analyzer see the HTTP-vs-browser split
+        // and confirm the browser path (Steel/CDP) is actually carrying LinkedIn/forced domains.
+        val scrapePath: String,
     )
 
     fun record(jobId: String, record: JdRecord, result: ProcessingResult, durationMs: Long) {
@@ -73,6 +77,7 @@ object RunReport {
                 hasJobUrl = !record.jobUrl.isNullOrBlank(),
                 outputPath = result.outputPath,
                 durationMs = durationMs,
+                scrapePath = result.scrapePath,
             )
             Files.createDirectories(path.parent)
             Files.writeString(

@@ -33,6 +33,9 @@ dkkytech_credentials.json
 # Output directory
 output/
 
+# Steel Browser persisted session state (cookies/localStorage for LinkedIn/Glassdoor) — secret.
+state/
+
 # Personal data — populated by `--init-profile`. Templates ship in source.
 config/candidate_profile.yaml
 src/main/resources/resume/resume.yaml

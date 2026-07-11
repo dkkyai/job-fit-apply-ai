@@ -1,5 +1,7 @@
 package com.jd.pipeline.source
 
+import com.fasterxml.jackson.annotation.JsonIgnore
+
 enum class IngestionSource { EMAIL, JSEARCH, MANUAL, EXTENSION }
 
 data class JdRecord(
@@ -41,4 +43,8 @@ data class ProcessingResult(
     val draftText: String? = null,
     val isRecruiter: Boolean = false,
     val messageId: String? = null,
+    // How the JD text was obtained ("http", "cdp_profile", "cdp_forced", "cdp_fallback",
+    // "captured", "blocked", "empty"). Internal-only: carried to the run_log for the analyzer,
+    // never posted to the bridge feed (@get:JsonIgnore keeps it out of the completed-event DTO).
+    @get:JsonIgnore val scrapePath: String = "",
 )

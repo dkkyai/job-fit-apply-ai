@@ -2,7 +2,8 @@ package com.jd.pipeline.nodes
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.jd.pipeline.client.AlertService
-import com.jd.pipeline.client.ChromeCdpBrowser
+import com.jd.pipeline.client.BrowserFactory
+import com.jd.pipeline.client.CdpBrowser
 import com.jd.pipeline.client.LlmCaller
 import com.jd.pipeline.client.LlmClient
 import com.jd.pipeline.config.Config
@@ -32,7 +33,7 @@ class ScrapeJdNode(
     // Long-lived Chrome connected over CDP (one tab per domain, warm session). The ONLY browser
     // path — when the endpoint is unreachable, browser-needing scrapes fail cleanly with an alert
     // (plain-HTTP scraping is unaffected). No in-process Chromium is ever launched.
-    private val cdpBrowser: ChromeCdpBrowser = ChromeCdpBrowser(),
+    private val cdpBrowser: CdpBrowser = BrowserFactory.create(),
     private val alerts: AlertService = AlertService(),
 ) : Node<JDState> {
 
@@ -148,6 +149,7 @@ class ScrapeJdNode(
             when (e) {
                 is LinkedInAuthenticationException -> {
                     batchLinkedInSessionExpired = true
+                    alerts.reauthRequired("LinkedIn", detail = e.message, linkUrl = reauthLink())
                     input.copy(
                         isChromeSessionExpired = true,
                         error = "scrape_jd: ${e.message}"
@@ -396,19 +398,35 @@ class ScrapeJdNode(
         return buildPageContent(rawHtml, visibleText)
     }
 
-    /** Fire the "debug Chrome unreachable" alert once per batch, only when an endpoint is configured. */
+    /** The active browser-backend endpoint (Steel takes precedence over the host Chrome CDP port). */
+    private fun activeBackendEndpoint(): String =
+        Config.STEEL_BASE_URL.ifBlank { Config.CHROME_CDP_ENDPOINT }
+
+    /**
+     * Interactive re-auth link for the sign-in alert: the live Steel session's debug URL when
+     * available (open on a phone over Tailscale), else the configured Steel UI / base URL, else null
+     * (host-Chrome path has no remote link — sign in at the machine).
+     */
+    private fun reauthLink(): String? =
+        cdpBrowser.debugUrl()
+            ?: Config.STEEL_UI_URL.ifBlank { Config.STEEL_BASE_URL }.takeIf { it.isNotBlank() }
+
+    /** Fire the "browser backend unreachable" alert once per batch, only when a backend is configured. */
     private fun alertCdpUnavailable() {
-        if (Config.CHROME_CDP_ENDPOINT.isNotBlank() && !batchCdpUnavailableAlerted) {
+        val endpoint = activeBackendEndpoint()
+        if (endpoint.isNotBlank() && !batchCdpUnavailableAlerted) {
             batchCdpUnavailableAlerted = true
-            alerts.chromeDebugUnavailable(Config.CHROME_CDP_ENDPOINT)
+            alerts.chromeDebugUnavailable(endpoint)
         }
     }
 
-    private fun cdpUnavailableMessage(): String =
-        if (Config.CHROME_CDP_ENDPOINT.isBlank())
-            "CDP Chrome not configured (set CHROME_CDP_ENDPOINT) — browser scraping unavailable"
+    private fun cdpUnavailableMessage(): String {
+        val endpoint = activeBackendEndpoint()
+        return if (endpoint.isBlank())
+            "Browser backend not configured (set STEEL_BASE_URL or CHROME_CDP_ENDPOINT) — browser scraping unavailable"
         else
-            "CDP Chrome unreachable at ${Config.CHROME_CDP_ENDPOINT} — browser scraping unavailable"
+            "Browser backend unreachable at $endpoint — browser scraping unavailable"
+    }
 
     private fun waitForLinkedInPage(page: Page) {
         // Use LOAD rather than NETWORKIDLE — NETWORKIDLE can hang indefinitely

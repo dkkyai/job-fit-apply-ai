@@ -8,6 +8,8 @@ object CommandParser {
         var testSupabase = false
         var testChrome = false
         var testChromeUrl: String? = null
+        var testSteel = false
+        var testSteelUrl: String? = null
         var scrapeJdTuner = false
         var scrapeJdTunerFile: String? = null
         var maxIterations = 5
@@ -29,6 +31,13 @@ object CommandParser {
                     testChrome = true
                     if (i + 1 < args.size && !args[i + 1].startsWith("--")) {
                         testChromeUrl = args[i + 1]
+                        i++
+                    }
+                }
+                "--test-steel" -> {
+                    testSteel = true
+                    if (i + 1 < args.size && !args[i + 1].startsWith("--")) {
+                        testSteelUrl = args[i + 1]
                         i++
                     }
                 }
@@ -83,6 +92,7 @@ object CommandParser {
             testCoverLetter -> Command.TestCoverLetter
             testSupabase -> Command.TestSupabase
             testChrome -> Command.TestChrome(testChromeUrl)
+            testSteel -> Command.TestSteel(testSteelUrl)
             scrapeJdTuner -> Command.ScrapeJdTuner(scrapeJdTunerFile, maxIterations)
             resumeGenPath != null -> Command.ResumeGen(resumeGenPath)
             initProfilePath != null -> Command.InitProfile(initProfilePath)

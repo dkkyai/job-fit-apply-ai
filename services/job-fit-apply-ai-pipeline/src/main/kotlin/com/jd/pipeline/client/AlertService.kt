@@ -1,6 +1,5 @@
 package com.jd.pipeline.client
 
-import com.jd.pipeline.config.Config
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.ZoneId
@@ -72,21 +71,29 @@ class AlertService(private val client: NotificationClient = NotificationClient()
 
     // ── Convenience helpers for the alerts wired today ──────────────────────────
 
-    /** A job board needs an interactive sign-in. De-duped per site for the run. */
-    fun reauthRequired(site: String, detail: String? = null) {
+    /**
+     * A job board needs an interactive sign-in. When [linkUrl] is given (the Steel session's
+     * interactive debug URL, reachable over Tailscale), the user can tap it on a phone and sign in
+     * there — the refreshed session is then reused. De-duped per site for the run.
+     */
+    fun reauthRequired(site: String, detail: String? = null, linkUrl: String? = null) {
         val msg = buildString {
-            append("$site needs sign-in. Open the debug Chrome (port ${Config.CHROME_DEBUG_PORT}) ")
-            append("and sign back in — the pipeline will reuse the session.")
+            append("$site needs sign-in. ")
+            if (!linkUrl.isNullOrBlank()) {
+                append("Open the link below on your phone and sign in — the pipeline will reuse the session.")
+            } else {
+                append("Sign in to the browser session — the pipeline will reuse it.")
+            }
             detail?.takeIf { it.isNotBlank() }?.let { append("\n$it") }
         }
-        send(Alert(Severity.WARN, "Sign-in required: $site", msg), dedupKey = "reauth:$site")
+        send(Alert(Severity.WARN, "Sign-in required: $site", msg, linkUrl = linkUrl), dedupKey = "reauth:$site")
     }
 
-    /** The configured debug Chrome could not be reached; scraping fell back to the legacy path. */
+    /** The browser backend (Steel / debug Chrome) could not be reached. */
     fun chromeDebugUnavailable(endpoint: String) {
-        val msg = "Could not connect to the debug Chrome at $endpoint. Falling back to the per-job " +
-            "profile-copy path. Run scripts/launch-chrome-cdp.sh to restore the warm session."
-        send(Alert(Severity.WARN, "Chrome debug instance unreachable", msg), dedupKey = "cdp-down")
+        val msg = "Could not reach the browser backend at $endpoint. Browser-only scrapes " +
+            "(LinkedIn, forced-CDP domains) will fail until it's back — plain-HTTP scraping still works."
+        send(Alert(Severity.WARN, "Browser backend unreachable", msg), dedupKey = "cdp-down")
     }
 
     /** A pipeline run exceeded its time budget and was killed. */

@@ -218,6 +218,25 @@ object Config {
     val PLAYWRIGHT_FALLBACK_ON_THIN_CONTENT: Boolean = get("PLAYWRIGHT_FALLBACK_ON_THIN_CONTENT", "true").toBoolean()
     val PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH: Int = get("PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH", "500").toInt()
 
+    // ── Steel Browser (self-hosted) ───────────────────────────────────────────────
+    // When set (e.g. http://steel:3000), the scraper drives a self-hosted Steel Browser instead
+    // of a raw host Chrome: it creates a Steel session, connects Playwright over the session's CDP
+    // websocket, and persists the logged-in cookies via Steel's sessionContext. Empty = disabled →
+    // falls back to CHROME_CDP_ENDPOINT (raw host Chrome). This is the Steel on/off flag; keep it in
+    // the processor's .env so it can be blanked to fall back without editing compose.
+    val STEEL_BASE_URL: String = get("STEEL_BASE_URL", "")
+    // Tailnet-reachable Steel base used in the re-auth alert's interactive debug link (phone
+    // sign-in), e.g. http://<tailscale-host>:3000. Falls back to STEEL_BASE_URL when blank.
+    val STEEL_UI_URL: String = get("STEEL_UI_URL", "")
+    // Persisted cookies+localStorage (Steel sessionContext), exported on close and injected on
+    // session create, so the logged-in session survives Steel container / profile restarts.
+    val STEEL_STORAGE_STATE_PATH: String = get(
+        "STEEL_STORAGE_STATE_PATH",
+        PROJECT_DIR.resolve("state").resolve("steel-storage-state.json").toString()
+    )
+    // Steel session idle timeout (ms); the browser session is released after this long unused.
+    val STEEL_SESSION_TIMEOUT_MS: Long = get("STEEL_SESSION_TIMEOUT_MS", "600000").toLong()
+
     // ── Candidate profile / résumé onboarding (--init-profile) ──────────────────
     // Résumé HTML is now rendered deterministically from resume.yaml (no LLM), and the
     // profile is authored as structured YAML — so RESUME_GEN / PROFILE_GEN models are gone.

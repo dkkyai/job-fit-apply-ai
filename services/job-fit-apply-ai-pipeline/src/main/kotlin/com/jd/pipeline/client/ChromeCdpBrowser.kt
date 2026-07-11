@@ -23,7 +23,7 @@ import org.slf4j.LoggerFactory
  * Single-threaded by contract (ingestion runs one job at a time) but guarded with `@Synchronized`
  * so a future concurrent caller can't corrupt the per-host tab map.
  */
-class ChromeCdpBrowser(private val endpoint: String = Config.CHROME_CDP_ENDPOINT) {
+class ChromeCdpBrowser(private val endpoint: String = Config.CHROME_CDP_ENDPOINT) : CdpBrowser {
 
     private val log = LoggerFactory.getLogger(ChromeCdpBrowser::class.java)
 
@@ -37,7 +37,7 @@ class ChromeCdpBrowser(private val endpoint: String = Config.CHROME_CDP_ENDPOINT
 
     /** True when an endpoint is configured and a live CDP connection is established. */
     @Synchronized
-    fun isAvailable(): Boolean {
+    override fun isAvailable(): Boolean {
         if (endpoint.isBlank()) return false
         ensureConnected()
         return browser?.isConnected == true
@@ -67,7 +67,7 @@ class ChromeCdpBrowser(private val endpoint: String = Config.CHROME_CDP_ENDPOINT
      * Call only when [isAvailable] is true.
      */
     @Synchronized
-    fun pageForDomain(host: String): Page {
+    override fun pageForDomain(host: String): Page {
         val live = browser?.takeIf { it.isConnected }
             ?: error("CDP browser not available — call isAvailable() first")
 
@@ -100,7 +100,7 @@ class ChromeCdpBrowser(private val endpoint: String = Config.CHROME_CDP_ENDPOINT
 
     /** Dispose tracked tabs and disconnect Playwright. Does NOT close the user's Chrome. */
     @Synchronized
-    fun close() {
+    override fun close() {
         pagesByHost.values.forEach { runCatching { it.close() } }
         pagesByHost.clear()
         runCatching { browser?.close() }   // detaches the CDP connection; the user's Chrome stays up
