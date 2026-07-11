@@ -37,6 +37,11 @@ def append(history_file: Path, run_ts, cursor_from, cursor_to, window_jobs, metr
         pass
 
 
+def read_all(history_file: Path):
+    """All recorded run rows, oldest→newest. Public accessor for outcome correlation."""
+    return _read(history_file)
+
+
 def _read(history_file: Path):
     p = Path(history_file)
     if not p.exists():

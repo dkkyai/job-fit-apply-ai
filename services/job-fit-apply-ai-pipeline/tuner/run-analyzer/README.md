@@ -80,8 +80,12 @@ to route to Ollama Cloud (`Bearer $OLLAMA_API_KEY`).
 ## State (gitignored, under `state/`)
 
 - `cursor` — last consumed `completed_seq`.
+- `pending_since` — epoch of the oldest unanalyzed job (accumulate-until-N-or-T gate).
 - `metrics_history.jsonl` — append-only per-run metrics (rolling baseline; Phase 2).
-- `autofix_ledger.jsonl` — fingerprints handled by the autofix loop (Phase 4).
+- `findings_ledger.jsonl` — per-fingerprint finding history for NEW/WORSENING/RESOLVED classification.
+- `autofix_ledger.jsonl` — fingerprints handled by the autofix loop (`pr_open` → `pr_merged`); the
+  analysis pass reads it to check whether a merged fix moved its target metric (auto-retiring resolved
+  findings) and reconciles PR merges via `gh`.
 
 Delete `state/cursor` to re-seed at head (skips history). Findings land in `findings/<run-ts>/`.
 
@@ -96,8 +100,11 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 
 `tests/test_units.py` covers the pure logic (metrics, history/baseline, fingerprint, pending,
 run_log join, audit grounding/triage); `tests/test_findings_ledger.py` the NEW/WORSENING/UNCHANGED
-classifier; `tests/test_integration.py` the cadence-gate decision table and the full `analyze.py`
-flow (delta + ledger + history, cross-run dedup, malformed-model degradation). Also run in CI
+classifier; `tests/test_detectors.py` the deterministic detectors (per-board grouping, share-gating);
+`tests/test_outcomes.py` the finding→fix→outcome loop (merge reconciliation, metric-recovery
+resolved/regressed); `tests/test_integration.py` the cadence-gate decision table and the full
+`analyze.py` flow (delta + ledger + history, cross-run dedup, deterministic-findings-survive-outage,
+malformed-model degradation). Also run in CI
 (`.github/workflows/ci.yml` → `run-analyzer`).
 
 ## External dependencies

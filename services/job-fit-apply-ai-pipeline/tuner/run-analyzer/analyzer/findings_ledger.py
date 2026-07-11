@@ -98,6 +98,31 @@ def _append(path: Path, records):
         pass
 
 
+def load(path: Path):
+    """Latest ledger record per fingerprint (public accessor)."""
+    return _load(path)
+
+
+def mark_resolved(path: Path, fingerprints, run_ts):
+    """Append a `resolved` record for each fingerprint (auto-retire; last line wins).
+
+    Carries the prior entry's fields so the resolved row keeps title/category/etc. If the
+    same issue reappears later, classify() appends a fresh `active` row that supersedes this
+    one (a reopen/regression).
+    """
+    if not fingerprints:
+        return
+    ledger = _load(path)
+    recs = []
+    for fp in fingerprints:
+        e = dict(ledger.get(fp, {"fingerprint": fp}))
+        e["status"] = "resolved"
+        e["resolved_ts"] = run_ts
+        e["last_seen_ts"] = e.get("last_seen_ts", run_ts)
+        recs.append(e)
+    _append(path, recs)
+
+
 def summarize(f):
     """One-line finding summary for a notification."""
     return f"[{f.get('severity', '?')}] {f.get('title', '(untitled)')}"
