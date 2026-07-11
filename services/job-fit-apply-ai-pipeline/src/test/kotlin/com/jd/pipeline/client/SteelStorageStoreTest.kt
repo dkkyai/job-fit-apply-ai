@@ -29,6 +29,37 @@ class SteelStorageStoreTest {
     }
 
     @Test
+    @DisplayName("merge unions cookies (incoming wins) and keeps existing cookies for un-visited domains")
+    fun mergeKeepsUnvisited(@TempDir dir: Path) {
+        val path = dir.resolve("state.json")
+        val store = SteelStorageStore(path)
+        store.save(mapper.readTree(
+            """{"cookies":[
+                {"name":"g","domain":".google.com","path":"/","value":"OLD"},
+                {"name":"li_at","domain":".linkedin.com","path":"/","value":"LI"}
+            ],"localStorage":[],"sessionStorage":[],"indexedDB":[]}"""
+        ))
+        // A batch that only visited google: refreshed google cookie, linkedin absent.
+        store.merge(mapper.readTree(
+            """{"cookies":[{"name":"g","domain":".google.com","path":"/","value":"NEW"}],
+               "localStorage":[],"sessionStorage":[],"indexedDB":[]}"""
+        ))
+        val merged = store.load()!!
+        val byName = merged.get("cookies").associate { it.get("name").asText() to it.get("value").asText() }
+        assertEquals("NEW", byName["g"], "incoming cookie should win on conflict")
+        assertEquals("LI", byName["li_at"], "un-visited linkedin cookie must be kept (no erosion)")
+    }
+
+    @Test
+    @DisplayName("merge on an empty store just saves the incoming context")
+    fun mergeFromEmpty(@TempDir dir: Path) {
+        val path = dir.resolve("state.json")
+        val store = SteelStorageStore(path)
+        store.merge(mapper.readTree("""{"cookies":[{"name":"x","domain":"d","path":"/","value":"1"}]}"""))
+        assertEquals("1", store.load()!!.get("cookies").get(0).get("value").asText())
+    }
+
+    @Test
     @DisplayName("load returns null when the file is absent")
     fun loadMissing(@TempDir dir: Path) {
         assertNull(SteelStorageStore(dir.resolve("nope.json")).load())

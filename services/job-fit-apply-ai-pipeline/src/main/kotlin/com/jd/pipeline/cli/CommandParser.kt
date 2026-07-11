@@ -10,6 +10,8 @@ object CommandParser {
         var testChromeUrl: String? = null
         var testSteel = false
         var testSteelUrl: String? = null
+        var steelSignin = false
+        var steelSigninUrl: String? = null
         var scrapeJdTuner = false
         var scrapeJdTunerFile: String? = null
         var maxIterations = 5
@@ -38,6 +40,13 @@ object CommandParser {
                     testSteel = true
                     if (i + 1 < args.size && !args[i + 1].startsWith("--")) {
                         testSteelUrl = args[i + 1]
+                        i++
+                    }
+                }
+                "--steel-signin" -> {
+                    steelSignin = true
+                    if (i + 1 < args.size && !args[i + 1].startsWith("--")) {
+                        steelSigninUrl = args[i + 1]
                         i++
                     }
                 }
@@ -93,6 +102,7 @@ object CommandParser {
             testSupabase -> Command.TestSupabase
             testChrome -> Command.TestChrome(testChromeUrl)
             testSteel -> Command.TestSteel(testSteelUrl)
+            steelSignin -> Command.SteelSignin(steelSigninUrl)
             scrapeJdTuner -> Command.ScrapeJdTuner(scrapeJdTunerFile, maxIterations)
             resumeGenPath != null -> Command.ResumeGen(resumeGenPath)
             initProfilePath != null -> Command.InitProfile(initProfilePath)
