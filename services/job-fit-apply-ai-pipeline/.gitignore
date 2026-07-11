@@ -38,6 +38,7 @@ state/
 
 # Personal data — populated by `--init-profile`. Templates ship in source.
 config/candidate_profile.yaml
+config/candidate_profile.json
 src/main/resources/resume/resume.yaml
 src/main/resources/resume/generated_resume.html
 src/main/resources/resume/*-generated.html
