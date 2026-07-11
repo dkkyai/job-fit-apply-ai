@@ -2,3 +2,7 @@
 findings/
 state/
 last_metrics.json
+
+# Python bytecode cache (created by running analyze.py / the test suite).
+__pycache__/
+*.pyc
