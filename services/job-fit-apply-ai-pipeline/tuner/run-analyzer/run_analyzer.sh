@@ -17,6 +17,10 @@
 #   JD_BRIDGE_URL          bridge base URL (default http://127.0.0.1:8765)
 #   RUN_ANALYZER_AUTOFIX   set to 1 to arm the --autofix loop (default off)
 #   PROJECT_DIR            pipeline checkout (auto-detected from this script's location)
+#   Cadence gate (analysis only defers small batches; see analyze.py):
+#     RUN_ANALYZER_MIN_BATCH       analyze once >= N new jobs accrue    (default 10)
+#     RUN_ANALYZER_MAX_DEFER_HOURS force a run after T hours waiting    (default 6)
+#     RUN_ANALYZER_CONTEXT_N       rolling context-window size          (default 40)
 #
 set -uo pipefail
 
@@ -51,6 +55,7 @@ export RUN_TS
 export RUN_LOG="$PROJECT_DIR/output/runs/run_log.jsonl"
 export FINDINGS_DIR="$ANALYZER_DIR/findings/$RUN_TS"
 export CURSOR_FILE="$STATE_DIR/cursor"
+export PENDING_FILE="$STATE_DIR/pending_since"
 export METRICS_FILE="$STATE_DIR/last_metrics.json"
 export HISTORY_FILE="$STATE_DIR/metrics_history.jsonl"
 export LEDGER_FILE="$STATE_DIR/autofix_ledger.jsonl"

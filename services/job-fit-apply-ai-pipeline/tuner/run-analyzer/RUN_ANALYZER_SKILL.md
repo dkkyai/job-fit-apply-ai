@@ -8,9 +8,14 @@ analyze what happened, judge whether the pipeline is healthy and producing good 
 
 ## Inputs you are given
 
-1. **`RUN_REPORT`** — the per-job records for this cursor window, one JSON object per line.
-   The **bridge completed-event feed** is the spine (it defines which jobs are in the window);
-   `output/runs/run_log.jsonl` enriches each record. Fields:
+You are given **two** windows: a small **RUN_REPORT** (the new jobs to focus findings on) and a
+larger **CONTEXT_WINDOW** (recent jobs for computing rates/patterns/regressions). Anchor findings on
+RUN_REPORT; use CONTEXT_WINDOW only as backdrop — do **not** re-report issues that are entirely in the
+context/older jobs.
+
+1. **`RUN_REPORT`** — the **new** per-job records this batch (completed since the last analysis), one
+   JSON object per line. The **bridge completed-event feed** is the spine; `output/runs/run_log.jsonl`
+   enriches each record. Fields:
    - `jobId`, `completed_seq`, `company`, `roleTitle`, `status` (done/error), `terminal_label`
    - `source` (EMAIL/API/…), `board` (e.g. `glassdoor.com`, `linkedin.com`)
    - `isDigest`, `isRecruiter`, `isDuplicate`
@@ -20,11 +25,17 @@ analyze what happened, judge whether the pipeline is healthy and producing good 
    - `hasJobUrl`, `job_url`, `artifact_url`, `outputPath`, `durationMs`
    - `run_log_missing` — true when the bridge saw the job terminal but the processor wrote no
      run_log record for it (the enrichment fields will be empty; a possible finding on its own).
-2. **`PRIOR_METRICS`** — aggregates for the previous run(s) / a rolling baseline, for
-   regression comparison (may be absent on the first run).
-3. **`PROCESSOR_LOG_TAIL`** — the tail of the `jobfit-processor` container log. Use it only to
+2. **`CONTEXT_WINDOW`** — the last N completed jobs (same fields), overlapping older runs. Use it to
+   judge **rates and per-board patterns** ("6 of the last 40 glassdoor digests are thin") and whether a
+   RUN_REPORT job is part of a broader trend — not as new findings on its own.
+3. **`THIS_BATCH_METRICS`** / **`RECENT_CONTEXT_METRICS`** — pre-computed aggregates over RUN_REPORT and
+   CONTEXT_WINDOW respectively. A small batch has noisy per-batch metrics; prefer the context metrics
+   for rate/regression judgement.
+4. **`PRIOR_METRICS`** / **`ROLLING_BASELINE`** — previous run's aggregates and the median over recent
+   runs, for regression comparison (may be absent on the first runs).
+5. **`PROCESSOR_LOG_TAIL`** — the tail of the `jobfit-processor` container log. Use it only to
    root-cause specific flagged jobs; do not analyze it line-by-line.
-4. On request you may be pointed at a specific job's `outputPath` (`score_fit.txt`,
+6. On request you may be pointed at a specific job's `outputPath` (`score_fit.txt`,
    `job_description.txt`, `metadata.json`) to judge scoring quality.
 
 ## What to look for
