@@ -85,6 +85,21 @@ to route to Ollama Cloud (`Bearer $OLLAMA_API_KEY`).
 
 Delete `state/cursor` to re-seed at head (skips history). Findings land in `findings/<run-ts>/`.
 
+## Tests
+
+Stdlib `unittest`, no third-party deps, hermetic (a fake bridge + stubbed model — no network,
+LLM, or live services). Run from this directory:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+`tests/test_units.py` covers the pure logic (metrics, history/baseline, fingerprint, pending,
+run_log join, audit grounding/triage); `tests/test_findings_ledger.py` the NEW/WORSENING/UNCHANGED
+classifier; `tests/test_integration.py` the cadence-gate decision table and the full `analyze.py`
+flow (delta + ledger + history, cross-run dedup, malformed-model degradation). Also run in CI
+(`.github/workflows/ci.yml` → `run-analyzer`).
+
 ## External dependencies
 
 Running `jd-bridge` (`:8765`), `jobfit-processor` + `jobfit-db` containers; the LLM endpoint
