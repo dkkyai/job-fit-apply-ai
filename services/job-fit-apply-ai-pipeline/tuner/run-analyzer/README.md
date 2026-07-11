@@ -137,3 +137,31 @@ job and the daily gated `--autofix` job. A shared single-instance lock
 (`/tmp/jd-run-analyzer.lock`) guarantees they never overlap (the autofix git ops must not race
 the analysis run). The findings task files can be reviewed directly, fed to a coding session
 via each file's "Agent prompt" section, or applied by the `--autofix` loop.
+
+## Operational checks (what a healthy run looks like)
+
+Logs: `/tmp/jd-run-analyzer.{out,err}.log`. On a tick you'll see either `defer …` /
+`no new completed jobs` (cheap, no model call) or a real `analysis mode` → `health=… batch=N
+context=40 … findings=X new=Y worsening=Z resolved=… regressed=…` line at exit 0. To watch the
+first **non-deferred** run, look for:
+
+1. **It actually analyzed** — a `batch=N` line (N ≥ `MIN_BATCH`, or a `defer` that later flips
+   after `MAX_DEFER_HOURS`), not perpetual `defer`.
+2. **Model call succeeded** — `.err.log` has no `CERTIFICATE_VERIFY_FAILED`. If `health=unknown`
+   with "model unavailable", the cloud call is failing (check the CA bundle / `SSL_CERT_FILE`);
+   deterministic findings should still be written (exit 1).
+3. **`run-log-missing` finding** — if it fires, the processor is genuinely skipping
+   `run_log.jsonl` for a real share of terminal jobs (a live observability gap worth fixing;
+   also blinds the audit's `jdTextLen`/`outputPath`). A few stragglers stay below the threshold.
+4. **Audit coverage** — the `[audit] candidates=N audited=M` line; `audited=0` usually means the
+   per-job output dirs / tracks weren't readable (often tied to run-log-missing).
+5. **Notification** — with `DISCORD_*`/`TELEGRAM_*` set, a first non-deferred run pings once
+   (everything is NEW). No ping ⇒ blank creds or nothing new/worsening.
+6. **Trend warms up** — `state/metrics_history.jsonl` grows one line per non-empty run; the
+   rolling baseline (and regression judgement) only becomes meaningful after several runs.
+7. **Autofix stays off** — no analyzer PRs appear until you arm it (uncomment the autofix plist's
+   `EnvironmentVariables`); dry-run first: `RUN_ANALYZER_AUTOFIX=1 RUN_ANALYZER_AUTOFIX_DRYRUN=1
+   run_analyzer.sh --autofix`.
+
+Findings land in `findings/<run-ts>/` as task files (each with an `agent_prompt`). If a bridge/DB
+schema ever changes, run the suite on the host — `tests/test_contract.py` will flag drift.
