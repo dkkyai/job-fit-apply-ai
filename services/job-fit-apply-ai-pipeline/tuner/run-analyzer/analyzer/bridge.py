@@ -40,6 +40,16 @@ class BridgeClient:
         raw = self._get(f"/api/jobs/completed?{q}")
         return json.loads(raw)
 
+    def fetch_last(self, n: int):
+        """The last ~n completed jobs (rolling context window), independent of any cursor.
+
+        Uses `since=max(0, head-n)`; because completed_seq is strictly-increasing-but-sparse,
+        this is an approximate lower bound (may return fewer than n with gaps). Does NOT touch
+        the cursor — this is read-only context, not consumption.
+        """
+        head = self.head_seq()
+        return self.fetch_completed(max(0, head - int(n)), limit=int(n))
+
     def drain(self, since: int, on_page=None, page_size: int = MAX_LIMIT):
         """Page from `since` to head. Returns (records, last_seq).
 
