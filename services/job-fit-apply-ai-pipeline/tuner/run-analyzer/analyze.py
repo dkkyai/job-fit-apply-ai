@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from analyzer import audit, detectors, findings_ledger, history, notify
+from analyzer import audit, detectors, findings_ledger, history, notify, outcomes
 from analyzer.bridge import BridgeClient
 from analyzer.cursor import Cursor
 from analyzer.findings import fingerprint, write_findings
@@ -39,7 +39,9 @@ PENDING_FILE = Path(ENV.get("PENDING_FILE", "state/pending_since"))
 METRICS_FILE = Path(ENV.get("METRICS_FILE", "state/last_metrics.json"))
 HISTORY_FILE = Path(ENV.get("HISTORY_FILE", "state/metrics_history.jsonl"))
 FINDINGS_LEDGER_FILE = Path(ENV.get("FINDINGS_LEDGER_FILE", "state/findings_ledger.jsonl"))
+AUTOFIX_LEDGER_FILE = Path(ENV.get("LEDGER_FILE", "state/autofix_ledger.jsonl"))
 BASELINE_WINDOW = int(ENV.get("RUN_ANALYZER_BASELINE_WINDOW", "10"))
+RESOLVE_RUNS = int(ENV.get("RUN_ANALYZER_RESOLVE_RUNS", "3"))
 SKILL = Path(ENV["SKILL_FILE"]).read_text()
 PROMPT = Path(ENV["PROMPT_FILE"]).read_text()
 MODEL = ENV.get("MODEL", "Qwen3.5-9B-OptiQ-4bit")
@@ -196,21 +198,37 @@ def main():
 
     # Phase C: classify findings vs the ledger and surface only what CHANGED.
     delta = findings_ledger.classify(findings, FINDINGS_LEDGER_FILE, RUN_TS)
+
+    # Phase D: close the loop — did a merged autofix actually move its target metric?
+    resolved, regressed = [], []
+    try:
+        outcomes.reconcile_merges(AUTOFIX_LEDGER_FILE)
+        oc = outcomes.check_outcomes(
+            findings_ledger.load(FINDINGS_LEDGER_FILE), AUTOFIX_LEDGER_FILE,
+            HISTORY_FILE, k=RESOLVE_RUNS)
+        resolved, regressed = oc["resolved"], oc["regressed"]
+        if resolved:
+            findings_ledger.mark_resolved(FINDINGS_LEDGER_FILE, resolved, RUN_TS)
+    except Exception as e:  # noqa: BLE001 — outcome tracking must never sink the run
+        print(f"[analyze] outcome check failed (non-fatal): {e}", file=sys.stderr)
+
     analysis["delta"] = {
         "new": [f["fingerprint"] for f in delta["new"]],
         "worsening": [f["fingerprint"] for f in delta["worsening"]],
         "unchanged": len(delta["unchanged"]),
-        "resolved": [],  # populated in Phase D
+        "resolved": resolved,
+        "regressed": regressed,
     }
     # Re-persist analysis.json now that the delta block is attached.
     (FINDINGS_DIR / "analysis.json").write_text(json.dumps(analysis, indent=2))
-    _notify_delta(delta, analysis)
+    _notify_delta(delta, analysis, resolved, regressed)
 
     print(f"[analyze] health={analysis.get('health')} "
           f"batch={metrics['jobs']} context={len(context)} errors={metrics['errors']} "
           f"zero_score={metrics['zero_score']} thin_digest={metrics['thin_digest']} "
           f"seq={since}->{last_seq} findings={len(findings)} "
-          f"new={len(delta['new'])} worsening={len(delta['worsening'])} unchanged={len(delta['unchanged'])}")
+          f"new={len(delta['new'])} worsening={len(delta['worsening'])} unchanged={len(delta['unchanged'])} "
+          f"resolved={len(resolved)} regressed={len(regressed)}")
     print(f"[analyze] {analysis.get('summary', '')}")
     for f in findings:
         print(f"  - [{f.get('severity')}] {f.get('title')}")
@@ -230,10 +248,12 @@ def _merge_findings(*groups):
     return out
 
 
-def _notify_delta(delta, analysis):
-    """Ping Discord/Telegram for NEW/WORSENING findings only (no-op when creds blank)."""
+def _notify_delta(delta, analysis, resolved=None, regressed=None):
+    """Ping Discord/Telegram for what CHANGED — new/worsening/regressed/resolved (no-op when
+    creds blank). Steady-state (only UNCHANGED findings) stays silent."""
+    resolved, regressed = resolved or [], regressed or []
     new, worse = delta["new"], delta["worsening"]
-    if not new and not worse:
+    if not (new or worse or regressed or resolved):
         return
     lines = []
     if new:
@@ -242,8 +262,12 @@ def _notify_delta(delta, analysis):
     if worse:
         lines.append(f"📈 {len(worse)} worsening:")
         lines += [f"  • {findings_ledger.summarize(f)}" for f in worse]
+    if regressed:
+        lines.append(f"⚠️ {len(regressed)} fixed-but-not-improved (metric didn't move after merge)")
+    if resolved:
+        lines.append(f"✅ {len(resolved)} resolved (metric recovered after a merged fix)")
     title = (f"run-analyzer [{analysis.get('health', '?')}]: "
-             f"{len(new)} new, {len(worse)} worsening")
+             f"{len(new)} new, {len(worse)} worsening, {len(resolved)} resolved")
     try:
         notify.send(title, "\n".join(lines))
     except Exception as e:  # noqa: BLE001 — notification must never sink the run

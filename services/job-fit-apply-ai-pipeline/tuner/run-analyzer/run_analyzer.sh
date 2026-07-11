@@ -21,6 +21,7 @@
 #     RUN_ANALYZER_MIN_BATCH       analyze once >= N new jobs accrue    (default 10)
 #     RUN_ANALYZER_MAX_DEFER_HOURS force a run after T hours waiting    (default 6)
 #     RUN_ANALYZER_CONTEXT_N       rolling context-window size          (default 40)
+#     RUN_ANALYZER_RESOLVE_RUNS    runs each side of a merge to judge outcome (default 3)
 #
 set -uo pipefail
 
