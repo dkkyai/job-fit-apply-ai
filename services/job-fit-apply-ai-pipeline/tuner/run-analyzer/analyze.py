@@ -20,10 +20,10 @@ import sys
 import time
 from pathlib import Path
 
-from analyzer import audit, findings_ledger, history, notify
+from analyzer import audit, detectors, findings_ledger, history, notify
 from analyzer.bridge import BridgeClient
 from analyzer.cursor import Cursor
-from analyzer.findings import write_findings
+from analyzer.findings import fingerprint, write_findings
 from analyzer.llm import call_model
 from analyzer.metrics import compute_metrics
 from analyzer.pending import Pending
@@ -105,9 +105,14 @@ def assemble_window():
     return "analyze", report, since, last_seq, context
 
 
-def build_user_prompt(metrics, ctx_metrics, prior, base, recs, context):
+def build_user_prompt(metrics, ctx_metrics, prior, base, recs, context, det_findings):
+    det = json.dumps([{"id": f["id"], "title": f["title"], "severity": f["severity"],
+                       "category": f["category"]} for f in det_findings])
     return (
         f"{PROMPT}\n\n"
+        f"DETERMINISTIC_FINDINGS (already detected by rules and INCLUDED in the output — do NOT "
+        f"re-report these; only add NET-NEW issues the rules missed, and root-cause/label as needed):"
+        f"\n{det}\n\n"
         f"THIS_BATCH_METRICS (the new jobs analyzed this run — pre-computed, verify/refine):\n{json.dumps(metrics)}\n\n"
         f"RECENT_CONTEXT_METRICS (over the last {len(context)} completed jobs — use these for "
         f"rates, per-board patterns, and regression judgement; the batch may be small):\n{json.dumps(ctx_metrics)}\n\n"
@@ -143,21 +148,27 @@ def main():
             prior = {}
     base = history.baseline(HISTORY_FILE, window=BASELINE_WINDOW)
 
-    user = build_user_prompt(metrics, ctx_metrics, prior, base, recs, context)
+    # Deterministic detectors (Phase B): rule findings for the unambiguous problem classes,
+    # computed with no LLM so they survive a model outage and don't cost tokens.
+    try:
+        det_findings = detectors.detect(recs, metrics, base)
+    except Exception as e:  # noqa: BLE001
+        print(f"[analyze] detectors failed (non-fatal): {e}", file=sys.stderr)
+        det_findings = []
 
+    user = build_user_prompt(metrics, ctx_metrics, prior, base, recs, context, det_findings)
+
+    model_ok = True
     try:
         raw = call_model(SKILL, user, model=MODEL)
         analysis = json.loads(raw)
         if not isinstance(analysis, dict):  # weak models sometimes return a bare list/scalar
             raise ValueError(f"model returned {type(analysis).__name__}, expected object")
-    except Exception as e:  # noqa: BLE001 — never crash the scheduled job
+    except Exception as e:  # noqa: BLE001 — never crash; keep the deterministic findings
         print(f"[analyze] model call/parse failed: {e}", file=sys.stderr)
-        FINDINGS_DIR.mkdir(parents=True, exist_ok=True)
-        (FINDINGS_DIR / "analysis.json").write_text(json.dumps(
-            {"health": "unknown", "summary": f"Analyzer model failed: {e}",
-             "metrics": metrics, "regressions": [], "findings": []}, indent=2))
-        _save_metrics(metrics)
-        return 1
+        analysis = {"health": "unknown", "summary": f"Analyzer model unavailable: {e}",
+                    "regressions": [], "findings": []}
+        model_ok = False
 
     analysis.setdefault("metrics", metrics)
     analysis["cursor"] = {"from": since, "to": last_seq, "window_jobs": len(recs)}
@@ -165,16 +176,18 @@ def main():
     analysis["context_jobs"] = len(context)
     analysis["baseline"] = base
 
-    # Deep scoring audit (Phase 3): verify a triaged subset of scores against JD evidence and
-    # merge any resulting findings. Best-effort — never sink the run.
+    # Deep scoring audit (Phase 3): verify a triaged subset of scores against JD evidence.
+    audit_findings = []
     try:
         audit_findings, verdicts = audit.run_audit(recs, MODEL)
-        if audit_findings:
-            analysis.setdefault("findings", []).extend(audit_findings)
         if verdicts:
             analysis["scoring_audit"] = verdicts
     except Exception as e:  # noqa: BLE001
         print(f"[analyze] scoring audit failed (non-fatal): {e}", file=sys.stderr)
+
+    # Merge findings, deterministic first (authoritative), deduped by fingerprint.
+    analysis["findings"] = _merge_findings(
+        det_findings, analysis.get("findings", []) or [], audit_findings)
 
     findings = write_findings(analysis, FINDINGS_DIR, RUN_TS)
     _save_metrics(analysis.get("metrics", metrics))
@@ -201,7 +214,20 @@ def main():
     print(f"[analyze] {analysis.get('summary', '')}")
     for f in findings:
         print(f"  - [{f.get('severity')}] {f.get('title')}")
-    return 0
+    return 0 if model_ok else 1
+
+
+def _merge_findings(*groups):
+    """Concatenate finding groups (deterministic first = authoritative), dedup by fingerprint."""
+    seen, out = set(), []
+    for group in groups:
+        for f in group:
+            fp = f.get("fingerprint") or fingerprint(f)
+            if fp in seen:
+                continue
+            seen.add(fp)
+            out.append(f)
+    return out
 
 
 def _notify_delta(delta, analysis):

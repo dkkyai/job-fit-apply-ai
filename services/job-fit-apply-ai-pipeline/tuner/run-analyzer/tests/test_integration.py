@@ -159,6 +159,17 @@ class MainFlowTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertEqual(analysis["health"], "unknown")     # fallback, no crash
 
+    def test_deterministic_findings_survive_model_outage(self):
+        def boom(*a, **k):
+            raise RuntimeError("model down")
+        analyze.call_model = boom
+        rc, analysis = self._run("outage")
+        self.assertEqual(rc, 1)                              # model unavailable
+        self.assertEqual(analysis["health"], "unknown")
+        # run_log is empty in tests -> every job flags run_log_missing -> a rule finding fires
+        # with no LLM involved.
+        self.assertIn("run-log-missing", [f["id"] for f in analysis["findings"]])
+
 
 if __name__ == "__main__":
     unittest.main()
