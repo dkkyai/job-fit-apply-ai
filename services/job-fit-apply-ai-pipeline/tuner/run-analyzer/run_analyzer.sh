@@ -27,6 +27,16 @@ set -uo pipefail
 # env-agnostic (no per-plist PATH injection needed).
 export PATH="/usr/local/bin:/opt/homebrew/bin:$HOME/.local/bin:$HOME/homebrew/bin:$PATH"
 
+# A Homebrew python3 (now first on PATH) ships no CA bundle, so HTTPS to the cloud model
+# fails under launchd with CERTIFICATE_VERIFY_FAILED. Point OpenSSL at a system CA bundle
+# if the environment hasn't already set one. Interpreter-agnostic.
+if [ -z "${SSL_CERT_FILE:-}" ]; then
+    for _ca in /etc/ssl/cert.pem /private/etc/ssl/cert.pem /usr/local/etc/openssl@3/cert.pem \
+               "$HOME/homebrew/etc/openssl@3/cert.pem" /opt/homebrew/etc/openssl@3/cert.pem; do
+        [ -f "$_ca" ] && { export SSL_CERT_FILE="$_ca"; break; }
+    done
+fi
+
 MODE="analyze"
 [ "${1:-}" = "--autofix" ] && MODE="autofix"
 
