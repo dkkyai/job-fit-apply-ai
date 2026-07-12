@@ -154,9 +154,15 @@ def _tailor_after_error(recs):
 
 # ── scoring ─────────────────────────────────────────────────────────────────────────
 def _rich_jd_scored_zero(recs):
+    # Only jobs whose JD was ACTUALLY fetched (scrapePath http/cdp_*) count as "rich". A digest
+    # child whose scrape failed falls back to the email snippet with an empty scrapePath — that
+    # text can clear RICH_JD_CHARS yet isn't a real JD, so scoring it 0 is correct, not a bug.
+    # Requiring a scrapePath keeps this from firing "scoring bug → ScoreFitNode" every time the
+    # browser backend (Steel/CDP) is down — that's an infra fault, caught by other detectors.
     hit = [r for r in recs
            if (r.get("score", 0) or 0) == 0 and not r.get("isDuplicate")
-           and (r.get("jdTextLen", 0) or 0) >= RICH_JD_CHARS]
+           and (r.get("jdTextLen", 0) or 0) >= RICH_JD_CHARS
+           and (r.get("scrapePath") or "").strip()]
     if not hit:
         return []
     return [{

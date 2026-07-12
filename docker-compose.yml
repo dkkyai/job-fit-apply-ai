@@ -170,13 +170,21 @@ services:
       # Defaults to loopback (safe): the Steel UI has NO auth, so never bind it to 0.0.0.0.
       - "${STEEL_BIND_ADDR:-127.0.0.1}:3000:3000"
     healthcheck:
-      # Node (guaranteed present in the image) — /v1/sessions returns 200 once the API is serving.
-      # start_period covers dbus + Xvfb + first Chrome launch.
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/v1/sessions',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 40s
+      # Probe REAL session creation (POST /v1/sessions), not just GET /v1/sessions. Steel reuses one
+      # long-lived Chrome; when its primary page dies, createSession fails HTTP 500 ("Failed to
+      # refresh primary page when reusing browser instance") while GET /v1/sessions + /v1/health keep
+      # returning 200 — a wedged-but-"healthy" container that silently drops every scrape to the email
+      # snippet. Only createSession detects that. The probe releases its session so it doesn't leak;
+      # the 20s session timeout self-expires it even if release fails. Marking the container unhealthy
+      # here makes the wedge visible in `docker ps` and gives steel-watchdog.sh a status to key on
+      # (Docker's restart: unless-stopped will NOT restart an unhealthy container — the watchdog does).
+      # interval 60s (createSession is heavier than a GET → gentler on the single browser); retries 3
+      # so a transient blip / race with a real scrape doesn't flap it — ~3 min of failures = unhealthy.
+      test: ["CMD", "node", "-e", "const http=require('http');function req(m,p,b){return new Promise((res,rej)=>{const d=b?JSON.stringify(b):null;const r=http.request({host:'localhost',port:3000,path:p,method:m,headers:{'Content-Type':'application/json'},timeout:20000},x=>{let s='';x.on('data',c=>s+=c);x.on('end',()=>res({status:x.statusCode,body:s}))});r.on('error',rej);r.on('timeout',()=>{r.destroy();rej(new Error('t'))});if(d)r.write(d);r.end()})}(async()=>{try{const s=await req('POST','/v1/sessions',{timeout:20000});if(s.status!==200)process.exit(1);const id=JSON.parse(s.body).id;if(id){try{await req('POST','/v1/sessions/'+id+'/release')}catch(e){}}process.exit(0)}catch(e){process.exit(1)}})()"]
+      interval: 60s
+      timeout: 25s
+      retries: 3
+      start_period: 45s
 
   processor:
     build: ./services/job-fit-apply-ai-pipeline
