@@ -124,6 +124,90 @@ class CommandParserTest {
         assertEquals(Command.SignedIn, parse("--processor", "--signed-in"))
     }
 
+    // ── test-chrome / test-steel / steel-signin ─────────────────────────────
+
+    @Test
+    fun testChromeFlagWithoutUrl() {
+        val cmd = parse("--test-chrome")
+        assertTrue(cmd is Command.TestChrome)
+        assertNull(cmd.url)
+    }
+
+    @Test
+    fun testChromeFlagWithUrl() {
+        val cmd = parse("--test-chrome", "https://example.com/job")
+        assertTrue(cmd is Command.TestChrome)
+        assertEquals("https://example.com/job", cmd.url)
+    }
+
+    @Test
+    fun testChromeFlagDoesNotConsumeFollowingFlag() {
+        val cmd = parse("--test-chrome", "--signed-in")
+        assertTrue(cmd is Command.TestChrome)
+        assertNull(cmd.url)
+    }
+
+    @Test
+    fun testSteelFlagWithoutUrl() {
+        val cmd = parse("--test-steel")
+        assertTrue(cmd is Command.TestSteel)
+        assertNull(cmd.url)
+    }
+
+    @Test
+    fun testSteelFlagWithUrl() {
+        val cmd = parse("--test-steel", "https://example.com/job")
+        assertTrue(cmd is Command.TestSteel)
+        assertEquals("https://example.com/job", cmd.url)
+    }
+
+    @Test
+    fun steelSigninFlagWithoutUrl() {
+        val cmd = parse("--steel-signin")
+        assertTrue(cmd is Command.SteelSignin)
+        assertNull(cmd.url)
+    }
+
+    @Test
+    fun steelSigninFlagWithUrl() {
+        val cmd = parse("--steel-signin", "https://example.com/login")
+        assertTrue(cmd is Command.SteelSignin)
+        assertEquals("https://example.com/login", cmd.url)
+    }
+
+    // ── health ───────────────────────────────────────────────────────────────
+
+    @Test
+    fun healthFlag() = assertEquals(Command.Health, parse("--health"))
+
+    @Test
+    fun healthWinsOverEveryOtherFlag() {
+        // health is checked first in the final when block.
+        assertEquals(Command.Health, parse("--test", "--processor", "--health"))
+    }
+
+    // ── numeric parsing edge cases ───────────────────────────────────────────
+
+    @Test
+    fun maxIterationsInvalidNumberDefaultsToFive() {
+        val cmd = parse("--scrapetuner", "--max-iterations", "notanumber")
+        assertTrue(cmd is Command.ScrapeJdTuner)
+        assertEquals(5, cmd.maxIterations)
+    }
+
+    @Test
+    fun maxIterationsBelowOneIsCoercedToOne() {
+        val cmd = parse("--scrapetuner", "--max-iterations", "0")
+        assertTrue(cmd is Command.ScrapeJdTuner)
+        assertEquals(1, cmd.maxIterations)
+    }
+
+    @Test
+    fun notifyTimeoutInvalidNumberFallsThroughToUsage() {
+        // toIntOrNull() yields null, so notifyTimeoutMinutes stays null and the flag has no effect.
+        assertEquals(Command.Usage, parse("--notify-timeout", "notanumber"))
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private fun parse(vararg args: String): Command = CommandParser.parse(args.toList().toTypedArray())

@@ -63,4 +63,35 @@ class PageCaptureApiTest {
         val res = submitPage(client, "https://acme.example/job/short", text = "too short")
         assertEquals(HttpStatusCode.UnprocessableEntity, res.status)
     }
+
+    @Test
+    fun `page submit dedups by an explicit idempotency_key even with different urls`() = testApplication {
+        application { configureApplication() }
+        val first = client.post("/api/pages") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"url":"https://acme.example/job/a","idempotency_key":"shared-page-key","text":"${"x".repeat(300)}"}""")
+        }
+        assertEquals(HttpStatusCode.Accepted, first.status)
+
+        val second = client.post("/api/pages") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"url":"https://acme.example/job/b","idempotency_key":"shared-page-key","text":"${"x".repeat(300)}"}""")
+        }
+        assertEquals(HttpStatusCode.OK, second.status)
+        val secondBody = json.parseToJsonElement(second.bodyAsText()).jsonObject
+        assertTrue(secondBody["deduped"]!!.jsonPrimitive.boolean)
+
+        val firstBody = json.parseToJsonElement(first.bodyAsText()).jsonObject
+        assertEquals(firstBody["job_id"]!!.jsonPrimitive.content, secondBody["job_id"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `POST pages with a blank title still enqueues (log falls back to the url)`() = testApplication {
+        application { configureApplication() }
+        val res = client.post("/api/pages") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"url":"https://acme.example/job/blank-title","title":"","text":"${"x".repeat(300)}"}""")
+        }
+        assertEquals(HttpStatusCode.Accepted, res.status)
+    }
 }

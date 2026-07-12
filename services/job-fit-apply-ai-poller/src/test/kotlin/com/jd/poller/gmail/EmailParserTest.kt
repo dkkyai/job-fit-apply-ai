@@ -97,4 +97,76 @@ class EmailParserTest {
         assertContains(parsed.partSummary, "text/plain")
         assertContains(parsed.partSummary, "text/html")
     }
+
+    @Test
+    @DisplayName("part summary includes the filename when present")
+    fun partSummaryIncludesFilename() {
+        val attachment = MessagePart().setMimeType("application/pdf").setFilename("resume.pdf")
+        val payload = part("multipart/mixed", parts = listOf(attachment))
+        val parsed = EmailParser.parse(message(payload))
+        assertContains(parsed.partSummary, "filename=resume.pdf")
+    }
+
+    @Test
+    @DisplayName("text/plain with a missing body decodes to empty, not a crash")
+    fun textPlainWithNullBodyIsEmpty() {
+        val payload = MessagePart().setMimeType("text/plain")   // no body set at all
+        val parsed = EmailParser.parse(message(payload))
+        assertEquals("", parsed.plainText)
+    }
+
+    @Test
+    @DisplayName("text/html with a missing body decodes to empty, not a crash")
+    fun textHtmlWithNullBodyIsEmpty() {
+        val payload = MessagePart().setMimeType("text/html")   // no body set at all
+        val parsed = EmailParser.parse(message(payload))
+        assertEquals("", parsed.plainText)
+    }
+
+    @Test
+    @DisplayName("multipart with null parts decodes to empty")
+    fun multipartWithNullPartsIsEmpty() {
+        val payload = MessagePart().setMimeType("multipart/mixed")   // parts left null
+        val parsed = EmailParser.parse(message(payload))
+        assertEquals("", parsed.plainText)
+    }
+
+    @Test
+    @DisplayName("multipart with no text/plain part falls back to the first part with a non-empty body")
+    fun multipartFallsBackWhenNoPlainTextPart() {
+        val payload = part(
+            "multipart/mixed",
+            parts = listOf(
+                part("text/html", ""),                       // present but empty -> skipped by fallback loop
+                part("text/html", "<p>fallback content</p>"), // first non-empty -> wins
+            ),
+        )
+        val parsed = EmailParser.parse(message(payload))
+        assertContains(parsed.plainText, "fallback content")
+    }
+
+    @Test
+    @DisplayName("multipart/alternative skips an empty text/plain part in favor of a later non-empty one")
+    fun multipartSkipsEmptyPlainTextPart() {
+        val payload = part(
+            "multipart/alternative",
+            parts = listOf(
+                part("text/plain", ""),                 // empty -> loop continues past it
+                part("text/plain", "real content here"),
+            ),
+        )
+        val parsed = EmailParser.parse(message(payload))
+        assertEquals("real content here", parsed.plainText)
+    }
+
+    @Test
+    @DisplayName("collectHtmlBodies skips a text/html part with no body data")
+    fun collectHtmlBodiesSkipsMissingData() {
+        val payload = part(
+            "multipart/mixed",
+            parts = listOf(MessagePart().setMimeType("text/html")),   // no body at all
+        )
+        val parsed = EmailParser.parse(message(payload))
+        assertTrue(parsed.htmlBodies.isEmpty())
+    }
 }

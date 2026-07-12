@@ -481,4 +481,36 @@ class JobFormatterTest {
             assertTrue(lines[5].contains("SkippedJob"), "Skipped job should be last")
         }
     }
+
+    @Nested
+    @DisplayName("truncateUrl (via formatJobLine)")
+    inner class TruncateUrlTests {
+
+        @Test
+        @DisplayName("a URL longer than the column width is truncated with an ellipsis")
+        fun truncatesLongUrl() {
+            val longUrl = "https://example.com/" + "a".repeat(100) + "/report.md"
+            val job = createMockJob("Acme", "Engineer", 80.0f, longUrl)
+            // artifact width well below the URL length forces truncation
+            val widths = ColumnWidths(company = 10, title = 20, fit = 8, artifact = 40)
+
+            val line = JobFormatter.formatJobLine(job, widths)
+
+            assertTrue(line.contains("…"), "long URL should be truncated with an ellipsis")
+            assertTrue(!line.contains(longUrl), "the full untruncated URL should not appear")
+        }
+
+        @Test
+        @DisplayName("a URL within the column width is left untouched")
+        fun leavesShortUrlUntouched() {
+            val shortUrl = "https://example.com/job"
+            val job = createMockJob("Acme", "Engineer", 80.0f, shortUrl)
+            val widths = ColumnWidths(company = 10, title = 20, fit = 8, artifact = 60)
+
+            val line = JobFormatter.formatJobLine(job, widths)
+
+            assertTrue(line.contains(shortUrl))
+            assertTrue(!line.contains("…"))
+        }
+    }
 }
