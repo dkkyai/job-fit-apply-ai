@@ -114,6 +114,17 @@ class StoreWritebackTest {
     }
 
     @Test
+    fun `artifacts set before completion surface in the completed feed`() = runTest {
+        val id = enqueue("{}", null, "art1")
+        setArtifacts(id, ArtifactUrls(resume_pdf = "/api/jobs/$id/resume.pdf", cover_letter_txt = "/api/jobs/$id/cover_letter.txt"))
+        completeSkip(id)
+
+        val job = completedJobs(0).single { it.job_id == id }
+        assertEquals("/api/jobs/$id/resume.pdf", job.artifacts?.resume_pdf)
+        assertEquals("/api/jobs/$id/cover_letter.txt", job.artifacts?.cover_letter_txt)
+    }
+
+    @Test
     fun `result job_url overrides a null enqueue value (EMAIL_RAW scraped later)`() = runTest {
         val id = enqueue("{}", null, "ev2", type = WorkItemType.EMAIL_RAW, messageId = "m9")  // job_url null at enqueue
         recordResult(id, ResultRequest(
