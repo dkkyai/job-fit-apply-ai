@@ -88,6 +88,40 @@ class WriteBackApiTest {
     }
 
     @Test
+    fun `email submit dedups by an explicit idempotency_key even with different message-ids`() = testApplication {
+        application { configureApplication() }
+        val first = client.post("/api/emails") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"message_id":"m-first","idempotency_key":"shared-key","subject":"x","body":"${"x".repeat(60)}"}""")
+        }
+        assertEquals(HttpStatusCode.Accepted, first.status)
+
+        val second = client.post("/api/emails") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"message_id":"m-second","idempotency_key":"shared-key","subject":"x","body":"${"x".repeat(60)}"}""")
+        }
+        assertEquals(HttpStatusCode.OK, second.status)
+        val secondBody = json.parseToJsonElement(second.bodyAsText()).jsonObject
+        assertTrue(secondBody["deduped"]!!.jsonPrimitive.boolean)
+
+        val firstBody = json.parseToJsonElement(first.bodyAsText()).jsonObject
+        assertEquals(firstBody["job_id"]!!.jsonPrimitive.content, secondBody["job_id"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `claim with corrupt stored jd_json returns 500 with a Corrupt jd_json detail`() = testApplication {
+        application { configureApplication() }
+        // enqueue() stores jd_json verbatim — write something that isn't valid JSON at all,
+        // so the claim route's runCatching around Json.parseToJsonElement fails.
+        enqueue(jdJson = "{not valid json", jobUrl = null, idempotencyKey = "corrupt-1")
+
+        val res = client.get("/api/queue/claim")
+        assertEquals(HttpStatusCode.InternalServerError, res.status)
+        val body = json.parseToJsonElement(res.bodyAsText()).jsonObject
+        assertTrue(body["detail"]!!.jsonPrimitive.content.startsWith("Corrupt jd_json"))
+    }
+
+    @Test
     fun `writeback-done on an unknown job returns 404`() = testApplication {
         application { configureApplication() }
         assertEquals(
@@ -185,6 +219,47 @@ class WriteBackApiTest {
         assertEquals(HttpStatusCode.OK, client.post("/api/jobs/$jobId/writeback-done").status)
         val after = json.parseToJsonElement(client.get("/api/jobs/completed").bodyAsText()).jsonArray
         assertTrue(after.isEmpty())
+    }
+
+    @Test
+    fun `completed feed clamps an out-of-range limit query param`() = testApplication {
+        application { configureApplication() }
+        submitEmail(client, "msg-limit")
+        val jobId = json.parseToJsonElement(client.get("/api/queue/claim").bodyAsText())
+            .jsonObject["job_id"]!!.jsonPrimitive.content
+        client.post("/api/jobs/$jobId/result") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"pipeline_action":"skip","fit_score":0,"message_id":"msg-limit"}""")
+        }
+
+        // limit above the 200 ceiling is coerced down, but the single completed job still appears.
+        val tooHigh = client.get("/api/jobs/completed?limit=99999")
+        assertEquals(HttpStatusCode.OK, tooHigh.status)
+        assertEquals(1, json.parseToJsonElement(tooHigh.bodyAsText()).jsonArray.size)
+
+        // limit of 0 is coerced up to the floor of 1 — still returns the one job, not an error.
+        val tooLow = client.get("/api/jobs/completed?limit=0")
+        assertEquals(HttpStatusCode.OK, tooLow.status)
+        assertEquals(1, json.parseToJsonElement(tooLow.bodyAsText()).jsonArray.size)
+    }
+
+    @Test
+    fun `completed feed treats a non-boolean all param as false`() = testApplication {
+        application { configureApplication() }
+        submitEmail(client, "msg-all-bogus")
+        val jobId = json.parseToJsonElement(client.get("/api/queue/claim").bodyAsText())
+            .jsonObject["job_id"]!!.jsonPrimitive.content
+        client.post("/api/jobs/$jobId/result") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"pipeline_action":"skip","fit_score":0,"message_id":"msg-all-bogus"}""")
+        }
+        client.post("/api/jobs/$jobId/writeback-done")
+
+        // "all" isn't strictly "true"/"false" → toBooleanStrictOrNull() is null → defaults to
+        // false, so the acknowledged job must NOT reappear.
+        val res = client.get("/api/jobs/completed?all=yes-please")
+        assertEquals(HttpStatusCode.OK, res.status)
+        assertTrue(json.parseToJsonElement(res.bodyAsText()).jsonArray.isEmpty())
     }
 
     @Test

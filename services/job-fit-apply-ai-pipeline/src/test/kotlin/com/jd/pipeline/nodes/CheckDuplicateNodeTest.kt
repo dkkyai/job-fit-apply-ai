@@ -1,12 +1,18 @@
 package com.jd.pipeline.nodes
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.jd.pipeline.client.SupabaseClient
+import com.jd.pipeline.client.SupabaseGateway
 import com.jd.pipeline.fixtures.TestJDStateFactory
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -179,5 +185,70 @@ class CheckDuplicateNodeTest {
         assertFalse(result1.isDuplicate)
         assertFalse(result2.isDuplicate)
         assertTrue(result3.isDuplicate, "First job should now be in fallback set")
+    }
+
+    @Nested
+    @DisplayName("Supabase-backed path (mocked gateway)")
+    inner class SupabaseBackedPath {
+
+        private val mapper = ObjectMapper()
+
+        @Test
+        @DisplayName("marks job as duplicate when Supabase returns a matching row")
+        fun duplicateWhenRowsFound() {
+            val gateway = mock<SupabaseGateway>()
+            whenever(gateway.isConfigured()).thenReturn(true)
+            whenever(gateway.query(any(), any(), any(), any())).thenReturn(listOf(mapper.readTree("""{"id":1}""")))
+
+            val node = CheckDuplicateNode(gateway)
+            val input = TestJDStateFactory.createFullJobPostingState().copy(
+                company = "SupabaseCo",
+                roleTitle = "Engineer",
+                location = "Remote",
+            )
+
+            val result = node.process(input)
+
+            assertTrue(result.isDuplicate)
+            assertTrue(result.skippedReason.contains("SupabaseCo"))
+        }
+
+        @Test
+        @DisplayName("marks job as new when Supabase returns no rows")
+        fun notDuplicateWhenNoRows() {
+            val gateway = mock<SupabaseGateway>()
+            whenever(gateway.isConfigured()).thenReturn(true)
+            whenever(gateway.query(any(), any(), any(), any())).thenReturn(emptyList())
+
+            val node = CheckDuplicateNode(gateway)
+            val input = TestJDStateFactory.createFullJobPostingState().copy(
+                company = "FreshCo",
+                roleTitle = "Engineer",
+                location = "Remote",
+            )
+
+            val result = node.process(input)
+
+            assertFalse(result.isDuplicate)
+        }
+
+        @Test
+        @DisplayName("fails open (treats as new) when the Supabase query throws")
+        fun failsOpenOnQueryException() {
+            val gateway = mock<SupabaseGateway>()
+            whenever(gateway.isConfigured()).thenReturn(true)
+            whenever(gateway.query(any(), any(), any(), any())).thenThrow(RuntimeException("connection refused"))
+
+            val node = CheckDuplicateNode(gateway)
+            val input = TestJDStateFactory.createFullJobPostingState().copy(
+                company = "FlakyCo",
+                roleTitle = "Engineer",
+                location = "Remote",
+            )
+
+            val result = node.process(input)
+
+            assertFalse(result.isDuplicate, "a query failure must not block a job from being processed")
+        }
     }
 }

@@ -44,6 +44,18 @@ class JobListingParseTest {
     }
 
     @Test
+    @DisplayName("defaults job_is_remote to false when the key is entirely absent")
+    fun defaultsRemoteFlagWhenAbsent() {
+        val l = mapper.readValue(
+            """{"job_id":"n1","job_title":"QA","employer_name":"Gamma"}""",
+            JobListing::class.java,
+        )
+        assertTrue(!l.jobIsRemote)
+        assertNull(l.jobApplyLink)
+        assertNull(l.jobPublisher)
+    }
+
+    @Test
     @DisplayName("parses the data[] array of a full JSearch response")
     fun parsesDataArray() {
         val resp = """{"status":"OK","data":[
