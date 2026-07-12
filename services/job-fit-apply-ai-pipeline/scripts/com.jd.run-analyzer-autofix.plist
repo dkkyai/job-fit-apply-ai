@@ -41,13 +41,11 @@
         <string>--autofix</string>
     </array>
 
-    <!-- Uncomment to ARM the loop (default: off/no-op):
     <key>EnvironmentVariables</key>
     <dict>
         <key>RUN_ANALYZER_AUTOFIX</key>
         <string>1</string>
     </dict>
-    -->
 
     <key>StartCalendarInterval</key>
     <dict>
