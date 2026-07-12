@@ -210,6 +210,28 @@ class FullFlowE2ETest {
     }
 
     @Test
+    fun `artifact upload with an unrecognized filename sets no artifacts`() = testApplication {
+        application { configureApplication() }
+
+        val jobId = submitJob(client)
+        claimJob(client)
+        val resp = client.post("/api/jobs/$jobId/artifacts") {
+            setBody(MultiPartFormDataContent(formData {
+                append("notes", "just some notes".toByteArray(), Headers.build {
+                    append(HttpHeaders.ContentDisposition, "filename=\"notes.txt\"")
+                    append(HttpHeaders.ContentType, ContentType.Text.Plain.toString())
+                })
+            }))
+        }
+        assertEquals(HttpStatusCode.OK, resp.status, "unrecognized parts must not fail the upload")
+        postResult(client, jobId)
+
+        val body = Json.parseToJsonElement(client.get("/api/jobs/$jobId").bodyAsText()).jsonObject
+        assertEquals("done", body["status"]!!.jsonPrimitive.content)
+        assertFalse(body.containsKey("artifacts"), "no artifacts should be set when no file matched pdf/cover_letter")
+    }
+
+    @Test
     fun `artifact upload without cover letter results in empty cover_letter_txt`() = testApplication {
         application { configureApplication() }
 

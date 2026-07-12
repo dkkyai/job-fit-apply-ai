@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -62,6 +63,59 @@ class TracksModelsTest {
     fun `TrackStatusUpdate deserializes a status body`() {
         val req = json.decodeFromString(TrackStatusUpdate.serializer(), """{"status":"applied"}""")
         assertEquals("applied", req.status)
+    }
+
+    @Test
+    fun `TrackStatusUpdate ignores unknown keys when configured to`() {
+        val lenient = Json { ignoreUnknownKeys = true }
+        val req = lenient.decodeFromString(
+            TrackStatusUpdate.serializer(),
+            """{"status":"applied","extra_field":"ignored"}""",
+        )
+        assertEquals("applied", req.status)
+    }
+
+    @Test
+    fun `TrackDto decodes from JSON with every field present`() {
+        val decoded = json.decodeFromString(
+            TrackDto.serializer(),
+            """{"id":7,"company":"Acme","role_title":"Staff SDET","location":"Remote",
+                "remote_policy":"remote","fit_score":91.0,"job_url":"https://x/y",
+                "artifact_url":"https://x/report","tech_stack":["Kotlin","Postgres"],
+                "status":"backlog","created_at":"2026-07-04T18:52:25.512204Z","duplicate":true}""",
+        )
+        assertEquals(7, decoded.id)
+        assertEquals("Acme", decoded.company)
+        assertEquals("Staff SDET", decoded.role_title)
+        assertEquals("Remote", decoded.location)
+        assertEquals("remote", decoded.remote_policy)
+        assertEquals(91.0, decoded.fit_score)
+        assertEquals("https://x/y", decoded.job_url)
+        assertEquals("https://x/report", decoded.artifact_url)
+        assertEquals(listOf("Kotlin", "Postgres"), decoded.tech_stack)
+        assertTrue(decoded.duplicate)
+    }
+
+    @Test
+    fun `TrackDto decodes with nullable fields omitted`() {
+        val decoded = json.decodeFromString(
+            TrackDto.serializer(),
+            """{"id":8,"company":"Acme","status":"backlog","created_at":"2026-07-04T00:00:00Z","duplicate":false}""",
+        )
+        assertNull(decoded.role_title)
+        assertNull(decoded.location)
+        assertNull(decoded.remote_policy)
+        assertNull(decoded.fit_score)
+        assertNull(decoded.job_url)
+        assertNull(decoded.artifact_url)
+        assertNull(decoded.tech_stack)
+    }
+
+    @Test
+    fun `TrackDto missing a required field throws`() {
+        assertFailsWith<Exception> {
+            json.decodeFromString(TrackDto.serializer(), """{"company":"Acme","status":"backlog"}""")
+        }
     }
 
     @Test

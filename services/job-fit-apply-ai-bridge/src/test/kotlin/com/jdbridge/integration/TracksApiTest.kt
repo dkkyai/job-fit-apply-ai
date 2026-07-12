@@ -16,6 +16,7 @@ import java.net.URI
 import java.sql.Connection
 import java.sql.DriverManager
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -116,6 +117,33 @@ class TracksApiTest {
         assertTrue(TracksStore.updateStatus(1, "applied"))
         assertEquals("applied", TracksStore.list().first { it.id == 1 }.status)
         assertEquals(false, TracksStore.updateStatus(999999, "applied"))
+    }
+
+    @Test
+    fun `TracksStore list maps NULL nullable columns to null fields`() = runBlocking {
+        // company/status/duplicate/created_at are NOT NULL in the schema; every other
+        // column (including tech_stack) can be NULL — exercise toTrackDto's null paths.
+        conn(TEST_DB).use { c ->
+            c.createStatement().use { st ->
+                st.execute(
+                    """
+                    INSERT INTO tracks (id, company, role_title, location, remote_policy,
+                                         fit_score, job_url, artifact_url, tech_stack, status, duplicate)
+                    VALUES (3, 'Blank Co', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'backlog', false);
+                    """.trimIndent(),
+                )
+            }
+        }
+        val row = TracksStore.list().first { it.id == 3 }
+        assertEquals("Blank Co", row.company)
+        assertNull(row.role_title)
+        assertNull(row.location)
+        assertNull(row.remote_policy)
+        assertNull(row.fit_score)
+        assertNull(row.job_url)
+        assertNull(row.artifact_url)
+        assertNull(row.tech_stack)
+        assertEquals("backlog", row.status)
     }
 
     // ── HTTP routes ────────────────────────────────────────────────────────────
