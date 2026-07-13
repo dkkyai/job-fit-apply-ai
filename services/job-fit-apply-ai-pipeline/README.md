@@ -276,6 +276,20 @@ To keep it up automatically, install the optional launch agent
 hung-but-alive Chrome within one interval. Because it relaunches on demand, `Cmd-Q` won't stick
 while it's loaded — `launchctl bootout` the agent to stop it.
 
+**Steel backend watchdog.** When scraping runs through the self-hosted Steel container
+(`STEEL_BASE_URL=http://steel:3000`) rather than host Chrome, the equivalent failure is Steel
+*wedging*: it reuses one long-lived Chrome, and if that browser's primary page dies, every
+`POST /v1/sessions` returns HTTP 500 (`Failed to refresh primary page when reusing browser
+instance`) until the container restarts — every browser scrape silently falls back to the thin
+email snippet. The trap is that Steel's API (`GET /v1/sessions`, `/v1/health`) keeps answering
+`200`, so the container looks healthy and Docker's `restart: unless-stopped` never fires. Two
+guards address this: the Compose healthcheck now probes **real session creation** (not just the
+API) so a wedge surfaces as `unhealthy` in `docker ps`, and the optional
+`scripts/com.jd.steel-watchdog.plist` launch agent runs `scripts/steel-watchdog.sh` every 120s —
+it does one createSession probe and, on two consecutive failures, `docker restart`s `jobfit-steel`
+(install/uninstall commands are in the plist header). Immediate manual recovery is just
+`docker restart jobfit-steel`.
+
 **What routes through the browser:** most sites are scraped over plain HTTP (fast, uses embedded
 schema.org JSON-LD). The CDP browser is used for **LinkedIn** (always), for pages the HTTP fetch
 finds **blocked or thin** (Cloudflare / 403 / JS-rendered SPA), and for any domain listed in

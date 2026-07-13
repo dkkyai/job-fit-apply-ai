@@ -38,14 +38,22 @@ class TestDetectors(unittest.TestCase):
         self.assertIn("tailor-after-error", _ids(detectors.detect(recs)))
 
     def test_rich_jd_scored_zero(self):
-        recs = [{"jobId": "j1", "score": 0, "jdTextLen": 2000},
-                {"jobId": "j2", "score": 0, "jdTextLen": 50}]      # thin -> not this finding
+        recs = [{"jobId": "j1", "score": 0, "jdTextLen": 2000, "scrapePath": "cdp_steel"},
+                {"jobId": "j2", "score": 0, "jdTextLen": 50, "scrapePath": "http"}]  # thin -> not this finding
         f = [x for x in detectors.detect(recs) if x["id"] == "rich-jd-scored-zero"]
         self.assertEqual(len(f), 1)
         self.assertEqual(f[0]["affected_jobs"], ["j1"])
 
+    def test_rich_jd_scored_zero_ignores_email_fallback(self):
+        # Empty scrapePath = scrape failed, JD is the email snippet (not a real fetch). Even though
+        # it clears RICH_JD_CHARS, a 0 score is correct here — don't flag it as a scoring bug.
+        recs = [{"jobId": "j1", "score": 0, "jdTextLen": 1525, "scrapePath": ""},
+                {"jobId": "j2", "score": 0, "jdTextLen": 2000}]  # scrapePath missing entirely
+        self.assertNotIn("rich-jd-scored-zero", _ids(detectors.detect(recs)))
+
     def test_zero_score_duplicate_excluded(self):
-        recs = [{"jobId": "j1", "score": 0, "jdTextLen": 2000, "isDuplicate": True}]
+        recs = [{"jobId": "j1", "score": 0, "jdTextLen": 2000,
+                 "scrapePath": "http", "isDuplicate": True}]
         self.assertNotIn("rich-jd-scored-zero", _ids(detectors.detect(recs)))
 
     def test_per_board_scrape_blocked_grouped(self):
