@@ -155,6 +155,19 @@ services:
         NODE_VERSION: "22.13.0"
     container_name: jobfit-steel
     restart: unless-stopped
+    # Reap zombies. Steel's own entrypoint runs as PID 1 (a shell), and Chrome — launched with
+    # --no-zygote/--no-sandbox — spawns helper + crashpad processes that PID 1 never wait()s on.
+    # They pile up as <defunct> (observed 20k+ over ~14h). Worse: a crashed Chrome leaves a stale
+    # /tmp/steel-chrome/SingletonLock whose recorded PID is still "alive" as a zombie, so the NEXT
+    # launch aborts with "SingletonLock: File exists (17)" → every createSession 500s → the wedge.
+    # `init: true` runs tini as PID 1 to reap children, which stops the pileup AND frees those PIDs
+    # so Chrome recognises the stale lock as dead and clears it on relaunch.
+    init: true
+    # Belt-and-suspenders for the watchdog-restart path: `docker restart` keeps the writable layer
+    # (and thus /tmp), so a SingletonLock from the pre-restart crash can survive into the new start.
+    # Remove it before Steel's entrypoint launches Chrome. Preserves the original entrypoint (it sets
+    # up dbus when DEBUG=true — Chrome needs it); the image has no CMD, so there are no args to forward.
+    entrypoint: ["/bin/sh", "-c", "rm -f /tmp/steel-chrome/SingletonLock 2>/dev/null || true; exec /app/api/entrypoint.sh"]
     environment:
       DEBUG: "true"                  # entrypoint only initialises dbus when DEBUG=true; Chrome needs it
       DOMAIN: "${STEEL_DOMAIN:-localhost:3000}"
@@ -170,11 +183,12 @@ services:
       # Defaults to loopback (safe): the Steel UI has NO auth, so never bind it to 0.0.0.0.
       - "${STEEL_BIND_ADDR:-127.0.0.1}:3000:3000"
     healthcheck:
-      # Probe REAL session creation (POST /v1/sessions), not just GET /v1/sessions. Steel reuses one
-      # long-lived Chrome; when its primary page dies, createSession fails HTTP 500 ("Failed to
-      # refresh primary page when reusing browser instance") while GET /v1/sessions + /v1/health keep
-      # returning 200 — a wedged-but-"healthy" container that silently drops every scrape to the email
-      # snippet. Only createSession detects that. The probe releases its session so it doesn't leak;
+      # Probe REAL session creation (POST /v1/sessions), not just GET /v1/sessions. When Steel is
+      # wedged (Chrome can't launch — see the SingletonLock/zombie note above — or a reused primary
+      # page died), createSession fails/500s while GET /v1/sessions + /v1/health keep returning 200 —
+      # a wedged-but-"healthy" container that silently drops every scrape to the email snippet. Only
+      # createSession detects that. The `init: true` + lock-cleanup above target the root cause; this
+      # probe stays as the detector of last resort. The probe releases its session so it doesn't leak;
       # the 20s session timeout self-expires it even if release fails. Marking the container unhealthy
       # here makes the wedge visible in `docker ps` and gives steel-watchdog.sh a status to key on
       # (Docker's restart: unless-stopped will NOT restart an unhealthy container — the watchdog does).
