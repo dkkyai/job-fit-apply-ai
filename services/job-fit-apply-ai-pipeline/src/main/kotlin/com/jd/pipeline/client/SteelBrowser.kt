@@ -41,7 +41,6 @@ class SteelBrowser(
     // Monotonic deadline (nanoTime) before which a fresh connect attempt is skipped, armed after a
     // failed connect so a down/wedged backend isn't re-probed on every scrape. Null = attempt now.
     private var reconnectDeadlineNanos: Long? = null
-    private var everConnected = false
     private val pagesByHost = mutableMapOf<String, Page>()
 
     /** URL fragments that mean a tab is stuck on an auth/challenge page and should be recreated. */
@@ -63,7 +62,12 @@ class SteelBrowser(
      */
     private fun ensureLive() {
         if (browser?.isConnected == true) return
-        if (everConnected) {
+        // Only tear down + reset when we still hold a stale live handle — a *genuine* drop of a
+        // previously-connected session. resetConnection() clears the cooldown so a genuine drop
+        // reconnects immediately; but after a *failed* reconnect the handle is already null, so we
+        // fall straight through to ensureConnected() and honour the cooldown instead of resetting
+        // (and re-probing a 90s createSession) on every scrape while the backend stays down.
+        if (browser != null || playwright != null) {
             log.info("Steel session dropped — reconnecting")
             resetConnection()
         }
@@ -91,7 +95,6 @@ class SteelBrowser(
             browser = pw.chromium().connectOverCDP(hostToIp(resolveWsEndpoint(baseUrl, s.websocketUrl)))
             playwright = pw
             session = s
-            everConnected = true
             reconnectDeadlineNanos = null
             log.info("Connected to Steel session {} at {}", s.id, baseUrl)
         } catch (e: Exception) {
@@ -170,7 +173,6 @@ class SteelBrowser(
         playwright = null
         session = null
         reconnectDeadlineNanos = null
-        everConnected = false
     }
 
     companion object {
