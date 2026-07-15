@@ -2,6 +2,12 @@ package com.jd.pipeline.client
 
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -79,5 +85,33 @@ class SteelBrowserTest {
         val browser = SteelBrowser(baseUrl = "")
         browser.close() // must not throw
         assertFalse(browser.isAvailable())
+    }
+
+    @Test
+    @DisplayName("a failed connect is retried after the cooldown, not latched off (nor hammered) for the batch")
+    fun reconnectCooldownGatesRetries() {
+        // Regression: a never-connected Steel used to latch off after its first failed connect for
+        // the whole batch, so a restarted backend was never picked up without a pipeline restart.
+        // Now a failed connect only backs off for reconnectCooldownMs and re-probes past it.
+        val client = mock<SteelClient>()
+        whenever(client.createSession(anyOrNull(), any())).thenThrow(RuntimeException("Steel down"))
+        val store = mock<SteelStorageStore>()
+        var now = 0L
+
+        val browser = SteelBrowser(
+            baseUrl = "http://steel:3000",
+            reconnectCooldownMs = 1000,
+            client = client,
+            store = store,
+            nanoTime = { now },
+        )
+
+        assertFalse(browser.isAvailable())  // first attempt fails and arms the cooldown
+        assertFalse(browser.isAvailable())  // still within cooldown — must NOT re-probe the backend
+        verify(client, times(1)).createSession(anyOrNull(), any())
+
+        now = 2_000L * 1_000_000  // advance past the 1000ms cooldown
+        assertFalse(browser.isAvailable())  // cooldown elapsed — probes again (auto-recovers when up)
+        verify(client, times(2)).createSession(anyOrNull(), any())
     }
 }

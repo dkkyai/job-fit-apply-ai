@@ -236,6 +236,11 @@ object Config {
     )
     // Steel session idle timeout (ms); the browser session is released after this long unused.
     val STEEL_SESSION_TIMEOUT_MS: Long = get("STEEL_SESSION_TIMEOUT_MS", "600000").toLong()
+    // Cooldown (ms) between connect attempts after a failed one. A down/wedged Steel backend is
+    // re-probed at most once per cooldown (not hammered every scrape), but is NOT latched off for
+    // the whole batch — so once the watchdog restarts the container, scraping resumes on the next
+    // attempt past the cooldown with no pipeline restart. Default 30s (< the 120s watchdog cycle).
+    val STEEL_RECONNECT_COOLDOWN_MS: Long = get("STEEL_RECONNECT_COOLDOWN_MS", "30000").toLong()
 
     // ── Candidate profile / résumé onboarding (--init-profile) ──────────────────
     // Résumé HTML is now rendered deterministically from resume.yaml (no LLM), and the

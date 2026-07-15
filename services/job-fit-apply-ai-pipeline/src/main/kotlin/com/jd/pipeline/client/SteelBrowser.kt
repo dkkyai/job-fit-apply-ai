@@ -26,8 +26,11 @@ class SteelBrowser(
     private val baseUrl: String = Config.STEEL_BASE_URL,
     private val uiBaseUrl: String = Config.STEEL_UI_URL,
     private val sessionTimeoutMs: Long = Config.STEEL_SESSION_TIMEOUT_MS,
+    private val reconnectCooldownMs: Long = Config.STEEL_RECONNECT_COOLDOWN_MS,
     private val client: SteelClient = SteelClient(baseUrl),
     private val store: SteelStorageStore = SteelStorageStore(Paths.get(Config.STEEL_STORAGE_STATE_PATH)),
+    // Monotonic clock seam (nanos); overridable so the cooldown is unit-testable without sleeping.
+    private val nanoTime: () -> Long = System::nanoTime,
 ) : CdpBrowser {
 
     private val log = LoggerFactory.getLogger(SteelBrowser::class.java)
@@ -35,7 +38,9 @@ class SteelBrowser(
     private var playwright: Playwright? = null
     private var browser: Browser? = null
     private var session: SteelClient.SteelSession? = null
-    private var connectAttempted = false
+    // Monotonic deadline (nanoTime) before which a fresh connect attempt is skipped, armed after a
+    // failed connect so a down/wedged backend isn't re-probed on every scrape. Null = attempt now.
+    private var reconnectDeadlineNanos: Long? = null
     private var everConnected = false
     private val pagesByHost = mutableMapOf<String, Page>()
 
@@ -52,8 +57,9 @@ class SteelBrowser(
     /**
      * Ensure a live connection, transparently reconnecting if a previously-established session
      * dropped mid-batch (Steel idle-releases sessions after [sessionTimeoutMs], so a long/idle batch
-     * can lose one between jobs). A *never*-connected state keeps the single-attempt guard so a down
-     * backend doesn't get hammered every call.
+     * can lose one between jobs). A failed connect backs off for [reconnectCooldownMs] rather than
+     * latching off for the whole batch, so a down/wedged backend that the watchdog restarts is picked
+     * up on the next scrape past the cooldown — no pipeline restart — without hammering a dead one.
      */
     private fun ensureLive() {
         if (browser?.isConnected == true) return
@@ -64,19 +70,21 @@ class SteelBrowser(
         ensureConnected()
     }
 
-    /** Drop local connection state (session presumed dead) so [ensureConnected] rebuilds it. */
+    /** Drop local connection state (session presumed dead) so [ensureConnected] rebuilds it now. */
     private fun resetConnection() {
         runCatching { playwright?.close() }
         pagesByHost.clear()
         browser = null
         playwright = null
         session = null
-        connectAttempted = false
+        reconnectDeadlineNanos = null  // a dropped live session should reconnect immediately
     }
 
     private fun ensureConnected() {
-        if (connectAttempted) return
-        connectAttempted = true
+        if (browser?.isConnected == true) return
+        // Back off after a failed connect: skip until the cooldown deadline elapses. Subtraction
+        // keeps the comparison correct across nanoTime() sign/overflow. Null deadline = attempt now.
+        reconnectDeadlineNanos?.let { if (nanoTime() - it < 0) return }
         try {
             val s = client.createSession(store.load(), sessionTimeoutMs)
             val pw = Playwright.create()
@@ -84,13 +92,15 @@ class SteelBrowser(
             playwright = pw
             session = s
             everConnected = true
+            reconnectDeadlineNanos = null
             log.info("Connected to Steel session {} at {}", s.id, baseUrl)
         } catch (e: Exception) {
-            log.warn("Could not connect to Steel at {}: {}", baseUrl, e.message)
+            log.warn("Could not connect to Steel at {}: {} — retrying after {}ms", baseUrl, e.message, reconnectCooldownMs)
             runCatching { playwright?.close() }
             playwright = null
             browser = null
             session = null
+            reconnectDeadlineNanos = nanoTime() + reconnectCooldownMs * 1_000_000
         }
     }
 
@@ -159,7 +169,7 @@ class SteelBrowser(
         browser = null
         playwright = null
         session = null
-        connectAttempted = false
+        reconnectDeadlineNanos = null
         everConnected = false
     }
 
