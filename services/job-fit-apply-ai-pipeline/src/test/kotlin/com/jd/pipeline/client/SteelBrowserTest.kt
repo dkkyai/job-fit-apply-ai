@@ -101,9 +101,11 @@ class SteelBrowserTest {
         val browser = SteelBrowser(
             baseUrl = "http://steel:3000",
             reconnectCooldownMs = 1000,
+            connectMaxAttempts = 1,  // isolate the cooldown gating from the in-scrape retry loop
             client = client,
             store = store,
             nanoTime = { now },
+            sleep = {},
         )
 
         assertFalse(browser.isAvailable())  // first attempt fails and arms the cooldown
@@ -113,5 +115,67 @@ class SteelBrowserTest {
         now = 2_000L * 1_000_000  // advance past the 1000ms cooldown
         assertFalse(browser.isAvailable())  // cooldown elapsed — probes again (auto-recovers when up)
         verify(client, times(2)).createSession(anyOrNull(), any())
+    }
+
+    @Test
+    @DisplayName("a single connect retries createSession with exponential backoff before giving up")
+    fun connectRetriesWithBackoff() {
+        // A transient createSession 500 (SingletonLock race) should be retried within the same scrape
+        // so the job isn't dropped to thin email-only JD text — not deferred to the next cooldown.
+        val client = mock<SteelClient>()
+        whenever(client.createSession(anyOrNull(), any())).thenThrow(RuntimeException("HTTP 500 SingletonLock"))
+        val store = mock<SteelStorageStore>()
+        val backoffs = mutableListOf<Long>()
+
+        val browser = SteelBrowser(
+            baseUrl = "http://steel:3000",
+            connectMaxAttempts = 3,
+            connectBackoffBaseMs = 500,
+            client = client,
+            store = store,
+            nanoTime = { 0L },
+            sleep = { backoffs.add(it) },
+        )
+
+        assertFalse(browser.isAvailable())  // one isAvailable() → three in-scrape attempts
+        verify(client, times(3)).createSession(anyOrNull(), any())
+        // Backoff only *between* attempts (2 gaps for 3 attempts), doubling each time.
+        assertEquals(listOf(500L, 1000L), backoffs)
+    }
+
+    @Test
+    @DisplayName("the circuit breaker widens the cooldown after N consecutive failed connect cycles")
+    fun circuitBreakerWidensCooldown() {
+        // After the breaker opens, a wedged backend must NOT be re-probed on the normal cooldown —
+        // the pipeline backs off for the longer circuit-open window while the watchdog restarts Steel.
+        val client = mock<SteelClient>()
+        whenever(client.createSession(anyOrNull(), any())).thenThrow(RuntimeException("Steel wedged"))
+        val store = mock<SteelStorageStore>()
+        var now = 0L
+
+        val browser = SteelBrowser(
+            baseUrl = "http://steel:3000",
+            reconnectCooldownMs = 1_000,
+            circuitOpenCooldownMs = 60_000,
+            circuitBreakerThreshold = 2,
+            connectMaxAttempts = 1,  // one attempt per cycle keeps the createSession count exact
+            client = client,
+            store = store,
+            nanoTime = { now },
+            sleep = {},
+        )
+
+        assertFalse(browser.isAvailable())          // cycle 1: fail, arms the 1s (normal) cooldown
+        now = 1_500L * 1_000_000                     // past the 1s cooldown
+        assertFalse(browser.isAvailable())          // cycle 2: fail → breaker opens, arms the 60s cooldown
+        verify(client, times(2)).createSession(anyOrNull(), any())
+
+        now = 3_000L * 1_000_000                     // past the *normal* cooldown, but within the wide one
+        assertFalse(browser.isAvailable())          // breaker open — must NOT re-probe yet
+        verify(client, times(2)).createSession(anyOrNull(), any())
+
+        now = 62_000L * 1_000_000                    // past the circuit-open cooldown
+        assertFalse(browser.isAvailable())           // re-probes once the wide window elapses
+        verify(client, times(3)).createSession(anyOrNull(), any())
     }
 }

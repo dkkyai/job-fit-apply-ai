@@ -27,10 +27,16 @@ class SteelBrowser(
     private val uiBaseUrl: String = Config.STEEL_UI_URL,
     private val sessionTimeoutMs: Long = Config.STEEL_SESSION_TIMEOUT_MS,
     private val reconnectCooldownMs: Long = Config.STEEL_RECONNECT_COOLDOWN_MS,
+    private val connectMaxAttempts: Int = Config.STEEL_CONNECT_MAX_ATTEMPTS,
+    private val connectBackoffBaseMs: Long = Config.STEEL_CONNECT_BACKOFF_BASE_MS,
+    private val circuitBreakerThreshold: Int = Config.STEEL_CIRCUIT_BREAKER_THRESHOLD,
+    private val circuitOpenCooldownMs: Long = Config.STEEL_CIRCUIT_OPEN_COOLDOWN_MS,
     private val client: SteelClient = SteelClient(baseUrl),
     private val store: SteelStorageStore = SteelStorageStore(Paths.get(Config.STEEL_STORAGE_STATE_PATH)),
     // Monotonic clock seam (nanos); overridable so the cooldown is unit-testable without sleeping.
     private val nanoTime: () -> Long = System::nanoTime,
+    // Backoff-sleep seam; overridable so retry/backoff is unit-testable without actually sleeping.
+    private val sleep: (Long) -> Unit = { Thread.sleep(it) },
 ) : CdpBrowser {
 
     private val log = LoggerFactory.getLogger(SteelBrowser::class.java)
@@ -41,6 +47,10 @@ class SteelBrowser(
     // Monotonic deadline (nanoTime) before which a fresh connect attempt is skipped, armed after a
     // failed connect so a down/wedged backend isn't re-probed on every scrape. Null = attempt now.
     private var reconnectDeadlineNanos: Long? = null
+    // Circuit-breaker counter: consecutive failed connect cycles (each already exhausted its in-scrape
+    // retries). Reset to 0 on a good connect; at [circuitBreakerThreshold] the breaker opens and the
+    // cooldown widens to [circuitOpenCooldownMs] so a wedged backend isn't re-probed every job.
+    private var consecutiveConnectFailures = 0
     private val pagesByHost = mutableMapOf<String, Page>()
 
     /** URL fragments that mean a tab is stuck on an auth/challenge page and should be recreated. */
@@ -89,21 +99,59 @@ class SteelBrowser(
         // Back off after a failed connect: skip until the cooldown deadline elapses. Subtraction
         // keeps the comparison correct across nanoTime() sign/overflow. Null deadline = attempt now.
         reconnectDeadlineNanos?.let { if (nanoTime() - it < 0) return }
-        try {
-            val s = client.createSession(store.load(), sessionTimeoutMs)
-            val pw = Playwright.create()
-            browser = pw.chromium().connectOverCDP(hostToIp(resolveWsEndpoint(baseUrl, s.websocketUrl)))
-            playwright = pw
-            session = s
-            reconnectDeadlineNanos = null
-            log.info("Connected to Steel session {} at {}", s.id, baseUrl)
-        } catch (e: Exception) {
-            log.warn("Could not connect to Steel at {}: {} — retrying after {}ms", baseUrl, e.message, reconnectCooldownMs)
-            runCatching { playwright?.close() }
-            playwright = null
-            browser = null
-            session = null
-            reconnectDeadlineNanos = nanoTime() + reconnectCooldownMs * 1_000_000
+
+        // Retry the connect a few times with exponential backoff before giving up: a transient
+        // createSession 500 (a SingletonLock race while Chrome relaunches) usually clears within a
+        // second, so a couple of quick retries recover the current job instead of dropping it to thin
+        // email-only JD text. Each attempt's HTTP call is bounded by the createSession timeout.
+        var lastError: Exception? = null
+        for (attempt in 1..connectMaxAttempts) {
+            try {
+                val s = client.createSession(store.load(), sessionTimeoutMs)
+                val pw = Playwright.create()
+                browser = pw.chromium().connectOverCDP(hostToIp(resolveWsEndpoint(baseUrl, s.websocketUrl)))
+                playwright = pw
+                session = s
+                reconnectDeadlineNanos = null
+                consecutiveConnectFailures = 0  // healthy again — close the circuit breaker
+                log.info("Connected to Steel session {} at {}", s.id, baseUrl)
+                return
+            } catch (e: Exception) {
+                lastError = e
+                runCatching { playwright?.close() }
+                playwright = null
+                browser = null
+                session = null
+                if (attempt < connectMaxAttempts) {
+                    val backoffMs = connectBackoffBaseMs shl (attempt - 1)  // 500, 1000, 2000…
+                    log.warn("Steel connect attempt {}/{} failed: {} — retrying in {}ms",
+                        attempt, connectMaxAttempts, e.message, backoffMs)
+                    runCatching { sleep(backoffMs) }
+                }
+            }
+        }
+        onConnectExhausted(lastError)
+    }
+
+    /**
+     * All in-scrape connect attempts failed. Advance the circuit breaker and arm the cooldown: for the
+     * first [circuitBreakerThreshold]-1 consecutive failed cycles use the normal [reconnectCooldownMs]
+     * (so a briefly-restarting backend is re-probed promptly); once the breaker opens, widen the
+     * cooldown to [circuitOpenCooldownMs] so a genuinely wedged backend isn't hammered every job while
+     * the host steel-watchdog restarts the container. The breaker closes on the next successful connect.
+     */
+    private fun onConnectExhausted(lastError: Exception?) {
+        consecutiveConnectFailures++
+        val breakerOpen = consecutiveConnectFailures >= circuitBreakerThreshold
+        val cooldownMs = if (breakerOpen) circuitOpenCooldownMs else reconnectCooldownMs
+        reconnectDeadlineNanos = nanoTime() + cooldownMs * 1_000_000
+        if (breakerOpen) {
+            log.error("Steel connect failed {} cycles in a row — circuit breaker OPEN; backing off {}ms " +
+                "(host steel-watchdog restarts the wedged container). Last error: {}",
+                consecutiveConnectFailures, cooldownMs, lastError?.message)
+        } else {
+            log.warn("Could not connect to Steel at {} after {} attempts: {} — retrying after {}ms",
+                baseUrl, connectMaxAttempts, lastError?.message, cooldownMs)
         }
     }
 
@@ -173,6 +221,7 @@ class SteelBrowser(
         playwright = null
         session = null
         reconnectDeadlineNanos = null
+        consecutiveConnectFailures = 0
     }
 
     companion object {

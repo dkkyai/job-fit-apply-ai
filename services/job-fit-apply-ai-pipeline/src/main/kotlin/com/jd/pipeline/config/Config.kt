@@ -241,6 +241,21 @@ object Config {
     // the whole batch — so once the watchdog restarts the container, scraping resumes on the next
     // attempt past the cooldown with no pipeline restart. Default 30s (< the 120s watchdog cycle).
     val STEEL_RECONNECT_COOLDOWN_MS: Long = get("STEEL_RECONNECT_COOLDOWN_MS", "30000").toLong()
+    // In-scrape connect retries before a connect attempt is given up and the cooldown is armed. A
+    // transient createSession 500 (a SingletonLock race while Chrome relaunches) usually clears within
+    // a second, so a couple of quick retries recover the current job instead of dropping it to thin
+    // email-only JD text. Each attempt is still bounded by the createSession HTTP timeout. Default 3.
+    val STEEL_CONNECT_MAX_ATTEMPTS: Int = get("STEEL_CONNECT_MAX_ATTEMPTS", "3").toInt()
+    // Base backoff (ms) between in-scrape connect retries; doubled each retry (500 → 1000 → 2000…).
+    val STEEL_CONNECT_BACKOFF_BASE_MS: Long = get("STEEL_CONNECT_BACKOFF_BASE_MS", "500").toLong()
+    // Circuit breaker: after this many consecutive failed connect *cycles* (each already exhausted its
+    // in-scrape retries), the backend is treated as wedged — the breaker opens and the cooldown widens
+    // to STEEL_CIRCUIT_OPEN_COOLDOWN_MS so the pipeline stops re-probing a dead backend on every job
+    // while the host steel-watchdog restarts the container. Reset to closed on the next good connect.
+    val STEEL_CIRCUIT_BREAKER_THRESHOLD: Int = get("STEEL_CIRCUIT_BREAKER_THRESHOLD", "3").toInt()
+    // Widened cooldown (ms) while the circuit breaker is open. Default 120s — one full watchdog cycle,
+    // long enough for the host watchdog to `docker restart` the wedged Steel container before we re-probe.
+    val STEEL_CIRCUIT_OPEN_COOLDOWN_MS: Long = get("STEEL_CIRCUIT_OPEN_COOLDOWN_MS", "120000").toLong()
 
     // ── Candidate profile / résumé onboarding (--init-profile) ──────────────────
     // Résumé HTML is now rendered deterministically from resume.yaml (no LLM), and the

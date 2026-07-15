@@ -168,6 +168,16 @@ services:
     # Remove it before Steel's entrypoint launches Chrome. Preserves the original entrypoint (it sets
     # up dbus when DEBUG=true — Chrome needs it); the image has no CMD, so there are no args to forward.
     entrypoint: ["/bin/sh", "-c", "rm -f /tmp/steel-chrome/SingletonLock 2>/dev/null || true; exec /app/api/entrypoint.sh"]
+    # Mount /tmp as tmpfs so every (re)start gets a guaranteed-empty /tmp. Chrome's ephemeral
+    # userDataDir is /tmp/steel-chrome and a crash can leave /tmp/steel-chrome/SingletonLock behind;
+    # because `docker restart` preserves the writable layer, that stale lock would otherwise survive
+    # into the next start and abort Chrome ("SingletonLock: File exists"). A tmpfs is recreated fresh
+    # on every start, so no stale lock can carry across a restart — this is the durable fix; the
+    # entrypoint rm above is now belt-and-suspenders (and still covers an in-place relaunch). Nothing
+    # in /tmp needs to persist: the Chromium binary cache lives on the steel-data volume (/app/.cache)
+    # and auth persistence is the app-side storageState store, not the ephemeral /tmp profile.
+    tmpfs:
+      - /tmp
     environment:
       DEBUG: "true"                  # entrypoint only initialises dbus when DEBUG=true; Chrome needs it
       DOMAIN: "${STEEL_DOMAIN:-localhost:3000}"
