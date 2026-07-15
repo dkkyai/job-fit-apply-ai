@@ -45,6 +45,8 @@
     <dict>
         <key>RUN_ANALYZER_AUTOFIX</key>
         <string>1</string>
+        <key>RUN_ANALYZER_AUTOFIX_SEVERITY</key>
+        <string>medium</string>
     </dict>
 
     <key>StartCalendarInterval</key>
