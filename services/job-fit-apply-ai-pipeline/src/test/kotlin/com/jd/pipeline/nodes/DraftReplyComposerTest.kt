@@ -25,16 +25,23 @@ class DraftReplyComposerTest {
         isRecruiter: Boolean = true,
         emailId: String = "test-001",
         profile: CandidateProfile? = null,
+        company: String = "Acme Corp",
+        salaryRange: String = "$180k–$220k",
+        postedCompMin: Int? = null,
+        postedCompMax: Int? = null,
     ) = JDState(
         intake = IntakeContext.Email(
             emailId = emailId, from = "", subject = "", rawBody = rawBody, htmlBody = "",
             isRecruiter = isRecruiter, isDigest = false, isInlineDigest = false,
         ),
-        company = "Acme Corp",
+        company = company,
         roleTitle = "Staff SDET",
         location = "Seattle, WA",
         fitScore = 85.0f,
         strengths = listOf("Kotlin", "CI/CD"),
+        salaryRange = salaryRange,
+        postedCompMin = postedCompMin,
+        postedCompMax = postedCompMax,
         candidateProfile = profile,
     )
 
@@ -215,6 +222,100 @@ class DraftReplyComposerTest {
     }
 
     @Nested
+    @DisplayName("Résumé grounding")
+    inner class GroundingTests {
+
+        @Test
+        @DisplayName("real skill template injects the candidate profile and the grounding rule")
+        fun promptContainsProfileAndGroundingRule() {
+            val composer = composerEcho()
+            val profile = createCandidateProfile(
+                careerHistory = listOf(
+                    CareerEntry(
+                        role = "iOS Engineer", company = "Foo Inc", startDate = "2020",
+                        bullets = listOf(Bullet(category = "Mobile", text = "Shipped Swift apps via Xcode")),
+                    ),
+                ),
+            )
+            val input = recruiterEmailState(rawBody = "Do you know MacOS?", profile = profile)
+
+            val result = fillTemplate(composer, loadSkillTemplate(composer), input, input.emailIntake!!)
+
+            assertContains(result, "Shipped Swift apps via Xcode") // full bullets present for inference
+            assertContains(result, "reasonably inferred from")     // grounding rule present
+            assertFalse(result.contains("{{candidate_profile}}"))  // placeholder was substituted
+        }
+    }
+
+    @Nested
+    @DisplayName("Missing client / salary directive")
+    inner class MissingInfoTests {
+
+        private val skill get() = loadSkillTemplate(composerEcho())
+
+        private fun promptFor(company: String, salaryRange: String, prefs: CandidatePreferences = CandidatePreferences()): String {
+            val composer = composerEcho()
+            val input = recruiterEmailState(
+                profile = createCandidateProfile(preferences = prefs),
+                company = company, salaryRange = salaryRange,
+            )
+            return fillTemplate(composer, skill, input, input.emailIntake!!)
+        }
+
+        @Test
+        @DisplayName("blank company triggers the client ask in the first sentence")
+        fun blankCompanyAsksForClient() {
+            val result = promptFor(company = "", salaryRange = "$180k–$220k")
+            assertContains(result, "who the end client / company is")
+            assertContains(result, "FIRST sentence")
+        }
+
+        @Test
+        @DisplayName("placeholder company ('Confidential') triggers the client ask")
+        fun placeholderCompanyAsksForClient() {
+            val result = promptFor(company = "Confidential", salaryRange = "$180k–$220k")
+            assertContains(result, "who the end client / company is")
+        }
+
+        @Test
+        @DisplayName("missing salary asks about budget vs. expected total comp")
+        fun missingSalaryAsksAboutBudget() {
+            val prefs = CandidatePreferences(minimumTotalCompensation = "220000")
+            val result = promptFor(company = "Acme Corp", salaryRange = "", prefs = prefs)
+            assertContains(result, "whether their budget can meet")
+            assertContains(result, "my expected total compensation of 220000")
+        }
+
+        @Test
+        @DisplayName("missing salary falls back to hourly contract rate when no total comp")
+        fun missingSalaryFallsBackToContractRate() {
+            val prefs = CandidatePreferences(minimumContractRateHourly = 95)
+            val result = promptFor(company = "Acme Corp", salaryRange = "", prefs = prefs)
+            assertContains(result, "my expected rate of \$95/hr")
+        }
+
+        @Test
+        @DisplayName("both client and salary present emits no directive")
+        fun bothPresentNoDirective() {
+            val result = promptFor(company = "Acme Corp", salaryRange = "$180k–$220k")
+            assertFalse(result.contains("IMPORTANT: The recruiter did not disclose"))
+            assertFalse(result.contains("{{missing_info_directive}}"))
+        }
+
+        @Test
+        @DisplayName("posted comp range (no salaryRange string) counts as salary present")
+        fun postedCompCountsAsPresent() {
+            val composer = composerEcho()
+            val input = recruiterEmailState(
+                profile = createCandidateProfile(),
+                company = "Acme Corp", salaryRange = "", postedCompMin = 180000, postedCompMax = 220000,
+            )
+            val result = fillTemplate(composer, skill, input, input.emailIntake!!)
+            assertFalse(result.contains("whether their budget can meet"))
+        }
+    }
+
+    @Nested
     @DisplayName("Email Sanitization")
     inner class SanitizeEmailTests {
 
@@ -281,16 +382,23 @@ class DraftReplyComposerTest {
         return m.invoke(c, raw) as String
     }
 
-    private fun createCandidateProfile(firstName: String = "Jane", lastName: String = "Doe") = CandidateProfile(
+    private fun createCandidateProfile(
+        firstName: String = "Jane",
+        lastName: String = "Doe",
+        preferences: CandidatePreferences = CandidatePreferences(),
+        careerHistory: List<CareerEntry> = emptyList(),
+        skills: List<SkillGroup> = emptyList(),
+    ) = CandidateProfile(
         identity = CandidateIdentity(
             name = "$firstName $lastName", firstName = firstName, lastName = lastName,
             email = "jane@example.com", phone = "555-1234", location = "Seattle, WA",
         ),
         background = CandidateBackground(
-            targetTitle = "SDET", yearsExperience = 10, education = emptyList(), careerHistory = emptyList(),
+            targetTitle = "SDET", yearsExperience = 10, education = emptyList(), careerHistory = careerHistory,
             coreStrengths = emptyList(), languages = emptyList(), domainExpertise = emptyList(),
         ),
-        skills = emptyList(),
+        skills = skills,
+        preferences = preferences,
     )
 
     companion object {
