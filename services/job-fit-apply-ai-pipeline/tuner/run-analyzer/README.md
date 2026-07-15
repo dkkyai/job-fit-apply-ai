@@ -85,6 +85,7 @@ Config (env; `run_analyzer.sh` also reads these from the project `.env`):
 | `RUN_ANALYZER_AUDIT_MAX` | `8` | max jobs deep-audited per run (0 disables) |
 | `RUN_ANALYZER_RESOLVE_RUNS` | `3` | runs each side of a merge to judge outcome |
 | `RUN_ANALYZER_AUTOFIX` | *(off)* | set `1` to arm the `--autofix` loop |
+| `RUN_ANALYZER_AUTOFIX_SEVERITY` | `high` | min severity to auto-fix (`high` \| `medium` \| `low`) |
 | `MLX_LOCAL_BASE_URL` / `MLX_API_KEY` | oMLX local | OpenAI-wire backend |
 | `OLLAMA_CLOUD_BASE_URL` / `OLLAMA_API_KEY` | — | for `:ollama-cloud` models |
 | `DISCORD_*` / `TELEGRAM_*` | — | notifications (no-op when blank) |
