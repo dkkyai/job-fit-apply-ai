@@ -37,6 +37,14 @@ class SteelBrowser(
     private val nanoTime: () -> Long = System::nanoTime,
     // Backoff-sleep seam; overridable so retry/backoff is unit-testable without actually sleeping.
     private val sleep: (Long) -> Unit = { Thread.sleep(it) },
+    // Connect seam: builds the Playwright + CDP browser for a live session. Overridable so the
+    // connected/dropped/reconnect paths are unit-testable without a live Steel backend or a real
+    // browser. Closes the Playwright if the CDP connect throws, so a partial connect doesn't leak.
+    private val connect: (SteelClient.SteelSession) -> Pair<Playwright, Browser> = { s ->
+        val pw = Playwright.create()
+        runCatching { pw.chromium().connectOverCDP(hostToIp(resolveWsEndpoint(baseUrl, s.websocketUrl))) }
+            .fold({ pw to it }, { runCatching { pw.close() }; throw it })
+    },
 ) : CdpBrowser {
 
     private val log = LoggerFactory.getLogger(SteelBrowser::class.java)
@@ -108,8 +116,8 @@ class SteelBrowser(
         for (attempt in 1..connectMaxAttempts) {
             try {
                 val s = client.createSession(store.load(), sessionTimeoutMs)
-                val pw = Playwright.create()
-                browser = pw.chromium().connectOverCDP(hostToIp(resolveWsEndpoint(baseUrl, s.websocketUrl)))
+                val (pw, b) = connect(s)
+                browser = b
                 playwright = pw
                 session = s
                 reconnectDeadlineNanos = null
@@ -122,16 +130,32 @@ class SteelBrowser(
                 playwright = null
                 browser = null
                 session = null
-                if (attempt < connectMaxAttempts) {
+                // Only a fast, transient server error (a createSession HTTP 5xx — the SingletonLock
+                // race while Chrome relaunches) is worth an in-scrape retry. A timeout hits
+                // createSession's 90s ceiling, so retrying it would block the pipeline thread for
+                // minutes (3×90s); a down backend is better re-probed after the cooldown. In both
+                // non-retriable cases, give up now and let onConnectExhausted arm the cooldown.
+                if (attempt < connectMaxAttempts && isRetriableConnectError(e)) {
                     val backoffMs = connectBackoffBaseMs shl (attempt - 1)  // 500, 1000, 2000…
                     log.warn("Steel connect attempt {}/{} failed: {} — retrying in {}ms",
                         attempt, connectMaxAttempts, e.message, backoffMs)
                     runCatching { sleep(backoffMs) }
+                } else {
+                    break
                 }
             }
         }
         onConnectExhausted(lastError)
     }
+
+    /**
+     * Whether a failed connect is worth an immediate in-scrape retry: only a fast, transient HTTP 5xx
+     * from createSession (e.g. the SingletonLock race while Chrome relaunches). A timeout or any other
+     * error is NOT retried in-scrape — retrying would just multiply createSession's 90s ceiling — so it
+     * defers to the cooldown re-probe (and, past the breaker threshold, the wider circuit-open window).
+     */
+    private fun isRetriableConnectError(e: Throwable): Boolean =
+        e is SteelHttpException && e.statusCode in 500..599
 
     /**
      * All in-scrape connect attempts failed. Advance the circuit breaker and arm the cooldown: for the
