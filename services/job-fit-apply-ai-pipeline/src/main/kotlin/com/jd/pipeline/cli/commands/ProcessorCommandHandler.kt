@@ -53,20 +53,23 @@ object ProcessorCommandHandler {
                 continue
             }
 
+            // Timed from the moment we own the claim so EVERY terminal outcome — including the
+            // scan/scrape short-circuits below — gets a real durationMs in the run log.
+            val jobStartedAt = System.currentTimeMillis()
+
             // Work-item branch: EMAIL_RAW is scanned/scraped here (digest children re-enqueued);
             // JD_PAGE_RAW (browser extension) is LLM-extracted from captured page text here;
-            // JD_SCRAPED (JSearch / digest child) goes straight to processing.
-            val jdRecord: JdRecord
-            when (claimed.type) {
-                WorkItemType.EMAIL_RAW -> {
-                    val resolved = resolveEmail(claimed, bridge, ingestion)
-                    if (resolved == null) continue   // terminal (digest/non-job/error) already completed
-                    jdRecord = resolved
+            // JD_SCRAPED (JSearch / digest child) goes straight to processing. A branch that
+            // terminates here (digest/non-job/error) is recorded to the run log before we `continue`,
+            // so the analyzer never loses a completed job.
+            val jdRecord: JdRecord = when (claimed.type) {
+                WorkItemType.EMAIL_RAW -> when (val r = resolveEmail(claimed, bridge, ingestion)) {
+                    is Resolution.Proceed  -> r.jdRecord
+                    is Resolution.Terminal -> { recordTerminal(claimed.jobId, r, jobStartedAt); continue }
                 }
-                WorkItemType.JD_PAGE_RAW -> {
-                    val resolved = resolvePageCapture(claimed, bridge, ingestion)
-                    if (resolved == null) continue   // not a job / extraction failed — already completed
-                    jdRecord = resolved
+                WorkItemType.JD_PAGE_RAW -> when (val r = resolvePageCapture(claimed, bridge, ingestion)) {
+                    is Resolution.Proceed  -> r.jdRecord
+                    is Resolution.Terminal -> { recordTerminal(claimed.jobId, r, jobStartedAt); continue }
                 }
                 else -> {
                     val rec = claimed.jdRecord
@@ -74,13 +77,12 @@ object ProcessorCommandHandler {
                         System.err.println("[processor] claim ${claimed.jobId} (${claimed.type}) has no jd_record — skipping")
                         continue
                     }
-                    jdRecord = rec
+                    rec
                 }
             }
 
             println("[processor] Processing job ${claimed.jobId} — ${jdRecord.roleTitle} @ ${jdRecord.company}")
 
-            val jobStartedAt = System.currentTimeMillis()
             val result: ProcessingResult = try {
                 pipeline.invoke(jdRecord)
             } catch (e: Exception) {
@@ -128,15 +130,67 @@ object ProcessorCommandHandler {
     }
 
     /**
-     * Scan/scrape a claimed raw email into a [JdRecord] to process. Returns null when the item
-     * is terminal here — digest (children re-enqueued as JD_SCRAPED), not-a-job, or an ingestion
-     * error — in which case the bridge job has already been completed via postResult.
+     * Outcome of resolving a claim into something processable. [Proceed] carries the [JdRecord] to
+     * run through [ProcessingPipeline]; [Terminal] means the claim is already done here (digest
+     * fan-out, not-a-job, or an ingestion/extraction error) — the result has been posted and the
+     * [jdRecord]/[result] are carried back so the loop can write the run-log line.
      */
-    private fun resolveEmail(claimed: ClaimDto, bridge: BridgeClient, ingestion: IngestionPipeline): JdRecord? {
+    private sealed interface Resolution {
+        data class Proceed(val jdRecord: JdRecord) : Resolution
+        data class Terminal(val jdRecord: JdRecord, val result: ProcessingResult) : Resolution
+    }
+
+    /** Append the run-log line for a terminal-at-resolve outcome (skip/error/digest). */
+    private fun recordTerminal(jobId: String, terminal: Resolution.Terminal, jobStartedAt: Long) {
+        com.jd.pipeline.utils.RunReport.record(
+            jobId, terminal.jdRecord, terminal.result, System.currentTimeMillis() - jobStartedAt,
+        )
+    }
+
+    /** Post a terminal result and package it (with a record for the run log) as a [Resolution]. */
+    private fun postTerminal(
+        bridge: BridgeClient,
+        jobId: String,
+        record: JdRecord,
+        result: ProcessingResult,
+    ): Resolution.Terminal {
+        bridge.postResult(jobId, result)
+        return Resolution.Terminal(record, result)
+    }
+
+    /**
+     * A JdRecord built straight from ingestion [state] (NOT via the pipeline's toJdRecord) purely so
+     * a terminal outcome carries enough identity — company/role/jobUrl/jd-length/intake — for the
+     * run log. Reading state fields directly keeps this independent of any mapping mock.
+     */
+    private fun logRecordOf(state: JDState, source: IngestionSource): JdRecord = JdRecord(
+        jdText     = state.jdText,
+        company    = state.company.ifBlank { null },
+        roleTitle  = state.roleTitle.ifBlank { null },
+        location   = state.location.ifBlank { null },
+        jobUrl     = state.jobUrl.ifBlank { null },
+        source     = source,
+        intakeMeta = state.intake,
+    )
+
+    /** A bare JdRecord for a terminal claim we couldn't resolve at all (missing payload). */
+    private fun emptyLogRecord(source: IngestionSource): JdRecord = JdRecord(
+        jdText = "", company = null, roleTitle = null, location = null, jobUrl = null, source = source,
+    )
+
+    /**
+     * Scan/scrape a claimed raw email into a [Resolution]. [Resolution.Terminal] when the item ends
+     * here — digest (children re-enqueued as JD_SCRAPED), not-a-job, or an ingestion error — in which
+     * case the bridge job has been completed via postResult and the run-log line is written by the
+     * caller. [Resolution.Proceed] carries the record to run through [ProcessingPipeline].
+     */
+    private fun resolveEmail(claimed: ClaimDto, bridge: BridgeClient, ingestion: IngestionPipeline): Resolution {
         val email = claimed.email
         if (email == null) {
-            bridge.postResult(claimed.jobId, skipResult("EMAIL_RAW claim missing email payload", TerminalLabel.JD_ERROR))
-            return null
+            return postTerminal(
+                bridge, claimed.jobId, emptyLogRecord(IngestionSource.EMAIL),
+                skipResult("EMAIL_RAW claim missing email payload", TerminalLabel.JD_ERROR),
+            )
         }
         val emailState = JDState(
             intake = IntakeContext.Email(
@@ -154,8 +208,10 @@ object ProcessorCommandHandler {
             ingestion.invoke(emailState)   // scan → digest fan-out → scrape
         } catch (e: Exception) {
             System.err.println("[processor] ingestion failed for ${claimed.jobId}: ${e.message}")
-            bridge.postResult(claimed.jobId, skipResult("ingestion: ${e.message}", TerminalLabel.JD_ERROR))
-            return null
+            return postTerminal(
+                bridge, claimed.jobId, logRecordOf(emailState, IngestionSource.EMAIL),
+                skipResult("ingestion: ${e.message}", TerminalLabel.JD_ERROR),
+            )
         }
 
         return when (val disposition = EmailResolution.classify(ingState)) {
@@ -165,23 +221,30 @@ object ProcessorCommandHandler {
                 // "not found" silently drops it (the intake query excludes JD_Not_Found) and the
                 // user has no signal it needs a retry.
                 System.err.println("[processor] ingestion error for ${claimed.jobId}: ${disposition.message}")
-                bridge.postResult(claimed.jobId, skipResult(disposition.message, TerminalLabel.JD_ERROR))
-                null
+                postTerminal(
+                    bridge, claimed.jobId, logRecordOf(ingState, IngestionSource.EMAIL),
+                    skipResult(disposition.message, TerminalLabel.JD_ERROR),
+                )
             }
             is EmailDisposition.ReEnqueueChildren -> {
                 for (child in disposition.children) {
                     runCatching { bridge.submit(ingestion.toJdRecord(child)) }
                         .onFailure { System.err.println("[processor] digest child submit failed: ${it.message}") }
                 }
-                bridge.postResult(claimed.jobId, skipResult(null, TerminalLabel.JD_PROCESSED_DIGEST))   // parent digest complete → archive
-                null
+                // parent digest complete → archive
+                postTerminal(
+                    bridge, claimed.jobId, logRecordOf(ingState, IngestionSource.EMAIL),
+                    skipResult(null, TerminalLabel.JD_PROCESSED_DIGEST),
+                )
             }
-            EmailDisposition.SkipNotJob -> {
-                bridge.postResult(claimed.jobId, skipResult(null, TerminalLabel.JD_NOT_FOUND))   // not a job posting
-                null
-            }
+            EmailDisposition.SkipNotJob ->
+                // not a job posting
+                postTerminal(
+                    bridge, claimed.jobId, logRecordOf(ingState, IngestionSource.EMAIL),
+                    skipResult(null, TerminalLabel.JD_NOT_FOUND),
+                )
             EmailDisposition.Process ->
-                ingestion.toJdRecord(ingState, idempotencyKey = email.messageId)
+                Resolution.Proceed(ingestion.toJdRecord(ingState, idempotencyKey = email.messageId))
         }
     }
 
@@ -189,13 +252,16 @@ object ProcessorCommandHandler {
      * LLM-extract a JD from a claimed raw page capture into a [JdRecord] to process. The page was
      * rendered in the user's authenticated browser, so [ScrapeJdNode] skips fetching and extracts
      * straight from the captured text. Returns null when the page isn't a job posting or extraction
-     * fails — in which case the bridge job has already been completed via postResult (a SKIP).
+     * fails — in which case the bridge job has already been completed via postResult (a SKIP) and
+     * the caller writes the run-log line from the returned [Resolution.Terminal].
      */
-    private fun resolvePageCapture(claimed: ClaimDto, bridge: BridgeClient, ingestion: IngestionPipeline): JdRecord? {
+    private fun resolvePageCapture(claimed: ClaimDto, bridge: BridgeClient, ingestion: IngestionPipeline): Resolution {
         val cap = claimed.pageCapture
         if (cap == null) {
-            bridge.postResult(claimed.jobId, skipResult("JD_PAGE_RAW claim missing page payload"))
-            return null
+            return postTerminal(
+                bridge, claimed.jobId, emptyLogRecord(IngestionSource.EXTENSION),
+                skipResult("JD_PAGE_RAW claim missing page payload"),
+            )
         }
         val state = JDState(
             intake       = IntakeContext.WebCapture(url = cap.url, title = cap.title),
@@ -206,29 +272,32 @@ object ProcessorCommandHandler {
             ingestion.scrapeNode.process(state)   // dual-mode: extracts from capturedText, no fetch
         } catch (e: Exception) {
             System.err.println("[processor] page extraction failed for ${claimed.jobId}: ${e.message}")
-            bridge.postResult(claimed.jobId, skipResult("extraction: ${e.message}"))
-            return null
+            return postTerminal(
+                bridge, claimed.jobId, logRecordOf(state, IngestionSource.EXTENSION),
+                skipResult("extraction: ${e.message}"),
+            )
         }
 
         // The scrape prompt has no explicit is-job flag, so gate on the load-bearing jd_text:
         // if the LLM couldn't extract a usable JD, treat the page as "not a job posting".
         if (extracted.error.isNotBlank() || extracted.jdText.length < 150) {
-            bridge.postResult(
-                claimed.jobId,
+            return postTerminal(
+                bridge, claimed.jobId, logRecordOf(extracted, IngestionSource.EXTENSION),
                 skipResult("This page doesn't look like a job posting (no JD could be extracted)"),
             )
-            return null
         }
 
-        return JdRecord(
-            jdText         = extracted.jdText,
-            company        = extracted.company.ifBlank { null },
-            roleTitle      = extracted.roleTitle.ifBlank { null },
-            location       = extracted.location.ifBlank { null },
-            jobUrl         = extracted.jobUrl.ifBlank { null },
-            source         = IngestionSource.EXTENSION,
-            idempotencyKey = cap.url,
-            intakeMeta     = extracted.intake,
+        return Resolution.Proceed(
+            JdRecord(
+                jdText         = extracted.jdText,
+                company        = extracted.company.ifBlank { null },
+                roleTitle      = extracted.roleTitle.ifBlank { null },
+                location       = extracted.location.ifBlank { null },
+                jobUrl         = extracted.jobUrl.ifBlank { null },
+                source         = IngestionSource.EXTENSION,
+                idempotencyKey = cap.url,
+                intakeMeta     = extracted.intake,
+            ),
         )
     }
 
