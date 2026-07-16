@@ -93,6 +93,12 @@ class ScrapeJdNode(
         // A login/verification page is content-thin; a real JD is far longer. Guards the DOM/text backstops.
         private const val AUTH_WALL_MAX_BODY_CHARS = 2500
 
+        // A jobright posting whose scrape yields fewer chars than this is treated as a failed fetch
+        // (blocked, auth wall, or thin logged-out preview) rather than a real JD: its leftover jdText
+        // is just the one-line digest summary. Below this we blank jdText so score_fit skips it
+        // instead of scoring a <400-char summary. Real jobright JDs run to thousands of chars.
+        private const val MIN_JOBRIGHT_JD_CHARS = 400
+
         private val DEFAULT_SCRAPE_SKILL_PROMPT = """
             Extract structured job details from the following job page content.
             The content may include raw JSON from the page (PAGE_JSON_DATA) and/or visible page text.
@@ -139,14 +145,14 @@ class ScrapeJdNode(
         // ── Batch-skip checks (one attempt per domain per batch) ─────────────
         if (isAuthExpired(host)) {
             log("[scrape_jd] Skipping $host — auth wall hit earlier this batch (re-auth pending)")
-            return input.copy(
+            return clearThinJdForJobright(input.copy(
                 isChromeSessionExpired = true,
                 error = "scrape_jd: $host needs re-authentication — skipped this batch"
-            )
+            ), jobUrl)
         }
         if (host.isNotEmpty() && batchBlockedDomains.contains(host)) {
             log("[scrape_jd] Skipping $host — blocked earlier this batch")
-            return input.copy(error = "scrape_jd: $host blocked earlier in this batch — skipped")
+            return clearThinJdForJobright(input.copy(error = "scrape_jd: $host blocked earlier in this batch — skipped"), jobUrl)
         }
 
         log("[scrape_jd] Fetching job URL: $jobUrl")
@@ -157,12 +163,12 @@ class ScrapeJdNode(
             if (page.blockReason.isNotEmpty()) {
                 log("[scrape_jd] Blocked for $jobUrl: ${page.blockReason}")
                 batchBlockedDomains.add(host)
-                return input.copy(error = "scrape_jd: ${page.blockReason}", scrapePath = "blocked")
+                return clearThinJdForJobright(input.copy(error = "scrape_jd: ${page.blockReason}", scrapePath = "blocked"), jobUrl)
             }
 
             if (page.cleanedText.isEmpty()) {
                 log("[scrape_jd] Empty page content for $jobUrl")
-                return input.copy(error = "scrape_jd: empty page content", scrapePath = "empty")
+                return clearThinJdForJobright(input.copy(error = "scrape_jd: empty page content", scrapePath = "empty"), jobUrl)
             }
 
             parseJobPage(input, jobUrl, page.cleanedText)
@@ -175,12 +181,12 @@ class ScrapeJdNode(
                     // or challenge wall: skip it for the batch and send ONE phone re-auth alert.
                     batchAuthExpiredDomains.add(host)
                     alerts.reauthRequired(e.site, detail = e.message, linkUrl = reauthLink())
-                    input.copy(
+                    clearThinJdForJobright(input.copy(
                         isChromeSessionExpired = true,
                         error = "scrape_jd: ${e.message}"
-                    )
+                    ), jobUrl)
                 }
-                else -> input.copy(error = "scrape_jd: ${e.message}")
+                else -> clearThinJdForJobright(input.copy(error = "scrape_jd: ${e.message}"), jobUrl)
             }
         }
     }
@@ -195,10 +201,10 @@ class ScrapeJdNode(
             return fetchLinkedInPageWithPlaywright(url)
         }
 
-        // Proactive CDP for known soft-blocking / challenge-prone domains: skip HTTP and use the
-        // warm browser directly (fetchPageWithPlaywright alerts + fails the scrape if the debug
-        // Chrome is unreachable — all browser scraping goes through the host CDP Chrome).
-        if (isForceCdpHost(host)) {
+        // Proactive CDP for known soft-blocking / challenge-prone domains (and jobright.ai): skip HTTP
+        // and use the warm browser directly (fetchPageWithPlaywright alerts + fails the scrape if the
+        // debug Chrome is unreachable — all browser scraping goes through the host CDP Chrome).
+        if (forcesCdp(host)) {
             log("[scrape_jd] Force-CDP domain: $host — routing to browser")
             return fetchPageWithPlaywright(url).copy(scrapePath = "cdp_forced")
         }
@@ -666,6 +672,14 @@ class ScrapeJdNode(
 
     private fun isForceCdpHost(host: String): Boolean = matchesDomainSuffix(host, forceCdpDomains)
 
+    /**
+     * Hosts scraped via the warm, authenticated CDP browser instead of a plain HTTP fetch: the
+     * configured CDP_FORCE_DOMAINS list plus jobright.ai. Jobright's full JD only renders in the
+     * logged-in session (a logged-out HTTP fetch yields a thin preview whose large __NEXT_DATA__ blob
+     * defeats the thin-content fallback), so it is always routed to the browser regardless of config.
+     */
+    internal fun forcesCdp(host: String): Boolean = isForceCdpHost(host) || isJobrightHost(host)
+
     /** True when [host] equals, or is a subdomain of, any entry in [domains]. */
     internal fun matchesDomainSuffix(host: String, domains: List<String>): Boolean =
         domains.any { host == it || host.endsWith(".$it") }
@@ -751,11 +765,26 @@ class ScrapeJdNode(
             else -> ""
         }
 
-        return state.copy(
-            jdText = finalJdText,
-            isJobPosting = finalJdText.isNotBlank()
+        return clearThinJdForJobright(
+            state.copy(
+                jdText = finalJdText,
+                isJobPosting = finalJdText.isNotBlank()
+            ),
+            url
         )
     }
+
+    /**
+     * Jobright's full JD only comes from the authenticated __NEXT_DATA__. When a scrape is blocked,
+     * hits an auth wall, or renders only a thin logged-out preview, the leftover [state].jdText is the
+     * one-line digest summary (or a thin page snippet). Blank it (and clear [JDState.isJobPosting]) so
+     * score_fit skips the posting instead of scoring a <400-char summary. Non-jobright states and
+     * substantive JDs (the normal success path) pass through untouched.
+     */
+    private fun clearThinJdForJobright(state: JDState, url: String): JDState =
+        if (isJobrightUrl(url) && state.jdText.length < MIN_JOBRIGHT_JD_CHARS)
+            state.copy(jdText = "", isJobPosting = false)
+        else state
 
     /**
      * Parse the LLM JSON response with Jackson and return an updated JDState.
@@ -861,10 +890,10 @@ class ScrapeJdNode(
         DEFAULT_SCRAPE_SKILL_PROMPT
     }
 
-    private fun isJobrightUrl(url: String): Boolean {
-        val host = extractHost(url)
-        return host == "jobright.ai" || host.endsWith(".jobright.ai")
-    }
+    private fun isJobrightUrl(url: String): Boolean = isJobrightHost(extractHost(url))
+
+    internal fun isJobrightHost(host: String): Boolean =
+        host == "jobright.ai" || host.endsWith(".jobright.ai")
 
     /**
      * Parses Jobright's __NEXT_DATA__ JSON to extract fields not reliably present in visible text.
