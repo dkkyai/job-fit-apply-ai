@@ -1,7 +1,10 @@
 package com.jd.pipeline.client
 
 import com.microsoft.playwright.Browser
+import com.microsoft.playwright.BrowserContext
+import com.microsoft.playwright.Page
 import com.microsoft.playwright.Playwright
+import com.microsoft.playwright.PlaywrightException
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -11,6 +14,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -247,5 +251,76 @@ class SteelBrowserTest {
         // next call must reconnect immediately — a genuine drop clears the cooldown rather than gating.
         assertTrue(browser.isAvailable())
         verify(client, times(2)).createSession(anyOrNull(), any())
+    }
+
+    /**
+     * Wire a [SteelBrowser] whose warm-tab creation throws a TargetClosedError for the first
+     * [failFirst] attempts (a Steel session that died under a still-"connected" Browser handle),
+     * then succeeds. Returns the browser, the page it eventually hands out, and a call counter.
+     */
+    private class TargetClosedFixture(failFirst: Int, error: PlaywrightException) {
+        val client = mock<SteelClient>()
+        val page = mock<Page>()
+        var newPageCalls = 0
+        val browser: SteelBrowser
+
+        init {
+            whenever(client.createSession(anyOrNull(), any()))
+                .thenReturn(SteelClient.SteelSession(id = "s1", websocketUrl = "ws://localhost:3000/"))
+            val handle = mock<Browser>()
+            whenever(handle.isConnected).thenReturn(true)
+            val context = mock<BrowserContext>()
+            whenever(handle.contexts()).thenReturn(listOf(context))
+            whenever(context.newPage()).thenAnswer {
+                newPageCalls++
+                if (newPageCalls <= failFirst) throw error else page
+            }
+            browser = SteelBrowser(
+                baseUrl = "http://steel:3000",
+                client = client,
+                store = mock(),
+                nanoTime = { 0L },
+                sleep = {},
+                connect = { mock<Playwright>() to handle },
+            )
+        }
+    }
+
+    @Test
+    @DisplayName("pageForDomain retries a TargetClosedError with a fresh session, then succeeds")
+    fun targetClosedRetriesWithNewSession() {
+        // Regression: a Steel session idle-released under a Browser handle that still reports connected
+        // makes tab creation throw TargetClosedError. That used to propagate and drop the job to thin
+        // email-only JD text; now it recovers by reconnecting to a brand-new session and retrying.
+        val fx = TargetClosedFixture(failFirst = 2, error = PlaywrightException("Target closed"))
+
+        assertEquals(fx.page, fx.browser.pageForDomain("jobleads.com"))
+        assertEquals(3, fx.newPageCalls)                             // 2 failures + 1 success
+        verify(fx.client, times(3)).createSession(anyOrNull(), any())  // a fresh session per attempt
+    }
+
+    @Test
+    @DisplayName("pageForDomain propagates a TargetClosedError only after exhausting the 2 retries")
+    fun targetClosedExhaustsAndPropagates() {
+        // A persistently dead backend must still surface the error (so the caller falls back to the
+        // email JD body) — but only after 1 initial attempt + 2 retries, each on a new session.
+        val fx = TargetClosedFixture(failFirst = 99, error = PlaywrightException("Target closed"))
+
+        val thrown = assertFailsWith<PlaywrightException> { fx.browser.pageForDomain("jobleads.com") }
+        assertTrue(thrown.message!!.contains("Target closed"))
+        assertEquals(3, fx.newPageCalls)                             // 1 + 2 retries, then give up
+        verify(fx.client, times(3)).createSession(anyOrNull(), any())
+    }
+
+    @Test
+    @DisplayName("pageForDomain does NOT retry a non-TargetClosed Playwright error — it propagates at once")
+    fun nonTargetClosedIsNotRetried() {
+        // Only TargetClosedError means a dead session worth a fresh-session retry; any other Playwright
+        // error (e.g. a genuine navigation failure) must surface immediately without reconnect churn.
+        val fx = TargetClosedFixture(failFirst = 99, error = PlaywrightException("some other failure"))
+
+        assertFailsWith<PlaywrightException> { fx.browser.pageForDomain("jobleads.com") }
+        assertEquals(1, fx.newPageCalls)                             // no retry
+        verify(fx.client, times(1)).createSession(anyOrNull(), any())
     }
 }

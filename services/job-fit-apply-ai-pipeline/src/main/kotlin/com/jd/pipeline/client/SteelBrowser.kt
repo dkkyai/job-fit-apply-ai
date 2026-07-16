@@ -4,6 +4,7 @@ import com.jd.pipeline.config.Config
 import com.microsoft.playwright.Browser
 import com.microsoft.playwright.Page
 import com.microsoft.playwright.Playwright
+import com.microsoft.playwright.PlaywrightException
 import org.slf4j.LoggerFactory
 import java.net.URI
 import java.nio.file.Path
@@ -31,6 +32,9 @@ class SteelBrowser(
     private val connectBackoffBaseMs: Long = Config.STEEL_CONNECT_BACKOFF_BASE_MS,
     private val circuitBreakerThreshold: Int = Config.STEEL_CIRCUIT_BREAKER_THRESHOLD,
     private val circuitOpenCooldownMs: Long = Config.STEEL_CIRCUIT_OPEN_COOLDOWN_MS,
+    // How many times pageForDomain retries a TargetClosedError with a fresh Steel session before
+    // giving up (and letting the caller fall back to email-only JD text). Default 2 (3 tries total).
+    private val targetClosedMaxRetries: Int = 2,
     private val client: SteelClient = SteelClient(baseUrl),
     private val store: SteelStorageStore = SteelStorageStore(Paths.get(Config.STEEL_STORAGE_STATE_PATH)),
     // Monotonic clock seam (nanos); overridable so the cooldown is unit-testable without sleeping.
@@ -183,9 +187,32 @@ class SteelBrowser(
      * Return a healthy, foregrounded tab dedicated to [host] from the Steel session's context
      * (which holds the injected/logged-in cookies), reused across jobs. Recreated if closed or
      * parked on a login/checkpoint/captcha page. Call only when [isAvailable] is true.
+     *
+     * A [TargetClosedError][PlaywrightException] here means the underlying Steel session died out
+     * from under a Browser handle that still reports connected (Steel idle-releases sessions, or a
+     * target crashed) — creating/foregrounding a tab then throws. Rather than surface that (the
+     * caller would drop the job to thin email-only JD text), tear the dead session down and retry
+     * with a brand-new one up to [targetClosedMaxRetries] times before letting it propagate.
      */
     @Synchronized
     override fun pageForDomain(host: String): Page {
+        var lastError: PlaywrightException? = null
+        for (attempt in 0..targetClosedMaxRetries) {
+            try {
+                return acquirePageForDomain(host)
+            } catch (e: PlaywrightException) {
+                if (!isTargetClosed(e)) throw e
+                lastError = e
+                log.warn("Steel page for {} hit TargetClosedError (attempt {}/{}) — reconnecting with a new session",
+                    host, attempt + 1, targetClosedMaxRetries + 1)
+                resetConnection()  // drop the dead session so the next attempt builds a fresh one
+            }
+        }
+        throw lastError ?: error("Steel browser not available — call isAvailable() first")
+    }
+
+    /** Acquire (or recreate) the warm tab for [host]. May throw TargetClosedError on a dead session. */
+    private fun acquirePageForDomain(host: String): Page {
         ensureLive()
         val live = browser?.takeIf { it.isConnected }
             ?: error("Steel browser not available — call isAvailable() first")
@@ -214,6 +241,23 @@ class SteelBrowser(
         if (page.isClosed) return false
         val url = runCatching { page.url().lowercase() }.getOrDefault("")
         return stuckMarkers.none { url.contains(it) }
+    }
+
+    /**
+     * Whether [e] (or a cause) is Playwright's TargetClosedError — the page/context/browser target
+     * closed under us. Matched by class name (the class lives in the `impl` package, so we avoid a
+     * compile-time dependency on it) and by message, robust across Playwright versions.
+     */
+    private fun isTargetClosed(e: Throwable): Boolean {
+        var cur: Throwable? = e
+        while (cur != null) {
+            if (cur::class.java.simpleName == "TargetClosedError") return true
+            val msg = cur.message?.lowercase().orEmpty()
+            if (msg.contains("target closed") ||
+                msg.contains("target page, context or browser has been closed")) return true
+            cur = cur.cause
+        }
+        return false
     }
 
     /** Interactive live-view URL for phone re-auth (over the Tailscale UI base), or null if no session. */
