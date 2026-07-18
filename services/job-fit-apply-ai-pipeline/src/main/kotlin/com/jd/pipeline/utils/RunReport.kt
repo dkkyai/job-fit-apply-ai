@@ -26,7 +26,15 @@ import java.time.Instant
 object RunReport {
     private val mapper = ObjectMapper().registerKotlinModule()
 
-    private val path: Path by lazy { Config.OUTPUT_DIR.resolve("runs").resolve("run_log.jsonl") }
+    private val defaultPath: Path by lazy { Config.OUTPUT_DIR.resolve("runs").resolve("run_log.jsonl") }
+
+    /**
+     * Test seam: redirect the log to a temp file so tests asserting a line was written don't append
+     * to the real run log (which the analyzer reads). Null — the production value — uses [defaultPath].
+     */
+    internal var pathOverride: Path? = null
+
+    private val path: Path get() = pathOverride ?: defaultPath
 
     /**
      * One processed-job record. Field choices are deliberate: `jdTextLen` exposes
@@ -55,6 +63,11 @@ object RunReport {
         // "captured" | "blocked" | "empty" | ""). Lets the analyzer see the HTTP-vs-browser split
         // and confirm the browser path (Steel/CDP) is actually carrying LinkedIn/forced domains.
         val scrapePath: String,
+        // Gmail terminal-label decision ("JD_Processed" | "JD_Processed_Digest" | "JD_Error" |
+        // "JD_Not_Found" | "Recruiter_Response_Required" | null). Lets the analyzer tell a digest
+        // PARENT (JD_Processed_Digest — fanned out to children, never scored) apart from a digest
+        // CHILD that was actually scored, which otherwise both look like `isDigest` rows.
+        val terminalLabel: String?,
     )
 
     fun record(jobId: String, record: JdRecord, result: ProcessingResult, durationMs: Long) {
@@ -78,6 +91,7 @@ object RunReport {
                 outputPath = result.outputPath,
                 durationMs = durationMs,
                 scrapePath = result.scrapePath,
+                terminalLabel = result.terminalLabel,
             )
             Files.createDirectories(path.parent)
             Files.writeString(

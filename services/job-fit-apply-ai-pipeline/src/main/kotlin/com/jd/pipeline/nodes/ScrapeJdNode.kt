@@ -201,10 +201,10 @@ class ScrapeJdNode(
             return fetchLinkedInPageWithPlaywright(url)
         }
 
-        // Proactive CDP for known soft-blocking / challenge-prone domains (and jobright.ai): skip HTTP
-        // and use the warm browser directly (fetchPageWithPlaywright alerts + fails the scrape if the
-        // debug Chrome is unreachable — all browser scraping goes through the host CDP Chrome).
-        if (forcesCdp(host)) {
+        // Proactive CDP for known soft-blocking / challenge-prone domains: skip HTTP and use the
+        // warm browser directly (fetchPageWithPlaywright alerts + fails the scrape if the debug
+        // Chrome is unreachable — all browser scraping goes through the host CDP Chrome).
+        if (isForceCdpHost(host)) {
             log("[scrape_jd] Force-CDP domain: $host — routing to browser")
             return fetchPageWithPlaywright(url).copy(scrapePath = "cdp_forced")
         }
@@ -380,8 +380,12 @@ class ScrapeJdNode(
             throw CdpUnavailableException(cdpUnavailableMessage())
         }
         log("[scrape_jd] Using CDP Chrome for LinkedIn: $url")
-        val page = cdpBrowser.pageForDomain(extractHost(url))
-        return scrapeLinkedInPage(page, url).copy(scrapePath = "cdp_profile")
+        // See fetchPageWithPlaywright: recovery must wrap the navigate/extract, not just the tab.
+        // AuthRequiredException from requireAuthenticated is not a PlaywrightException, so it still
+        // propagates on the first attempt rather than burning retries on a genuine auth wall.
+        return cdpBrowser.withPageForDomain(extractHost(url)) { page ->
+            scrapeLinkedInPage(page, url).copy(scrapePath = "cdp_profile")
+        }
     }
 
     /**
@@ -670,15 +674,10 @@ class ScrapeJdNode(
         Config.CDP_FORCE_DOMAINS.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
     }
 
+    // jobright.ai is force-CDP by configuration (CDP_FORCE_DOMAINS in .env / .env.example) — its full
+    // JD only renders in the logged-in session. Kept in config rather than hardcoded here so the list
+    // stays in one place; the thin-JD guard below is what catches it when that routing doesn't help.
     private fun isForceCdpHost(host: String): Boolean = matchesDomainSuffix(host, forceCdpDomains)
-
-    /**
-     * Hosts scraped via the warm, authenticated CDP browser instead of a plain HTTP fetch: the
-     * configured CDP_FORCE_DOMAINS list plus jobright.ai. Jobright's full JD only renders in the
-     * logged-in session (a logged-out HTTP fetch yields a thin preview whose large __NEXT_DATA__ blob
-     * defeats the thin-content fallback), so it is always routed to the browser regardless of config.
-     */
-    internal fun forcesCdp(host: String): Boolean = isForceCdpHost(host) || isJobrightHost(host)
 
     /** True when [host] equals, or is a subdomain of, any entry in [domains]. */
     internal fun matchesDomainSuffix(host: String, domains: List<String>): Boolean =
@@ -777,13 +776,27 @@ class ScrapeJdNode(
     /**
      * Jobright's full JD only comes from the authenticated __NEXT_DATA__. When a scrape is blocked,
      * hits an auth wall, or renders only a thin logged-out preview, the leftover [state].jdText is the
-     * one-line digest summary (or a thin page snippet). Blank it (and clear [JDState.isJobPosting]) so
-     * score_fit skips the posting instead of scoring a <400-char summary. Non-jobright states and
-     * substantive JDs (the normal success path) pass through untouched.
+     * one-line digest summary (or a thin page snippet). Blank it so score_fit skips the posting
+     * instead of scoring a <400-char summary. Non-jobright states and substantive JDs (the normal
+     * success path) pass through untouched.
+     *
+     * Deliberately leaves [JDState.isJobPosting] alone, and sets an [JDState.error] if nothing else
+     * did. Clearing isJobPosting would make the posting *disappear*: a digest child is re-enqueued
+     * only if `isJobPosting` ([EmailResolution] `ReEnqueueChildren`), so a cleared child gets no
+     * bridge job, no label, no run-log line and no retry — while a non-digest jobright email would
+     * classify as `SkipNotJob` → `JD_Not_Found`, which the intake query excludes forever. Both are
+     * silent data loss for a *transient* failure. Keeping it a job posting instead routes it down the
+     * normal path, where score_fit SKIPs a blank JD ("No JD text to score") and the job still gets a
+     * terminal label, a completed event and a run-log line — visible, and retryable.
      */
     private fun clearThinJdForJobright(state: JDState, url: String): JDState =
         if (isJobrightUrl(url) && state.jdText.length < MIN_JOBRIGHT_JD_CHARS)
-            state.copy(jdText = "", isJobPosting = false)
+            state.copy(
+                jdText = "",
+                error = state.error.ifEmpty {
+                    "scrape_jd: no usable jobright JD (got ${state.jdText.length} chars, need $MIN_JOBRIGHT_JD_CHARS)"
+                },
+            )
         else state
 
     /**
@@ -1166,8 +1179,9 @@ class ScrapeJdNode(
             throw CdpUnavailableException(cdpUnavailableMessage())
         }
         log("[scrape_jd] Using CDP Chrome for $url")
-        val page = cdpBrowser.pageForDomain(extractHost(url))
-        return extractDynamicPage(page, url)
+        // withPageForDomain (not pageForDomain): a Steel session that dies mid-scrape surfaces during
+        // the navigate/extract below, not during tab acquisition, so recovery has to wrap both.
+        return cdpBrowser.withPageForDomain(extractHost(url)) { page -> extractDynamicPage(page, url) }
     }
 
     /**

@@ -13,6 +13,34 @@ nothing downstream changes when the spine switched from run_log to the bridge fe
 import json
 from pathlib import Path
 
+# A digest-derived JD shorter than this was scored on a summary, not a real posting.
+THIN_JD_CHARS = 400
+# Terminal label of a digest PARENT: it fanned its children out as their own jobs and was never
+# scored itself, so its (always empty) jdText is not a thin-JD signal. See TerminalLabel.kt.
+DIGEST_PARENT_LABEL = "JD_Processed_Digest"
+
+
+def is_thin_digest(rec):
+    """True when [rec] is a digest job that was actually SCORED on a too-thin JD.
+
+    Excludes digest parents. A parent is a `isDigest` row with an empty jdText by construction —
+    it exists only to fan out children — so counting it would report a thin-JD problem for every
+    digest email received. Older run_log lines predate `terminalLabel`; they fall back to the
+    action/jobUrl shape, since a parent is always a SKIP with no job URL of its own.
+    """
+    if not rec.get("isDigest"):
+        return False
+    if (rec.get("jdTextLen", 0) or 0) >= THIN_JD_CHARS:
+        return False
+    label = rec.get("terminalLabel")
+    if label is not None:
+        return label != DIGEST_PARENT_LABEL
+    # Legacy lines (pre-terminalLabel): a non-zero score proves it reached score_fit, so it is a
+    # child however it ended. Otherwise a parent's shape is a SKIP with no job URL of its own.
+    if (rec.get("score", 0) or 0) > 0:
+        return True
+    return bool(rec.get("hasJobUrl")) or (rec.get("action") or "").upper() != "SKIP"
+
 
 def load_run_log(path: Path):
     """run_log.jsonl -> {jobId: last record}. Best-effort; skips malformed lines."""

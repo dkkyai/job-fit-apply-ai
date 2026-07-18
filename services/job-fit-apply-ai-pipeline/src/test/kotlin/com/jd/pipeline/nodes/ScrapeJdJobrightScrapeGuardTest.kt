@@ -14,12 +14,14 @@ import kotlin.test.assertTrue
  * one-line digest summary that seeds each child's jdText.
  *
  * Two behaviours are locked here:
- *  1. jobright.ai is always routed to the authenticated CDP browser ([ScrapeJdNode.forcesCdp]),
- *     so the full __NEXT_DATA__ JD is fetched from the logged-in session rather than a thin
- *     logged-out HTTP preview.
- *  2. When a jobright scrape fails to yield a substantive JD (blocked / auth wall / thin preview),
+ *  1. When a jobright scrape fails to yield a substantive JD (blocked / auth wall / thin preview),
  *     the leftover thin digest-summary jdText is blanked so score_fit SKIPs it instead of scoring
  *     a <400-char summary.
+ *  2. Blanking keeps the posting a *job posting* and gives it an error, so it stays visible and
+ *     retryable rather than vanishing from the digest fan-out (or landing on JD_Not_Found).
+ *
+ * Routing jobright to the authenticated CDP browser — needed for the full __NEXT_DATA__ JD — is
+ * configuration (CDP_FORCE_DOMAINS in .env), not logic, so it is not asserted here.
  */
 @DisplayName("ScrapeJdNode — jobright digest-split JD guard")
 class ScrapeJdJobrightScrapeGuardTest {
@@ -36,22 +38,15 @@ class ScrapeJdJobrightScrapeGuardTest {
     private val digestSummary =
         "Test Automation Lead @ Qualitest | Remote | \$122K/yr - \$126K/yr | https://jobright.ai/jobs/info/abc123"
 
-    // ── 1. Force-CDP routing ─────────────────────────────────────────────────
+    // ── 1. Host matching ─────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("jobright.ai and its subdomains always route to the CDP browser")
-    fun jobrightForcesCdp() {
-        assertTrue(node.forcesCdp("jobright.ai"))
-        assertTrue(node.forcesCdp("www.jobright.ai"))
+    @DisplayName("look-alike hosts do not match the jobright rule")
+    fun lookalikesDoNotMatch() {
         assertTrue(node.isJobrightHost("jobright.ai"))
-    }
-
-    @Test
-    @DisplayName("look-alike and unlisted hosts are not force-CDP by the jobright rule")
-    fun lookalikesDoNotForceCdp() {
-        assertFalse(node.isJobrightHost("notjobright.ai"))       // suffix without a dot boundary
+        assertTrue(node.isJobrightHost("www.jobright.ai"))
+        assertFalse(node.isJobrightHost("notjobright.ai"))        // suffix without a dot boundary
         assertFalse(node.isJobrightHost("jobright.ai.evil.com"))  // jobright as a subdomain of attacker
-        assertFalse(node.forcesCdp("jobright.ai.evil.com"))       // the jobright rule must not over-match
     }
 
     // ── 2. Thin-JD guard (block / thin-page case) ────────────────────────────
@@ -71,8 +66,48 @@ class ScrapeJdJobrightScrapeGuardTest {
         val result = node.process(input)
 
         assertTrue(result.jdText.isBlank(), "thin digest summary must be blanked so score_fit skips it")
-        assertFalse(result.isJobPosting, "a posting we could not fetch must not look scorable")
         assertTrue(result.error.contains("blocked", ignoreCase = true))
+    }
+
+    @Test
+    @DisplayName("a failed jobright scrape stays a job posting so it is not silently dropped")
+    fun failedScrapeStaysAJobPosting() {
+        // Regression guard. Clearing isJobPosting makes the posting VANISH: EmailResolution
+        // re-enqueues digest children only when isJobPosting, so the child would get no bridge job,
+        // no terminal label, no run-log line and no retry — and a non-digest jobright email would
+        // classify as SkipNotJob → JD_Not_Found, which the intake query excludes forever. It must
+        // stay a job posting (with a blank JD) so score_fit SKIPs it visibly instead.
+        node.batchBlockedDomains.add("jobright.ai")
+        val input = JDState(
+            isJobPosting = true,
+            jobUrl = "https://jobright.ai/jobs/info/abc123",
+            jdText = digestSummary,
+        )
+
+        val result = node.process(input)
+
+        assertTrue(result.isJobPosting, "a failed fetch must stay re-enqueueable/labelable, not vanish")
+        assertTrue(result.error.isNotBlank(), "the failure must carry an error so it is visible")
+    }
+
+    @Test
+    @DisplayName("a thin jobright scrape with no other error still gets one, so it is not JD_Processed")
+    fun thinScrapeSetsAnError() {
+        // The successful-but-thin path sets no error of its own. Without one, a non-digest jobright
+        // email would look like a clean success and be labelled JD_Processed with nothing scored.
+        val thinNode = ScrapeJdNode(llm = LlmCaller { """{"role_title":"Test Automation Lead","jd_text":null}""" })
+        thinNode.resetBatch()
+        val input = JDState(
+            isJobPosting = true,
+            jobUrl = "https://jobright.ai/jobs/info/abc123",
+            jdText = digestSummary,
+            capturedText = "Sign in to view this job on Jobright.",
+        )
+
+        val result = thinNode.process(input)
+
+        assertTrue(result.jdText.isBlank())
+        assertTrue(result.error.contains("no usable jobright JD"), "got: '${result.error}'")
     }
 
     @Test
@@ -92,7 +127,6 @@ class ScrapeJdJobrightScrapeGuardTest {
         val result = thinNode.process(input)
 
         assertTrue(result.jdText.isBlank(), "thin page must not survive as a scorable JD")
-        assertFalse(result.isJobPosting)
     }
 
     @Test

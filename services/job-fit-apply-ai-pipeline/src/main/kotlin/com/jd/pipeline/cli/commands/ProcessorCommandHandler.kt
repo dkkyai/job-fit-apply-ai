@@ -74,7 +74,14 @@ object ProcessorCommandHandler {
                 else -> {
                     val rec = claimed.jdRecord
                     if (rec == null) {
-                        System.err.println("[processor] claim ${claimed.jobId} (${claimed.type}) has no jd_record — skipping")
+                        // Must POST a result, not just `continue`: a bare skip leaves the bridge row
+                        // CLAIMED, so the stale-claim sweep re-queues it and we spin on it forever.
+                        System.err.println("[processor] claim ${claimed.jobId} (${claimed.type}) has no jd_record — failing it")
+                        val terminal = postTerminal(
+                            bridge, claimed.jobId, emptyLogRecord(IngestionSource.MANUAL),
+                            skipResult("${claimed.type} claim has no jd_record", TerminalLabel.JD_ERROR),
+                        )
+                        recordTerminal(claimed.jobId, terminal, jobStartedAt)
                         continue
                     }
                     rec
@@ -147,14 +154,20 @@ object ProcessorCommandHandler {
         )
     }
 
-    /** Post a terminal result and package it (with a record for the run log) as a [Resolution]. */
+    /**
+     * Post a terminal result and package it (with a record for the run log) as a [Resolution].
+     * A failed post is logged, not thrown: the bridge being briefly unreachable must not take the
+     * whole processor loop down, and the run-log line is still worth writing (the stale-claim sweep
+     * re-queues the job, and [com.jd.pipeline.utils.RunReport] keeps the last line per job id).
+     */
     private fun postTerminal(
         bridge: BridgeClient,
         jobId: String,
         record: JdRecord,
         result: ProcessingResult,
     ): Resolution.Terminal {
-        bridge.postResult(jobId, result)
+        runCatching { bridge.postResult(jobId, result) }
+            .onFailure { System.err.println("[processor] Failed to post terminal result for $jobId: ${it.message}") }
         return Resolution.Terminal(record, result)
     }
 

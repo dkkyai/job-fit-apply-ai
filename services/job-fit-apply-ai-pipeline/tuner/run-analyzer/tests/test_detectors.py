@@ -70,6 +70,32 @@ class TestDetectors(unittest.TestCase):
         two = one + [{"jobId": "j2", "board": "indeed.com", "isDigest": True, "jdTextLen": 200}]
         self.assertIn("thin-digest-indeed-com", _ids(detectors.detect(two)))
 
+    def test_thin_digest_ignores_digest_parents(self):
+        # A digest PARENT fans its children out as their own jobs and is never scored, so its empty
+        # jdText is not a thin-JD signal. Counting them would fire this detector for every digest
+        # email received — which is exactly what happened once the processor started writing a
+        # run_log line for the parent's terminal (JD_Processed_Digest) outcome.
+        parents = [{"jobId": f"p{i}", "board": "indeed.com", "isDigest": True, "jdTextLen": 0,
+                    "action": "SKIP", "score": 0, "terminalLabel": "JD_Processed_Digest"}
+                   for i in range(4)]
+        self.assertNotIn("thin-digest-indeed-com", _ids(detectors.detect(parents)))
+
+        # ...but real children scored on a thin JD still fire.
+        children = [{"jobId": f"c{i}", "board": "indeed.com", "isDigest": True, "jdTextLen": 213,
+                     "action": "TAILOR", "score": 60, "terminalLabel": "JD_Processed"}
+                    for i in range(2)]
+        self.assertIn("thin-digest-indeed-com", _ids(detectors.detect(parents + children)))
+
+    def test_thin_digest_legacy_lines_without_terminal_label(self):
+        # Lines written before terminalLabel existed fall back to shape: a scored record is a child.
+        scored = [{"jobId": f"j{i}", "board": "indeed.com", "isDigest": True,
+                   "jdTextLen": 100, "action": "SKIP", "score": 40} for i in range(2)]
+        self.assertIn("thin-digest-indeed-com", _ids(detectors.detect(scored)))
+
+        unscored = [{"jobId": f"p{i}", "board": "indeed.com", "isDigest": True,
+                     "jdTextLen": 0, "action": "SKIP", "score": 0} for i in range(4)]
+        self.assertNotIn("thin-digest-indeed-com", _ids(detectors.detect(unscored)))
+
     def test_clean_window_no_findings(self):
         recs = [{"jobId": "j1", "action": "SKIP", "score": 45, "jdTextLen": 1500}]
         self.assertEqual(detectors.detect(recs), [])
