@@ -21,25 +21,29 @@ DIGEST_PARENT_LABEL = "JD_Processed_Digest"
 
 
 def is_thin_digest(rec):
-    """True when [rec] is a digest job that was actually SCORED on a too-thin JD.
+    """True when [rec] is a digest CHILD whose JD is too thin to be a real posting.
 
-    Excludes digest parents. A parent is a `isDigest` row with an empty jdText by construction —
-    it exists only to fan out children — so counting it would report a thin-JD problem for every
-    digest email received. Older run_log lines predate `terminalLabel`; they fall back to the
-    action/jobUrl shape, since a parent is always a SKIP with no job URL of its own.
+    Excludes digest parents. A parent exists only to fan its children out as their own jobs; its
+    jdText is the digest summary (or empty) by construction, so counting it would report a thin-JD
+    problem for every digest email received.
+
+    The terminal label is what separates the two — `terminal_label` on a joined record (from the
+    bridge feed), `terminalLabel` on a raw run_log line. Without one the two are genuinely
+    indistinguishable by shape: a parent is a SKIP with score 0, and so is a child that score_fit
+    refused to score on a stub JD. `hasJobUrl` does not separate them either — a single-job digest
+    copies the child's URL onto the parent (see DigestParseHelpers.applyDigestSummary). So we fall
+    back to the one unambiguous signal, a non-zero score, and under-report rather than raise a
+    spurious per-board finding that could reach the autofix loop.
     """
     if not rec.get("isDigest"):
         return False
     if (rec.get("jdTextLen", 0) or 0) >= THIN_JD_CHARS:
         return False
-    label = rec.get("terminalLabel")
-    if label is not None:
+    label = rec.get("terminal_label") or rec.get("terminalLabel")
+    if label:
         return label != DIGEST_PARENT_LABEL
-    # Legacy lines (pre-terminalLabel): a non-zero score proves it reached score_fit, so it is a
-    # child however it ended. Otherwise a parent's shape is a SKIP with no job URL of its own.
-    if (rec.get("score", 0) or 0) > 0:
-        return True
-    return bool(rec.get("hasJobUrl")) or (rec.get("action") or "").upper() != "SKIP"
+    # No label (legacy line): a non-zero score is the only proof it reached score_fit as a child.
+    return (rec.get("score", 0) or 0) > 0
 
 
 def load_run_log(path: Path):
@@ -80,7 +84,9 @@ def join_window(completed, run_log_by_id):
             "completed_seq": c.get("completed_seq"),
             "ts": r.get("ts"),
             "status": c.get("status"),               # done | error (bridge terminal)
-            "terminal_label": c.get("terminal_label"),
+            # Bridge feed first; the run_log copy (the processor's own decision) backfills a job
+            # whose bridge row never got one, so is_thin_digest can still tell parent from child.
+            "terminal_label": c.get("terminal_label") or r.get("terminalLabel"),
             "message_id": c.get("message_id"),
             "job_url": job_url,
             "artifact_url": c.get("artifact_url"),

@@ -65,9 +65,13 @@ class TestDetectors(unittest.TestCase):
         self.assertIn("scrape-blocked-linkedin-com", ids)   # one finding per board
 
     def test_per_board_thin_digest_needs_two(self):
-        one = [{"jobId": "j1", "board": "indeed.com", "isDigest": True, "jdTextLen": 100}]
+        # terminal_label is what marks these as digest CHILDREN rather than parents; join_window
+        # puts it on every record, so this is the production shape.
+        one = [{"jobId": "j1", "board": "indeed.com", "isDigest": True, "jdTextLen": 100,
+                "terminal_label": "JD_Processed"}]
         self.assertNotIn("thin-digest-indeed-com", _ids(detectors.detect(one)))
-        two = one + [{"jobId": "j2", "board": "indeed.com", "isDigest": True, "jdTextLen": 200}]
+        two = one + [{"jobId": "j2", "board": "indeed.com", "isDigest": True, "jdTextLen": 200,
+                      "terminal_label": "JD_Processed"}]
         self.assertIn("thin-digest-indeed-com", _ids(detectors.detect(two)))
 
     def test_thin_digest_ignores_digest_parents(self):
@@ -76,25 +80,31 @@ class TestDetectors(unittest.TestCase):
         # email received — which is exactly what happened once the processor started writing a
         # run_log line for the parent's terminal (JD_Processed_Digest) outcome.
         parents = [{"jobId": f"p{i}", "board": "indeed.com", "isDigest": True, "jdTextLen": 0,
-                    "action": "SKIP", "score": 0, "terminalLabel": "JD_Processed_Digest"}
+                    "action": "SKIP", "score": 0, "terminal_label": "JD_Processed_Digest"}
                    for i in range(4)]
         self.assertNotIn("thin-digest-indeed-com", _ids(detectors.detect(parents)))
 
         # ...but real children scored on a thin JD still fire.
+        # score_fit now SKIPs these rather than scoring them, so score 0 / action SKIP is the
+        # current shape — indistinguishable from a parent except by the terminal label.
         children = [{"jobId": f"c{i}", "board": "indeed.com", "isDigest": True, "jdTextLen": 213,
-                     "action": "TAILOR", "score": 60, "terminalLabel": "JD_Processed"}
-                    for i in range(2)]
+                     "action": "SKIP", "score": 0, "terminal_label": "JD_Processed",
+                     "hasJobUrl": True} for i in range(2)]
         self.assertIn("thin-digest-indeed-com", _ids(detectors.detect(parents + children)))
 
     def test_thin_digest_legacy_lines_without_terminal_label(self):
-        # Lines written before terminalLabel existed fall back to shape: a scored record is a child.
+        # Without a label a parent and a skipped child are indistinguishable by shape (both SKIP,
+        # score 0, and a single-job digest even copies the child's URL onto the parent). So the
+        # fallback fires only on the unambiguous signal — a non-zero score — and under-reports
+        # rather than raising a spurious per-board finding that could reach the autofix loop.
         scored = [{"jobId": f"j{i}", "board": "indeed.com", "isDigest": True,
                    "jdTextLen": 100, "action": "SKIP", "score": 40} for i in range(2)]
         self.assertIn("thin-digest-indeed-com", _ids(detectors.detect(scored)))
 
-        unscored = [{"jobId": f"p{i}", "board": "indeed.com", "isDigest": True,
-                     "jdTextLen": 0, "action": "SKIP", "score": 0} for i in range(4)]
-        self.assertNotIn("thin-digest-indeed-com", _ids(detectors.detect(unscored)))
+        # A single-job digest PARENT: SKIP, score 0, and it DOES carry a jobUrl.
+        parents = [{"jobId": f"p{i}", "board": "indeed.com", "isDigest": True, "jdTextLen": 0,
+                    "action": "SKIP", "score": 0, "hasJobUrl": True} for i in range(4)]
+        self.assertNotIn("thin-digest-indeed-com", _ids(detectors.detect(parents)))
 
     def test_clean_window_no_findings(self):
         recs = [{"jobId": "j1", "action": "SKIP", "score": 45, "jdTextLen": 1500}]

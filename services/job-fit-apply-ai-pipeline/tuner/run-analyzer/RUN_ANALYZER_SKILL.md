@@ -23,7 +23,9 @@ context/older jobs.
 1. **`RUN_REPORT`** — the **new** per-job records this batch (completed since the last analysis), one
    JSON object per line. The **bridge completed-event feed** is the spine; `output/runs/run_log.jsonl`
    enriches each record. Fields:
-   - `jobId`, `completed_seq`, `company`, `roleTitle`, `status` (done/error), `terminal_label`
+   - `jobId`, `completed_seq`, `company`, `roleTitle`, `status` (done/error)
+   - `terminal_label` — `JD_Processed` / `JD_Processed_Digest` (a digest PARENT — fanned out, never
+     scored) / `JD_Error` / `JD_Not_Found` / `Recruiter_Response_Required`
    - `source` (EMAIL/API/…), `board` (e.g. `glassdoor.com`, `linkedin.com`)
    - `isDigest`, `isRecruiter`, `isDuplicate`
    - `action` (TAILOR / SKIP), `score` (0–100)
@@ -60,7 +62,8 @@ Compute these and reason over them:
   - `Parse failed` / `Empty content` → extraction/LLM-output problem.
 - **Scoring quality (highest priority):**
   - `score == 0` with `jdTextLen` large (a real JD scored 0) → a scoring or extraction bug, NOT a genuine non-fit. Flag and drill into `score_fit.txt`.
-  - `isDigest == true` with small `jdTextLen` (< ~400) → the digest job was scored on a thin summary because its scrape failed/was blocked. Group these by `board`.
+  - `isDigest == true` with small `jdTextLen` (< ~400) **and `terminal_label != JD_Processed_Digest`** → a digest CHILD whose follow-up scrape failed/was blocked, so only the digest's one-line summary was available. Group these by `board`. Note `score_fit` now refuses to score these (action `SKIP`, score 0, `skippedReason` naming the stub) — so the problem to report is the **scrape gap**, not a bad score.
+    Do **not** flag rows with `terminal_label == JD_Processed_Digest`: that is the digest PARENT, which only fans its children out into their own jobs and is never scored. Its `jdTextLen` is small by construction, for every digest email received. A single-job digest also copies the child's URL onto the parent, so `hasJobUrl` does not distinguish them — the terminal label is what does.
   - Score distribution skew (e.g. everything 0, or everything below threshold) → systemic.
 - **Scrape transport (`scrape_paths` / `scrape_via_http` / `scrape_via_cdp` in metrics):** a LinkedIn
   or forced-CDP (`glassdoor.com`) job served via `http` — or `scrape_via_cdp` collapsing toward 0 —
