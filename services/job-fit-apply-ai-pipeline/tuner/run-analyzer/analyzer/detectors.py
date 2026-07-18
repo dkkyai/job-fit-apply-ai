@@ -13,6 +13,7 @@ audit._findings_from_verdicts (one finding per root cause; per-board grouping).
 """
 
 from analyzer.findings import slugify
+from analyzer.sources import is_thin_digest
 
 RICH_JD_CHARS = 1200
 PROC_HANDLER = "services/job-fit-apply-ai-pipeline/src/main/kotlin/com/jd/pipeline/cli/commands/ProcessorCommandHandler.kt"
@@ -222,7 +223,7 @@ def _per_board_scrape_blocked(recs):
 def _per_board_thin_digest(recs):
     by_board = {}
     for r in recs:
-        if r.get("isDigest") and (r.get("jdTextLen", 0) or 0) < 400:
+        if is_thin_digest(r):
             by_board.setdefault(_board(r), []).append(r)
     out = []
     for board, hit in by_board.items():

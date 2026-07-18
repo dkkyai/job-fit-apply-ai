@@ -13,6 +13,8 @@ import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.source.JdRecord
 import com.jd.pipeline.source.ProcessingResult
 import com.jd.pipeline.state.JDState
+import com.jd.pipeline.utils.RunReport
+import java.nio.file.Files
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -348,6 +350,88 @@ class ProcessorCommandHandlerTest {
 
             verify(bridge).postResult(eq("job-bad-page"), argThat { error != null && error!!.contains("missing page payload") })
             verify(pipeline, never()).invoke(any())
+        }
+    }
+
+    // ── Run-log coverage for terminal-at-resolve branches ──────────────────────
+
+    /**
+     * The analyzer's spine is the bridge completed-feed; a job that goes terminal without a
+     * run_log line shows up as `run_log_missing` and its metrics silently vanish from the window.
+     * Every branch that posts a result must therefore also append a line — including the
+     * scan/scrape short-circuits that never reach [ProcessingPipeline].
+     */
+    @Nested
+    @DisplayName("run_log is written for every terminal outcome")
+    inner class RunLogCoverage {
+
+        private fun runLogLinesFor(jobId: String, claim: ClaimDto, ingestion: IngestionPipeline): List<String> {
+            val logFile = Files.createTempFile("run_log", ".jsonl")
+            RunReport.pathOverride = logFile
+            try {
+                val bridge = mock<BridgeClient>()
+                val pipeline = mock<ProcessingPipeline>()
+                val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
+                val posted = CountDownLatch(1)
+
+                whenever(bridge.claim()).doReturn(claim).doAnswer { processorThread.interrupt(); null }
+                doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+
+                processorThread.isDaemon = true
+                processorThread.start()
+                assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a result within 5s")
+                processorThread.join(2_000)
+
+                return Files.readAllLines(logFile).filter { it.contains("\"jobId\":\"$jobId\"") }
+            } finally {
+                RunReport.pathOverride = null
+            }
+        }
+
+        @Test
+        @DisplayName("an EMAIL_RAW claim with no payload still gets a run_log line")
+        fun missingEmailPayloadIsLogged() {
+            val claim = ClaimDto(jobId = "job-log-1", type = WorkItemType.EMAIL_RAW, email = null)
+            val lines = runLogLinesFor("job-log-1", claim, mock())
+
+            assertEquals(1, lines.size, "exactly one run_log line expected, got: $lines")
+            assertTrue(lines[0].contains("\"action\":\"SKIP\""), lines[0])
+        }
+
+        @Test
+        @DisplayName("a claim with no jd_record is failed and logged, not silently re-queued forever")
+        fun missingJdRecordIsFailedAndLogged() {
+            // Regression: this branch used to `continue` without posting a result, so the bridge row
+            // stayed CLAIMED, the stale-claim sweep re-queued it, and the processor span on it.
+            val claim = ClaimDto(jobId = "job-log-2", type = WorkItemType.JD_SCRAPED, jdRecord = null)
+            val lines = runLogLinesFor("job-log-2", claim, mock())
+
+            assertEquals(1, lines.size, "exactly one run_log line expected, got: $lines")
+            assertTrue(lines[0].contains("no jd_record"), lines[0])
+        }
+
+        @Test
+        @DisplayName("the run_log line carries the terminal label")
+        fun runLogCarriesTerminalLabel() {
+            val claim = ClaimDto(jobId = "job-log-3", type = WorkItemType.EMAIL_RAW, email = null)
+            val lines = runLogLinesFor("job-log-3", claim, mock())
+
+            assertTrue(lines[0].contains("\"terminalLabel\":\"${TerminalLabel.JD_ERROR}\""), lines[0])
+        }
+
+        @Test
+        @DisplayName("a terminal-at-resolve job records pipelineRan=false — the digest parent/child signal")
+        fun terminalAtResolveRecordsPipelineDidNotRun() {
+            // This is the ONLY field separating a digest PARENT from a digest CHILD in the run log.
+            // The label cannot: a child inherits the parent's isDigest intake and
+            // TerminalLabel.forState checks isDigest first, so both read JD_Processed_Digest. Nor
+            // can action/score (both SKIP at 0) or hasJobUrl (a single-job digest copies the child's
+            // URL onto the parent). If this regresses, the analyzer's thin-digest detector either
+            // goes silent or fires on every digest email received.
+            val claim = ClaimDto(jobId = "job-log-4", type = WorkItemType.EMAIL_RAW, email = null)
+            val lines = runLogLinesFor("job-log-4", claim, mock())
+
+            assertTrue(lines[0].contains("\"pipelineRan\":false"), lines[0])
         }
     }
 

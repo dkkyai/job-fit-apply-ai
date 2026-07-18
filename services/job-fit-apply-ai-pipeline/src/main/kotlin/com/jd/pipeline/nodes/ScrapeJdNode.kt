@@ -374,8 +374,12 @@ class ScrapeJdNode(
             throw CdpUnavailableException(cdpUnavailableMessage())
         }
         log("[scrape_jd] Using CDP Chrome for LinkedIn: $url")
-        val page = cdpBrowser.pageForDomain(extractHost(url))
-        return scrapeLinkedInPage(page, url).copy(scrapePath = "cdp_profile")
+        // See fetchPageWithPlaywright: recovery must wrap the navigate/extract, not just the tab.
+        // AuthRequiredException from requireAuthenticated is not a PlaywrightException, so it still
+        // propagates on the first attempt rather than burning retries on a genuine auth wall.
+        return cdpBrowser.withPageForDomain(extractHost(url)) { page ->
+            scrapeLinkedInPage(page, url).copy(scrapePath = "cdp_profile")
+        }
     }
 
     /**
@@ -664,6 +668,10 @@ class ScrapeJdNode(
         Config.CDP_FORCE_DOMAINS.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
     }
 
+    // jobright.ai is force-CDP by configuration (CDP_FORCE_DOMAINS in .env / .env.example) — its full
+    // JD only renders in the logged-in session. Kept in config rather than hardcoded here so the
+    // list stays in one place; when that routing does not help, ScoreFitNode refuses to score the
+    // digest stub that survives.
     private fun isForceCdpHost(host: String): Boolean = matchesDomainSuffix(host, forceCdpDomains)
 
     /** True when [host] equals, or is a subdomain of, any entry in [domains]. */
@@ -861,10 +869,10 @@ class ScrapeJdNode(
         DEFAULT_SCRAPE_SKILL_PROMPT
     }
 
-    private fun isJobrightUrl(url: String): Boolean {
-        val host = extractHost(url)
-        return host == "jobright.ai" || host.endsWith(".jobright.ai")
-    }
+    private fun isJobrightUrl(url: String): Boolean = isJobrightHost(extractHost(url))
+
+    private fun isJobrightHost(host: String): Boolean =
+        host == "jobright.ai" || host.endsWith(".jobright.ai")
 
     /**
      * Parses Jobright's __NEXT_DATA__ JSON to extract fields not reliably present in visible text.
@@ -1137,8 +1145,9 @@ class ScrapeJdNode(
             throw CdpUnavailableException(cdpUnavailableMessage())
         }
         log("[scrape_jd] Using CDP Chrome for $url")
-        val page = cdpBrowser.pageForDomain(extractHost(url))
-        return extractDynamicPage(page, url)
+        // withPageForDomain (not pageForDomain): a Steel session that dies mid-scrape surfaces during
+        // the navigate/extract below, not during tab acquisition, so recovery has to wrap both.
+        return cdpBrowser.withPageForDomain(extractHost(url)) { page -> extractDynamicPage(page, url) }
     }
 
     /**
