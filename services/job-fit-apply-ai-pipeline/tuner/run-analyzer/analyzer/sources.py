@@ -15,9 +15,6 @@ from pathlib import Path
 
 # A digest-derived JD shorter than this was scored on a summary, not a real posting.
 THIN_JD_CHARS = 400
-# Terminal label of a digest PARENT: it fanned its children out as their own jobs and was never
-# scored itself, so its (always empty) jdText is not a thin-JD signal. See TerminalLabel.kt.
-DIGEST_PARENT_LABEL = "JD_Processed_Digest"
 
 
 def is_thin_digest(rec):
@@ -27,22 +24,29 @@ def is_thin_digest(rec):
     jdText is the digest summary (or empty) by construction, so counting it would report a thin-JD
     problem for every digest email received.
 
-    The terminal label is what separates the two — `terminal_label` on a joined record (from the
-    bridge feed), `terminalLabel` on a raw run_log line. Without one the two are genuinely
-    indistinguishable by shape: a parent is a SKIP with score 0, and so is a child that score_fit
-    refused to score on a stub JD. `hasJobUrl` does not separate them either — a single-job digest
-    copies the child's URL onto the parent (see DigestParseHelpers.applyDigestSummary). So we fall
-    back to the one unambiguous signal, a non-zero score, and under-report rather than raise a
+    `pipelineRan` is what separates them: a parent goes terminal during the processor's scan/scrape
+    resolve and never reaches ProcessingPipeline, while a child is re-enqueued as its own job and
+    does. Nothing else in the record distinguishes them —
+
+      * the terminal label does not: a child inherits the parent's `isDigest` intake and
+        TerminalLabel.forState checks isDigest first, so BOTH read JD_Processed_Digest;
+      * `hasJobUrl` does not: a single-job digest copies the child's URL onto the parent
+        (DigestParseHelpers.applyDigestSummary);
+      * the action/score shape does not: score_fit now SKIPs a stub JD at score 0, which is exactly
+        the parent's shape too.
+
+    So a line without `pipelineRan` (written before this field existed) falls back to a non-zero
+    score — the one unambiguous proof it reached score_fit — and under-reports rather than raising a
     spurious per-board finding that could reach the autofix loop.
     """
     if not rec.get("isDigest"):
         return False
     if (rec.get("jdTextLen", 0) or 0) >= THIN_JD_CHARS:
         return False
-    label = rec.get("terminal_label") or rec.get("terminalLabel")
-    if label:
-        return label != DIGEST_PARENT_LABEL
-    # No label (legacy line): a non-zero score is the only proof it reached score_fit as a child.
+    pipeline_ran = rec.get("pipelineRan")
+    if pipeline_ran is not None:
+        return bool(pipeline_ran)
+    # Legacy line: a non-zero score is the only proof it reached score_fit as a child.
     return (rec.get("score", 0) or 0) > 0
 
 
@@ -97,6 +101,8 @@ def join_window(completed, run_log_by_id):
             "board": r.get("board"),                 # run_log only (derived)
             # classification
             "isDigest": bool(r.get("isDigest", False)),
+            # None when the run_log line predates the field — is_thin_digest falls back on that.
+            "pipelineRan": r.get("pipelineRan"),
             "isRecruiter": bool(c.get("is_recruiter", r.get("isRecruiter", False))),
             "isDuplicate": bool(r.get("isDuplicate", False)),
             # outcome

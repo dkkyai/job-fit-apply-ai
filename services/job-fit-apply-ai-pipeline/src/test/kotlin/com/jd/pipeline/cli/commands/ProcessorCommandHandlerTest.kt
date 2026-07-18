@@ -411,14 +411,27 @@ class ProcessorCommandHandlerTest {
         }
 
         @Test
-        @DisplayName("the run_log line carries the terminal label so digest parents are identifiable")
+        @DisplayName("the run_log line carries the terminal label")
         fun runLogCarriesTerminalLabel() {
-            // The analyzer's thin-digest detector uses terminalLabel to tell a digest PARENT (never
-            // scored, empty JD by construction) from a child that really was scored on a thin JD.
             val claim = ClaimDto(jobId = "job-log-3", type = WorkItemType.EMAIL_RAW, email = null)
             val lines = runLogLinesFor("job-log-3", claim, mock())
 
             assertTrue(lines[0].contains("\"terminalLabel\":\"${TerminalLabel.JD_ERROR}\""), lines[0])
+        }
+
+        @Test
+        @DisplayName("a terminal-at-resolve job records pipelineRan=false — the digest parent/child signal")
+        fun terminalAtResolveRecordsPipelineDidNotRun() {
+            // This is the ONLY field separating a digest PARENT from a digest CHILD in the run log.
+            // The label cannot: a child inherits the parent's isDigest intake and
+            // TerminalLabel.forState checks isDigest first, so both read JD_Processed_Digest. Nor
+            // can action/score (both SKIP at 0) or hasJobUrl (a single-job digest copies the child's
+            // URL onto the parent). If this regresses, the analyzer's thin-digest detector either
+            // goes silent or fires on every digest email received.
+            val claim = ClaimDto(jobId = "job-log-4", type = WorkItemType.EMAIL_RAW, email = null)
+            val lines = runLogLinesFor("job-log-4", claim, mock())
+
+            assertTrue(lines[0].contains("\"pipelineRan\":false"), lines[0])
         }
     }
 

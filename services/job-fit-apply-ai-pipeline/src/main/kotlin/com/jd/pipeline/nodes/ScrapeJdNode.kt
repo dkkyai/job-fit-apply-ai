@@ -669,8 +669,9 @@ class ScrapeJdNode(
     }
 
     // jobright.ai is force-CDP by configuration (CDP_FORCE_DOMAINS in .env / .env.example) — its full
-    // JD only renders in the logged-in session. Kept in config rather than hardcoded here so the list
-    // stays in one place; the thin-JD guard below is what catches it when that routing doesn't help.
+    // JD only renders in the logged-in session. Kept in config rather than hardcoded here so the
+    // list stays in one place; when that routing does not help, ScoreFitNode refuses to score the
+    // digest stub that survives.
     private fun isForceCdpHost(host: String): Boolean = matchesDomainSuffix(host, forceCdpDomains)
 
     /** True when [host] equals, or is a subdomain of, any entry in [domains]. */

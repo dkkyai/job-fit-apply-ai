@@ -64,13 +64,25 @@ object RunReport {
         // and confirm the browser path (Steel/CDP) is actually carrying LinkedIn/forced domains.
         val scrapePath: String,
         // Gmail terminal-label decision ("JD_Processed" | "JD_Processed_Digest" | "JD_Error" |
-        // "JD_Not_Found" | "Recruiter_Response_Required" | null). Lets the analyzer tell a digest
-        // PARENT (JD_Processed_Digest — fanned out to children, never scored) apart from a digest
-        // CHILD that was actually scored, which otherwise both look like `isDigest` rows.
+        // "JD_Not_Found" | "Recruiter_Response_Required" | null). NOTE this does NOT separate a
+        // digest parent from a digest child — a child inherits the parent's `isDigest` intake, and
+        // TerminalLabel.forState checks isDigest before everything else, so both read
+        // JD_Processed_Digest. Use [pipelineRan] for that.
         val terminalLabel: String?,
+        // Whether the job ran through ProcessingPipeline (scored/tailored) or went terminal during
+        // the processor's scan/scrape resolve. This is what separates a digest PARENT — which only
+        // fans its children out into their own jobs and is never scored, so its thin jdText is
+        // meaningless — from a digest CHILD, which is a real posting that did reach score_fit.
+        val pipelineRan: Boolean,
     )
 
-    fun record(jobId: String, record: JdRecord, result: ProcessingResult, durationMs: Long) {
+    fun record(
+        jobId: String,
+        record: JdRecord,
+        result: ProcessingResult,
+        durationMs: Long,
+        pipelineRan: Boolean = true,
+    ) {
         try {
             val email = record.intakeMeta as? IntakeContext.Email
             val rec = JobRecord(
@@ -92,6 +104,7 @@ object RunReport {
                 durationMs = durationMs,
                 scrapePath = result.scrapePath,
                 terminalLabel = result.terminalLabel,
+                pipelineRan = pipelineRan,
             )
             Files.createDirectories(path.parent)
             Files.writeString(

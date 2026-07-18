@@ -147,10 +147,15 @@ object ProcessorCommandHandler {
         data class Terminal(val jdRecord: JdRecord, val result: ProcessingResult) : Resolution
     }
 
-    /** Append the run-log line for a terminal-at-resolve outcome (skip/error/digest). */
+    /**
+     * Append the run-log line for a terminal-at-resolve outcome (skip/error/digest). `pipelineRan
+     * = false` marks it as never having reached [ProcessingPipeline] — the signal the run-analyzer
+     * uses to tell a digest PARENT (fanned out here) from a digest CHILD that was really scored.
+     */
     private fun recordTerminal(jobId: String, terminal: Resolution.Terminal, jobStartedAt: Long) {
         com.jd.pipeline.utils.RunReport.record(
             jobId, terminal.jdRecord, terminal.result, System.currentTimeMillis() - jobStartedAt,
+            pipelineRan = false,
         )
     }
 
