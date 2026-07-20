@@ -210,6 +210,14 @@ object Config {
     // (proactive — for sites that soft-block or challenge plain HTTP, e.g. Glassdoor's Cloudflare).
     // Suffix match (a domain also matches its subdomains). Requires the debug Chrome to be up.
     val CDP_FORCE_DOMAINS: String = get("CDP_FORCE_DOMAINS", "")
+    // A Cloudflare-style bot-check interstitial ("Just a moment…", "Checking your browser") on a
+    // forced-CDP site (e.g. Glassdoor) is a transient JS challenge that a warm, real browser clears
+    // on its own within a few seconds. When a CDP scrape lands on one, poll the page for up to
+    // CDP_BOTCHECK_MAX_WAIT_MS (at CDP_BOTCHECK_POLL_MS intervals) for the challenge to resolve before
+    // declaring a hard block / re-auth — otherwise a single Glassdoor challenge poisons the whole
+    // batch and every sibling job scores on its thin digest summary. 0 disables the wait.
+    val CDP_BOTCHECK_MAX_WAIT_MS: Long = get("CDP_BOTCHECK_MAX_WAIT_MS", "12000").toLong()
+    val CDP_BOTCHECK_POLL_MS: Long = get("CDP_BOTCHECK_POLL_MS", "1500").toLong()
     val PLAYWRIGHT_HEADLESS: Boolean = get("PLAYWRIGHT_HEADLESS", "false").toBoolean()
     // When true, sites blocked by HTTP (403, CAPTCHA, Cloudflare) are retried with a clean Playwright session.
     val PLAYWRIGHT_FALLBACK_ON_CAPTCHA: Boolean = get("PLAYWRIGHT_FALLBACK_ON_CAPTCHA", "true").toBoolean()

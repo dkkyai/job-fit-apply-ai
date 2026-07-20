@@ -1173,8 +1173,23 @@ class ScrapeJdNode(
         // login redirect or account challenge on Glassdoor/Jobright/etc. now prompts phone re-auth.
         requireAuthenticated(page, extractHost(url))
 
-        val rawHtml = page.content()
-        val captchaReason = detectCaptchaInHtml(rawHtml)
+        var rawHtml = page.content()
+        var captchaReason = detectCaptchaInHtml(rawHtml)
+        if (captchaReason != null) {
+            // A Cloudflare-style interstitial ("Just a moment…", "Checking your browser") is a
+            // transient JS challenge a warm, real browser clears on its own within a few seconds —
+            // not a hard block. Wait it out and re-check before giving up; otherwise a single
+            // Glassdoor challenge poisons the whole batch (batchAuthExpiredDomains) and every sibling
+            // job scores on its thin digest summary. Once cleared, re-run the auth check in case the
+            // challenge resolved to a login wall rather than the JD.
+            log("[scrape_jd] Bot-check for $url ($captchaReason) — waiting up to ${Config.CDP_BOTCHECK_MAX_WAIT_MS}ms for the challenge to clear")
+            waitForBotCheckToClear(page)?.let { cleared ->
+                log("[scrape_jd] Bot-check cleared for $url after ${page.url()}")
+                requireAuthenticated(page, extractHost(url))
+                rawHtml = cleared
+                captchaReason = null
+            }
+        }
         if (captchaReason != null) {
             val host = extractHost(url)
             // On a gated site (LinkedIn / forced-CDP), a bot-wall is solvable via the phone viewer,
@@ -1194,6 +1209,27 @@ class ScrapeJdNode(
         val visibleText = runCatching { page.innerText("body") }.getOrElse { "" }
         log("[scrape_jd] Playwright fetch succeeded for $url")
         return buildPageContent(rawHtml, visibleText.takeIf { it.length > 200 })
+    }
+
+    /**
+     * Poll [page] while a Cloudflare-style bot-check interstitial is showing, giving the browser a
+     * chance to complete the transient JS challenge on its own. Polls at [Config.CDP_BOTCHECK_POLL_MS]
+     * intervals for a total of up to [Config.CDP_BOTCHECK_MAX_WAIT_MS]. Returns the page HTML once the
+     * challenge has cleared (no CAPTCHA/bot-check markers left), or null if it never resolved.
+     *
+     * Bounded by attempt count (not wall-clock) so the actual waiting is done by [Page.waitForTimeout]
+     * — keeps it deterministic and cheap to unit-test with a mocked page.
+     */
+    internal fun waitForBotCheckToClear(page: Page): String? {
+        if (Config.CDP_BOTCHECK_MAX_WAIT_MS <= 0L) return null
+        val pollMs = Config.CDP_BOTCHECK_POLL_MS.coerceAtLeast(250L)
+        val attempts = (Config.CDP_BOTCHECK_MAX_WAIT_MS / pollMs).toInt().coerceAtLeast(1)
+        repeat(attempts) {
+            runCatching { page.waitForTimeout(pollMs.toDouble()) }
+            val html = runCatching { page.content() }.getOrDefault("")
+            if (html.isNotBlank() && detectCaptchaInHtml(html) == null) return html
+        }
+        return null
     }
 
     /** A CDP-scraped, authenticated site hit a login/challenge wall — fires a phone re-auth alert. */
