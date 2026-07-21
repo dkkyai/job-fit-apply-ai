@@ -278,20 +278,25 @@ class DraftReplyComposerTest {
         }
 
         @Test
-        @DisplayName("missing salary asks about budget vs. expected total comp")
+        @DisplayName("missing salary asks what the budget for the role is in the first sentence")
         fun missingSalaryAsksAboutBudget() {
-            val prefs = CandidatePreferences(minimumTotalCompensation = "220000")
-            val result = promptFor(company = "Acme Corp", salaryRange = "", prefs = prefs)
-            assertContains(result, "whether their budget can meet")
-            assertContains(result, "my expected total compensation of 220000")
+            val result = promptFor(company = "Acme Corp", salaryRange = "")
+            assertContains(result, "what the budget for the role is")
+            assertContains(result, "FIRST sentence")
         }
 
         @Test
-        @DisplayName("missing salary falls back to hourly contract rate when no total comp")
-        fun missingSalaryFallsBackToContractRate() {
-            val prefs = CandidatePreferences(minimumContractRateHourly = 95)
+        @DisplayName("budget ask uses generic phrasing and drops the old expected-rate wording")
+        fun budgetAskDoesNotLeakCandidateRate() {
+            // Even when the candidate has an expected rate/comp on file, the directive stays generic.
+            val prefs = CandidatePreferences(minimumTotalCompensation = "220000", minimumContractRateHourly = 95)
             val result = promptFor(company = "Acme Corp", salaryRange = "", prefs = prefs)
-            assertContains(result, "my expected rate of \$95/hr")
+            // Isolate the injected directive so the assertion ignores the preferences block (which
+            // legitimately echoes the candidate's rate) and only checks the missing-info ask itself.
+            val directive = result.lineSequence().first { it.contains("IMPORTANT: The recruiter did not disclose") }
+            assertContains(directive, "what the budget for the role is")
+            assertFalse(directive.contains("whether their budget can meet"))
+            assertFalse(directive.contains("my expected"))
         }
 
         @Test
