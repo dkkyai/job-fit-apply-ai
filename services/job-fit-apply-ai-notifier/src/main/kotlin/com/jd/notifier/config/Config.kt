@@ -23,6 +23,10 @@ object Config {
     val TELEGRAM_BOT_TOKEN: String = get("TELEGRAM_BOT_TOKEN", "")
     val TELEGRAM_CHAT_ID: String   = get("TELEGRAM_CHAT_ID", "")
 
+    /** API hosts, overridable so tests/e2e can point at a local sink. */
+    val DISCORD_API_BASE: String  = get("DISCORD_API_BASE", "https://discord.com")
+    val TELEGRAM_API_BASE: String = get("TELEGRAM_API_BASE", "https://api.telegram.org")
+
     /** Telegram high-fit ping fires when fit_score >= this. */
     val NOTIFICATION_FIT_THRESHOLD: Int = get("NOTIFICATION_FIT_THRESHOLD", "50").toInt()
 
