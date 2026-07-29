@@ -43,7 +43,7 @@ class DraftReplyComposer(
         val preferencesBlock = buildPreferencesBlock(prefs)
         // Full résumé + profile grounding so the reply only answers what the candidate can back up.
         val profileBlock = input.candidateProfile?.let { CandidateProfileRenderer.renderForReply(it) } ?: ""
-        val missingInfoDirective = buildMissingInfoDirective(input, prefs)
+        val missingInfoDirective = buildMissingInfoDirective(input)
         return template
             .replace("{{role_title}}", input.roleTitle.ifBlank { "the role" })
             .replace("{{company}}", input.company.ifBlank { "your company" })
@@ -62,27 +62,18 @@ class DraftReplyComposer(
      * must open by asking for whichever is missing. Detection is deterministic here (not left to the
      * LLM) so the first-sentence behavior is reliable; the directive is empty when both are present.
      */
-    private fun buildMissingInfoDirective(input: JDState, prefs: com.jd.pipeline.models.CandidatePreferences?): String {
+    private fun buildMissingInfoDirective(input: JDState): String {
         val clientMissing = input.company.isBlank() || input.company.trim().lowercase() in PLACEHOLDER_COMPANIES
         val salaryMissing = input.salaryRange.isBlank() && input.postedCompMin == null && input.postedCompMax == null
         if (!clientMissing && !salaryMissing) return ""
 
         val asks = buildList {
             if (clientMissing) add("who the end client / company is")
-            if (salaryMissing) add("whether their budget can meet ${expectedRatePhrase(prefs)}")
+            if (salaryMissing) add("what the budget for the role is")
         }
         return "IMPORTANT: The recruiter did not disclose ${asks.joinToString(" and/or ")}. " +
             "The FIRST sentence of your reply MUST politely ask for ${if (asks.size > 1) "these" else "this"} " +
             "before anything else."
-    }
-
-    /** Human phrasing of the candidate's expected rate for the budget ask; generic when unset. */
-    private fun expectedRatePhrase(prefs: com.jd.pipeline.models.CandidatePreferences?): String {
-        val tc = prefs?.minimumTotalCompensation?.takeIf { it.isNotBlank() }
-        if (tc != null) return "my expected total compensation of $tc"
-        val rate = prefs?.minimumContractRateHourly
-        if (rate != null && rate > 0) return "my expected rate of \$$rate/hr"
-        return "my expected rate"
     }
 
     private fun buildPreferencesBlock(prefs: com.jd.pipeline.models.CandidatePreferences?): String {
