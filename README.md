@@ -238,6 +238,10 @@ The containers and worker must be up before the cron jobs fire — run `make doc
 | `make serve` | (Re)configure Tailscale Serve only |
 | `make doctor` | Read-only health check of the whole stack |
 | `make logs` | Tail container logs |
+| `make e2e` | Full black-box E2E cycle on an isolated compose slice (up + run + down) |
+| `make e2e-up` / `e2e-run` / `e2e-down` | Same, split — `e2e-run` is the fast ad-hoc loop |
+| `make e2e-logs` | Tail the e2e slice's container logs |
+| `make e2e-smoke` | Legacy full-fat smoke against the REAL stack + real local models |
 
 ---
 
@@ -385,9 +389,32 @@ cd apps/job-fit-apply-ai-backlog && npm run test:e2e
 # Extension
 cd apps/job-fit-apply-ai-extension && npm test
 
+# Black-box E2E: Bridge → Processor → Notifier on an isolated compose slice
+make e2e
+
 # Whole-stack health (read-only)
 make doctor
 ```
+
+### Black-box E2E (`services/job-fit-apply-ai-e2e`)
+
+`make e2e` submits a fixture JD through the Bridge and asserts the whole chain — bridge
+status, the rendered PDF/artifact set, markserv, the `tracks` row, `/api/tracks`, the
+completed feed, and the Discord/Telegram payloads — against a **fake LLM** that runs in
+the test JVM and serves canned responses, so assertions can pin exact values rather than
+"a file exists". Design doc: [`docs/e2e-testing-plan.md`](docs/e2e-testing-plan.md).
+
+It runs in its own compose project (`jobfit-e2e-<checkout hash>`, alternate ports, state
+in a gitignored `./.e2e/`), so it is safe to run while the production stack is up. Two
+things worth knowing:
+
+- **`E2E_FAKE_LLM_PORT` defaults to 21436, not 11436.** 11436 is production oMLX. Binding
+  both is possible but the more-specific socket wins, so sharing the port makes the e2e
+  run silently hit real models — or, with oMLX down, makes the fake answer the *production*
+  processor with fixture data. `REAL_LLM=1` selects 11436 on purpose and skips the fake.
+- **Tier A vs Tier B.** Tier A is structural and also holds against a real model; Tier B
+  pins exact values (`fit_score`, the LLM call sequence, canned content) and is what
+  catches a *silently degraded* run. `-PexcludeTags=tier-b` runs Tier A alone.
 
 DB-backed tests (`PostgresGatewayLiveTest`, `TracksApiTest`) connect over TCP to the running `jobfit-db` container and **skip automatically** when it isn't up, so they're CI-safe. `TracksApiTest` self-provisions an isolated `jobfit_test` database so it never touches real data.
 
