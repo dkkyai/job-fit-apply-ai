@@ -42,3 +42,6 @@ bun.lockb
 # Kotlin/Eclipse compiled output (e.g. services/*/bin/main, bin/test)
 **/bin/
 **/.gradle/
+
+# E2E slice per-run state (docker-compose.e2e.yml bind-mount sources)
+/.e2e/

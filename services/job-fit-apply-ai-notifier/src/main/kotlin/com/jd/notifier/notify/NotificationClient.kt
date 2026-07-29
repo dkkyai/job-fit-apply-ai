@@ -18,6 +18,8 @@ open class NotificationClient(
     private val discordChannelId: String = Config.DISCORD_CHANNEL_ID,
     private val telegramToken: String    = Config.TELEGRAM_BOT_TOKEN,
     private val telegramChatId: String   = Config.TELEGRAM_CHAT_ID,
+    private val discordApiBase: String   = Config.DISCORD_API_BASE,
+    private val telegramApiBase: String  = Config.TELEGRAM_API_BASE,
 ) {
     private val log    = LoggerFactory.getLogger(NotificationClient::class.java)
     private val http   = HttpClients.createDefault()
@@ -26,12 +28,18 @@ open class NotificationClient(
     open val discordConfigured  get() = discordToken.isNotBlank()  && discordChannelId.isNotBlank()
     open val telegramConfigured get() = telegramToken.isNotBlank() && telegramChatId.isNotBlank()
 
+    internal fun discordMessagesUrl() =
+        "${discordApiBase.trimEnd('/')}/api/v10/channels/$discordChannelId/messages"
+
+    internal fun telegramSendMessageUrl() =
+        "${telegramApiBase.trimEnd('/')}/bot$telegramToken/sendMessage"
+
     open fun postDiscord(text: String) {
         if (!discordConfigured) return
         chunkLines(text, 2000).forEach { chunk ->
             try {
                 val body = mapper.writeValueAsString(mapOf("content" to chunk))
-                val req  = HttpPost("https://discord.com/api/v10/channels/$discordChannelId/messages").apply {
+                val req  = HttpPost(discordMessagesUrl()).apply {
                     addHeader("Authorization", "Bot $discordToken")
                     addHeader("User-Agent", "DiscordBot (https://github.com/openclaw, 1.0)")
                     entity = StringEntity(body, ContentType.APPLICATION_JSON)
@@ -53,7 +61,7 @@ open class NotificationClient(
                 val body = mapper.writeValueAsString(
                     mapOf("chat_id" to telegramChatId, "text" to chunk, "parse_mode" to "HTML")
                 )
-                val req = HttpPost("https://api.telegram.org/bot$telegramToken/sendMessage").apply {
+                val req = HttpPost(telegramSendMessageUrl()).apply {
                     entity = StringEntity(body, ContentType.APPLICATION_JSON)
                 }
                 http.execute(req) { resp ->

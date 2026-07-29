@@ -1,0 +1,112 @@
+# E2E override — docker compose -f docker-compose.yml -f docker-compose.e2e.yml
+#
+# Always used together with a COMPOSE_PROJECT_NAME of jobfit-e2e* (the e2e-* Make
+# targets append a hash of the checkout path, so worktrees don't collide): distinct
+# project + container names + host ports + bind-mount sources mean the e2e slice runs
+# alongside the production stack on the same host without touching its containers, its
+# Postgres volume, its bridge store, or the real resume.yaml / candidate_profile.yaml /
+# pipeline .env. Container names track COMPOSE_PROJECT_NAME for the same reason.
+#
+# The e2e slice is: db, bridge, markserv, processor, notifier.
+# (No poller/jsearch/frontend/steel — `depends_on: !override` on the processor
+# drops the steel health dependency; a JD_SCRAPED job never scrapes.)
+#
+# Run `scripts/e2e-ci-prepare.sh` first — it creates ./.e2e/* including the
+# pipeline dotenv file (a *file* bind-mount source: if it does not exist Docker
+# silently creates a directory in its place and the app breaks at runtime).
+#
+# Requires Docker Compose >= 2.24 for the `!override` YAML tag.
+#
+# Every service pins `restart: "no"`. The base stack uses `unless-stopped`, which
+# for a test slice means a Ctrl-C'd run leaves containers that survive reboots and
+# keep holding the e2e ports.
+
+services:
+  db:
+    container_name: "${COMPOSE_PROJECT_NAME:-jobfit-e2e}-db"
+    restart: "no"
+    ports: !override
+      - "127.0.0.1:${E2E_POSTGRES_PORT:-15432}:5432"
+    environment:
+      # Pinned, not inherited: compose interpolates the repo-root .env regardless of
+      # project name, so a dev with custom POSTGRES_* would initialise the e2e DB with
+      # credentials E2eConfig's default connection string doesn't know about.
+      POSTGRES_USER: jobfit
+      POSTGRES_PASSWORD: jobfit
+      POSTGRES_DB: jobfit
+
+  bridge:
+    container_name: "${COMPOSE_PROJECT_NAME:-jobfit-e2e}-bridge"
+    restart: "no"
+    # Explicit tags so CI can pre-build via `docker buildx bake` (GHA layer cache)
+    # and `up -d` (no --build) starts exactly those images.
+    image: jobfit-e2e/bridge
+    ports: !override
+      - "127.0.0.1:${E2E_BRIDGE_PORT:-18765}:8765"
+    volumes:
+      # Fresh, repo-local queue store — never the production ~/.openclaw/jd-bridge.
+      - ./.e2e/bridge-store:/data
+
+  markserv:
+    container_name: "${COMPOSE_PROJECT_NAME:-jobfit-e2e}-markserv"
+    restart: "no"
+    image: jobfit-e2e/markserv
+    ports: !override
+      - "127.0.0.1:${E2E_MARKSERV_PORT:-18081}:8081"
+    volumes:
+      - ./.e2e/output:/data:ro
+
+  processor:
+    container_name: "${COMPOSE_PROJECT_NAME:-jobfit-e2e}-processor"
+    restart: "no"
+    image: jobfit-e2e/processor
+    depends_on: !override
+      bridge:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    environment:
+      # The in-process fake LLM in the e2e test JVM (host side).
+      #
+      # The default is 21436, NOT the production oMLX port 11436 that docker-compose.yml
+      # points the production processor at. Sharing 11436 breaks isolation both ways: the
+      # fake binds 0.0.0.0 fine while oMLX holds 127.0.0.1 (SO_REUSEADDR) but the
+      # more-specific socket wins, so the e2e run silently hits real oMLX and times out —
+      # and with oMLX down the fake answers the *production* processor with fixture data.
+      # Under REAL_LLM=1 the Makefile sets this to 11436 deliberately (no fake is started).
+      MLX_LOCAL_BASE_URL: "http://host.docker.internal:${E2E_FAKE_LLM_PORT:-21436}/v1"
+      # Never reach for Steel or a host Chrome in e2e — JD_SCRAPED jobs skip scraping.
+      STEEL_BASE_URL: ""
+    volumes:
+      - ./.e2e/output:/app/output
+      - ./.e2e/state:/app/state
+      # Written by scripts/e2e-ci-prepare.sh (carries ARTIFACT_BASE_URL — dotenv, not
+      # compose env, because an empty compose var would win over the mounted file).
+      - ./.e2e/pipeline.env:/app/.env:ro
+      # Committed synthetic fixtures mounted straight in — the real files are never copied over.
+      - ./services/job-fit-apply-ai-e2e/fixtures/resume.yaml:/app/src/main/resources/resume/resume.yaml:ro
+      - ./services/job-fit-apply-ai-e2e/fixtures/candidate_profile.yaml:/app/config/candidate_profile.yaml:ro
+
+  notifier:
+    container_name: "${COMPOSE_PROJECT_NAME:-jobfit-e2e}-notifier"
+    restart: "no"
+    image: jobfit-e2e/notifier
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Point both channels at the in-process mock sink in the e2e test JVM.
+      DISCORD_API_BASE: "http://host.docker.internal:${E2E_SINK_PORT:-18099}"
+      TELEGRAM_API_BASE: "http://host.docker.internal:${E2E_SINK_PORT:-18099}"
+      # Dummy creds so the configured-checks pass and requests actually fire.
+      DISCORD_BOT_TOKEN: "e2e-discord-token"
+      DISCORD_CHANNEL_ID: "e2e-channel"
+      TELEGRAM_BOT_TOKEN: "e2e-telegram-token"
+      TELEGRAM_CHAT_ID: "e2e-chat"
+      # Default 20s poll would dominate the test's wall clock.
+      NOTIFIER_POLL_INTERVAL_MS: "2000"
+      # Pinned, not inherited from the repo-root .env: the canned fit_score is 72, and a
+      # dev with NOTIFICATION_FIT_THRESHOLD=90 would otherwise see the high-fit Telegram
+      # assertions fail with no hint that their private .env is the cause.
+      NOTIFICATION_FIT_THRESHOLD: "50"
+    volumes:
+      - ./.e2e/notifier-state:/state
