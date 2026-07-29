@@ -421,6 +421,15 @@ jobs:
     runs-on: ubuntu-latest
     needs: [bridge, pipeline, notifier]
     continue-on-error: true
+    # Backstop against a wedged slice burning the 6h default job budget.
+    timeout-minutes: 45
+
+    env:
+      COMPOSE_PROJECT_NAME: jobfit-e2e
+      # Must match between compose interpolation and the test JVM. 21436, not the
+      # production oMLX port 11436 — see docker-compose.e2e.yml.
+      E2E_FAKE_LLM_PORT: '21436'
+      E2E_SINK_PORT: '18099'
 
     steps:
       - uses: actions/checkout@v4
@@ -449,8 +458,6 @@ jobs:
       # cacheable — a warm run skips all of it.
       - name: Build images (buildx bake + GHA cache)
         uses: docker/bake-action@v5
-        env:
-          COMPOSE_PROJECT_NAME: jobfit-e2e
         with:
           source: .
           files: |
@@ -462,35 +469,66 @@ jobs:
             processor
             notifier
           load: true
+          # Per-target cache scopes. `type=gha` defaults to scope=buildkit, and the
+          # Actions cache API is write-once per key — with a single shared scope the
+          # four targets race and whichever finishes first wins, so the expensive
+          # processor image (apt + pinned tectonic + TeX warm-up) would randomly
+          # restore nothing and rebuild cold.
+          #
+          # processor exports mode=min on purpose: mode=max on that image would push
+          # every intermediate layer into a 10 GB repo-wide LRU cache and evict the
+          # ~/.gradle entries the five service jobs depend on.
           set: |
-            *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
+            bridge.cache-from=type=gha,scope=e2e-bridge
+            bridge.cache-to=type=gha,mode=max,scope=e2e-bridge
+            markserv.cache-from=type=gha,scope=e2e-markserv
+            markserv.cache-to=type=gha,mode=max,scope=e2e-markserv
+            processor.cache-from=type=gha,scope=e2e-processor
+            processor.cache-to=type=gha,mode=min,scope=e2e-processor
+            notifier.cache-from=type=gha,scope=e2e-notifier
+            notifier.cache-to=type=gha,mode=max,scope=e2e-notifier
 
+      # --wait blocks until every started service is healthy and fails immediately if
+      # one exits, which the old hand-rolled inspect loop could not distinguish from
+      # "still starting" — it waited the full 240s per container, serially.
       - name: Start the e2e slice
         run: |
-          COMPOSE_PROJECT_NAME=jobfit-e2e docker compose \
-            -f docker-compose.yml -f docker-compose.e2e.yml \
-            up -d db bridge markserv processor notifier
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml \
+            up -d --wait --wait-timeout 300 db bridge markserv processor notifier
+
+      - name: Dump container logs if the slice never came up
+        if: failure()
+        run: |
           for c in jobfit-e2e-db jobfit-e2e-bridge jobfit-e2e-markserv jobfit-e2e-processor jobfit-e2e-notifier; do
-            deadline=$((SECONDS + 240))
-            until [ "$(docker inspect -f '{{.State.Health.Status}}' $c 2>/dev/null)" = "healthy" ]; do
-              if [ $SECONDS -ge $deadline ]; then
-                echo "::error::$c not healthy after 240s"; docker logs "$c" | tail -50; exit 1
-              fi
-              sleep 3
-            done
-            echo "$c healthy"
+            echo "::group::$c"
+            # 2>&1: JVM stack traces go to stderr, which a bare pipe to tail would let
+            # through unbounded while claiming to show the last 50 lines.
+            docker logs --tail 50 "$c" 2>&1 || true
+            echo "::endgroup::"
           done
 
       - name: Run e2e suite
+        id: run_e2e
         working-directory: services/job-fit-apply-ai-e2e
         run: chmod +x ./gradlew && ./gradlew test
+
+      # The job is continue-on-error, so a failure leaves the workflow green and the
+      # Allure upload/download both degrade quietly — without this, "the suite failed"
+      # and "the suite never ran" produce byte-identical output. Keep it until
+      # continue-on-error is removed and the job speaks for itself.
+      - name: Report e2e outcome
+        if: always()
+        run: |
+          case "${{ steps.run_e2e.outcome }}" in
+            success) echo "✅ **E2E suite passed.**" >> "$GITHUB_STEP_SUMMARY" ;;
+            failure) echo "❌ **E2E suite FAILED** — this job is \`continue-on-error\`, so the workflow is still green. See the \`junit-results-e2e\` / \`e2e-compose-logs\` artifacts." >> "$GITHUB_STEP_SUMMARY" ;;
+            *)       echo "⚠️ **E2E suite did not run** (outcome: \`${{ steps.run_e2e.outcome }}\`) — the slice most likely never came up." >> "$GITHUB_STEP_SUMMARY" ;;
+          esac
 
       - name: Dump compose logs
         if: failure()
         run: |
-          COMPOSE_PROJECT_NAME=jobfit-e2e docker compose \
-            -f docker-compose.yml -f docker-compose.e2e.yml \
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml \
             logs --no-color > e2e-compose-logs.txt || true
 
       - name: Upload compose logs
@@ -519,8 +557,7 @@ jobs:
       - name: Tear down
         if: always()
         run: |
-          COMPOSE_PROJECT_NAME=jobfit-e2e docker compose \
-            -f docker-compose.yml -f docker-compose.e2e.yml \
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml \
             down -v --remove-orphans || true
 
   # ── 6. Allure Report — collect, generate, publish ───────────────────────────

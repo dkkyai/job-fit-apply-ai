@@ -14,7 +14,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Collections
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Minimal OpenAI-compatible fake serving `POST /v1/chat/completions` for the whole
@@ -36,20 +36,59 @@ import java.util.Collections
  * carries those markers) so tests can assert the exact call sequence.
  */
 class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
+    companion object {
+        /** Appended to every rewritten bullet so the fold-back join is observable. */
+        const val BULLET_MARKER = "(e2e-rewrite)"
+    }
+
     private val mapper = ObjectMapper().registerKotlinModule()
     private var engine: ApplicationEngine? = null
 
-    val calls: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    /**
+     * CopyOnWriteArrayList, not synchronizedList: tests iterate this (Tier B asserts the
+     * exact sequence) while the Netty handler thread appends, and a synchronizedList's
+     * iterator is not itself synchronized.
+     */
+    val calls: MutableList<String> = CopyOnWriteArrayList()
+
+    /**
+     * Binding is not enough to prove we own the port. A JVM binds `0.0.0.0:$port`
+     * successfully even while another process holds `127.0.0.1:$port` (the JDK sets
+     * SO_REUSEADDR by default), and the kernel then routes loopback connections — which
+     * is what `host.docker.internal` traffic arrives as — to the *more specific* socket.
+     * The container would silently talk to that other server for the whole run and the
+     * only symptom would be a timeout with an empty [calls] list. So: refuse to start if
+     * anything already answers on the port.
+     */
+    private fun assertPortUnoccupied() {
+        val occupied = runCatching {
+            java.net.Socket().use { s ->
+                s.connect(java.net.InetSocketAddress("127.0.0.1", port), 500)
+                true
+            }
+        }.getOrDefault(false)
+        check(!occupied) {
+            "Something is already listening on 127.0.0.1:$port — the fake LLM would bind " +
+                "0.0.0.0:$port but the existing loopback socket would keep winning, so the " +
+                "processor would talk to *it*, not the fake. This is almost always a real " +
+                "local model server (oMLX). Set E2E_FAKE_LLM_PORT to a free port for BOTH " +
+                "`make e2e-up` and the test run, or use REAL_LLM=1 to skip the fake entirely."
+        }
+    }
 
     fun start() {
+        assertPortUnoccupied()
         try {
+            // 0.0.0.0 (not loopback) so the processor container can reach us over the
+            // docker bridge via host.docker.internal. This does expose the fake on the
+            // LAN/tailnet for the duration of the run; it serves only canned fixtures.
             engine = embeddedServer(Netty, port = port, host = "0.0.0.0") {
                 routing {
                     post("/v1/chat/completions") {
                         val body = mapper.readTree(call.receiveText())
                         val prompt = body.path("messages").path(0).path("content").asText("")
                         val model = body.path("model").asText("")
-                        val routed = dispatch(prompt, model)
+                        val routed = dispatch(prompt)
                         if (routed == null) {
                             val head = prompt.take(300).replace('\n', ' ')
                             System.err.println("[fake-llm] UNMATCHED PROMPT (model=$model): $head")
@@ -87,14 +126,21 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
         engine?.stop(500, 2000)
     }
 
-    private fun dispatch(prompt: String, model: String): Pair<String, String>? {
+    private fun dispatch(prompt: String): Pair<String, String>? {
         val suffix = buildString {
             if (prompt.contains("PREVIOUS VALIDATION FEEDBACK (revision pass")) append(":refine")
             if (prompt.contains("YOUR PREVIOUS OUTPUT WAS INVALID") || prompt.contains("REJECTED DRAFT")) append(":retry")
         }
         fun name(n: String) = n + suffix
+        // The cover-letter prompt also contains score_fit's fallback marker
+        // ("\n\nJOB DESCRIPTION:\n", GenerateCoverLetterNode). Identify it positively and
+        // exclude it from the score branch, so the two can't alias if either prompt drifts.
+        // Dispatch is on prompt markers only — never on the model name, which would
+        // misroute the moment someone points a prose model at another node.
+        val isCoverLetter = prompt.contains("Write a professional yet casual cover letter") ||
+            prompt.contains("CANDIDATE STRENGTHS TO HIGHLIGHT")
         return when {
-            prompt.contains("Write a professional yet casual cover letter") || model.contains("gemma") ->
+            isCoverLetter ->
                 name("cover_letter") to fixture("cover_letter.txt")
             prompt.contains("JD_EXTRACTION_SKILL") || prompt.contains("<job_description>") ->
                 name("jd_extraction") to fixture("jd_extraction.json")
@@ -108,7 +154,7 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
                 name("skills_restructure") to fixture("skills_restructure.json")
             prompt.contains("ATS_VALIDATION_SKILL") ->
                 name("ats_validation") to fixture("ats_validation.json")
-            prompt.contains("SCORE_SKILL") || prompt.contains("\n\nJOB DESCRIPTION:\n") ->
+            prompt.contains("SCORE_SKILL") || (!isCoverLetter && prompt.contains("\n\nJOB DESCRIPTION:\n")) ->
                 name("score_fit") to fixture("score_fit.json")
             else -> null
         }
@@ -119,12 +165,32 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
 
     /**
      * Parse the roles JSON the prompt ends with (after the CANDIDATE ROLES marker) and
-     * echo every role's join keys and bullets back, `rewritten` == original text —
-     * deterministic, LaTeX-safe, and never discarded by the role-key join.
+     * echo every role's join keys and bullets back — deterministic, LaTeX-safe, and never
+     * discarded by the role-key join.
+     *
+     * `rewritten` is the original text plus [BULLET_MARKER]. It must NOT be the identity:
+     * BulletRewriteNode silently keeps the original bullet when the role join key misses,
+     * so an identity echo makes "rewrite applied" and "every rewrite discarded" produce
+     * byte-identical output and no assertion can tell them apart. The marker is asserted
+     * in the rendered YAML (Tier B). It is plain ASCII, and deliberately not any
+     * never-claim / unsupported fixture term, so it trips no leak or anti-parrot gate.
      */
     private fun bulletEcho(prompt: String): String {
-        val marker = prompt.indexOf("CANDIDATE ROLES")
-        val arrStart = prompt.indexOf('[', if (marker >= 0) marker else 0)
+        // "CANDIDATE ROLES" occurs TWICE in the assembled prompt: once in the prepended
+        // BULLET_REWRITE_SKILL.md prose (followed by an *example* JSON array), and again
+        // as the real data-section header that rolesJson is appended under. Anchoring on
+        // the first occurrence parses the doc's example, so every echoed join key is a
+        // placeholder, BulletRewriteNode's fold-back join misses every role, and all
+        // rewrites are silently dropped. Anchor on the data header specifically.
+        val dataHeader = "CANDIDATE ROLES (career history + projects)"
+        val marker = prompt.indexOf(dataHeader)
+            .takeIf { it >= 0 }
+            ?: prompt.lastIndexOf("CANDIDATE ROLES")
+        check(marker >= 0) {
+            "bullet_rewrite prompt carries no 'CANDIDATE ROLES' marker (prompt drift?) — " +
+                "refusing to guess at the roles JSON offset"
+        }
+        val arrStart = prompt.indexOf('[', marker)
         check(arrStart >= 0) { "bullet_rewrite prompt carries no roles JSON array" }
         val roles = mapper.readTree(prompt.substring(arrStart))
         val out = roles.map { role ->
@@ -136,7 +202,7 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
                     mapOf(
                         "original" to b.path("text").asText(),
                         "category" to b.path("category").asText(),
-                        "rewritten" to b.path("text").asText(),
+                        "rewritten" to "${b.path("text").asText()} $BULLET_MARKER",
                         "must_have_hits" to emptyList<String>(),
                         "quantified" to false,
                         "seniority_signal" to (idx == 0),

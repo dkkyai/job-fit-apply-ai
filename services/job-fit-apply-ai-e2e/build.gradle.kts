@@ -41,7 +41,18 @@ allure {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    // `-PexcludeTags=tier-b` runs Tier A alone (structural assertions that also hold
+    // against a real model) without having to flip E2E_REAL_LLM, which would change the
+    // LLM as well as the assertion set. Without this the @Tag("tier-b") annotations are
+    // decorative — nothing consumes them.
+    useJUnitPlatform {
+        (project.findProperty("excludeTags") as String?)
+            ?.split(',')?.map(String::trim)?.filter(String::isNotEmpty)
+            ?.let { excludeTags(*it.toTypedArray()) }
+        (project.findProperty("includeTags") as String?)
+            ?.split(',')?.map(String::trim)?.filter(String::isNotEmpty)
+            ?.let { includeTags(*it.toTypedArray()) }
+    }
     // An e2e run is never up-to-date — it exercises external state, not inputs Gradle can hash.
     outputs.upToDateWhen { false }
     testLogging {

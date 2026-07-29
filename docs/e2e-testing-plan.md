@@ -45,13 +45,20 @@ As implemented, the e2e slice is a **separate compose project** (`COMPOSE_PROJEC
 E2E_BRIDGE_URL      default http://127.0.0.1:18765
 E2E_MARKSERV_URL    default http://127.0.0.1:18081
 E2E_DATABASE_URL    default postgresql://jobfit:jobfit@127.0.0.1:15432/jobfit
-E2E_FAKE_LLM_PORT   default 11436   (use another, e.g. 21436, when real oMLX holds 11436;
-                                     export it for BOTH `make e2e-up` and `make e2e-run`)
+E2E_FAKE_LLM_PORT   default 21436   (NOT 11436 — see §4.2; the Makefile sets it to 11436
+                                     under REAL_LLM=1 and exports it to up *and* run)
 E2E_SINK_PORT       default 18099
 E2E_TIMEOUT_SECONDS default 300 (1800 under REAL_LLM=1)
 E2E_REAL_LLM        default 0
 E2E_OUTPUT_DIR      default ../../.e2e/output (relative to the e2e module)
 ```
+
+The compose project name is `jobfit-e2e-<hash of the checkout path>`, and container names
+track it — `e2e-down` runs `down -v`, so a fixed name would let one worktree delete
+another's Postgres volume mid-run. Every e2e service also pins `restart: "no"` (the base
+stack's `unless-stopped` would leave a Ctrl-C'd slice holding the ports across reboots),
+and `POSTGRES_*` / `NOTIFICATION_FIT_THRESHOLD` are pinned in the override because compose
+interpolates the repo-root `.env` regardless of project name.
 
 ### 3.3 Submit via `POST /api/jobs` (type `JD_SCRAPED`)
 
@@ -90,9 +97,16 @@ Three quirks the fake must handle:
 
 ### 4.2 Placement
 
-The fake runs **in-process in the test JVM**, started by a JUnit 5 extension, listening on `0.0.0.0:11436`. The processor container reaches it via `host.docker.internal`, which compose already wires up (`extra_hosts: host-gateway`). No sidecar container, no separate lifecycle.
+The fake runs **in-process in the test JVM**, listening on `0.0.0.0:$E2E_FAKE_LLM_PORT`. The processor container reaches it via `host.docker.internal`, which compose already wires up (`extra_hosts: host-gateway`). No sidecar container, no separate lifecycle.
 
-For local runs against a real oMLX on the same port, `E2E_REAL_LLM=1` skips starting the fake and leaves `MLX_LOCAL_BASE_URL` pointed at the real backend (see §7.3 — the toggle is really a launcher flag, since the var is baked into the container at `up` time).
+**The default port is 21436, deliberately not 11436.** 11436 is the production oMLX port, and `docker-compose.yml` points the production processor at it — sharing it breaks isolation in *both* directions, and both failure modes are silent:
+
+- **oMLX up.** The fake binds `0.0.0.0:11436` successfully even while oMLX holds `127.0.0.1:11436` (the JDK sets `SO_REUSEADDR` by default), but a `host.docker.internal` connection arrives on the host as loopback and the kernel routes it to the *more specific* socket — oMLX. The fake serves nothing, the run does real inference under the 300s fake-LLM budget, and it dies as a bare timeout with an empty call list.
+- **oMLX down.** The fake owns the port, and the running *production* processor gets fixture responses: canned `fit_score` and canned content on a real Gmail-sourced job, written to the real Postgres and pushed to the real Discord/Telegram.
+
+Binding alone therefore proves nothing, so `FakeLlmServer.start()` refuses to start if anything already answers on the port — turning what was a five-minute mystery timeout into an immediate, named diagnosis.
+
+For local runs against a real oMLX, `REAL_LLM=1` skips starting the fake *and* sets `E2E_FAKE_LLM_PORT=11436` for both `up` and `run`, so the container points at the real backend (see §7.3 — the toggle is really a launcher flag, since the var is baked into the container at `up` time).
 
 ### 4.3 Call inventory and dispatch table
 
@@ -127,7 +141,11 @@ These are validation gates that will silently degrade or kill a run if the canne
 
 **summary_rewrite** — prose, ≤1200 chars, must not start with `{`, `[`, `-`, `*`, or `#`. Must not share word-trigrams with the fixture profile's `background.summary` (>0.5 containment triggers an anti-parrot retry).
 
-**bullet_rewrite** — the response is joined to roles on `role|company|start_date` lowercased. A mismatch silently discards the rewrite. **The fake should parse the roles JSON out of the prompt and echo the keys back** rather than hardcoding them — more robust against fixture edits. `must_have_hits` and `quantified` are recomputed in code and ignored.
+**bullet_rewrite** — the response is joined to roles on `role|company|start_date` lowercased. A mismatch silently discards the rewrite. **The fake parses the roles JSON out of the prompt and echoes the keys back** rather than hardcoding them — more robust against fixture edits. `must_have_hits` and `quantified` are recomputed in code and ignored.
+
+The echoed `rewritten` text is the original **plus a marker** (`FakeLlmServer.BULLET_MARKER`), never the identity: `BulletRewriteNode` keeps the original bullet when the join key misses, so an identity echo makes "rewrite applied" and "every rewrite silently discarded" byte-identical and unobservable. Tier B asserts the marker reaches `tailored_resume.yaml`.
+
+That assertion immediately earned its keep. `CANDIDATE ROLES` occurs **twice** in the assembled prompt — once in the prepended `BULLET_REWRITE_SKILL.md` prose, directly above an *example* JSON array, and again as the data-section header. Anchoring the parse on the first occurrence read the example, so every echoed join key was a placeholder, the fold-back join matched nothing, and **every bullet rewrite was being dropped** while the suite stayed green. The fake now anchors on the data header (`CANDIDATE ROLES (career history + projects)`), with a `FakeLlmServerTest` case that reproduces the two-marker prompt shape.
 
 **skills_restructure** — `grouped_by_category` must be non-empty with non-empty lists, and must not contain placeholder-looking values (`skill1`, `<placeholder>`, etc.) — there is an explicit `EXAMPLE_TELLS` rejection list.
 
@@ -175,13 +193,19 @@ The e2e module then runs a **mock sink** — a second in-process Ktor server on 
 9. The mock sink received a Discord message matching `• {company} — [{title}]({artifactUrl}) — **{score}** (TAILOR)`.
 10. `GET /api/jobs/completed?since=0&all=true` includes the job with a monotonic `completed_seq`.
 
-### Tier B — exact values (fake LLM only, JUnit-tagged, skipped under `E2E_REAL_LLM=1`)
+### Tier B — exact values (fake LLM only, `@Tag("tier-b")`, skipped under `E2E_REAL_LLM=1`)
+
+The tag is wired: `./gradlew test -PexcludeTags=tier-b` runs Tier A alone without also
+flipping the LLM, and `-PincludeTags=tier-b` does the inverse.
 
 11. `fit_score` equals the canned value exactly.
 12. The fake LLM served exactly the expected 8-call sequence in order.
-13. `tailored_resume.yaml` contains the canned summary text and the canned skill groups.
+13. `tailored_resume.yaml` contains the canned summary, the canned skill groups, and the bullet-rewrite marker.
 14. `cover_letter.txt` equals the canned cover letter.
-15. Telegram sink received the high-fit message (canned score is above `NOTIFICATION_FIT_THRESHOLD`).
+15. Telegram sink received the high-fit message, ending in the canned score (anchored — a bare `contains("72")` passes by chance, since the message embeds a 13-digit epoch nonce).
+
+Plus a Docker-free unit suite on the fake itself (`FakeLlmServerTest`): prompt-marker
+aliasing, the loud-500 contract, the bullet echo, and the occupied-port refusal.
 
 ### Row identity
 
@@ -218,6 +242,8 @@ Compose has several bind-mount sources that don't exist in a fresh checkout, and
 | processor `/app/.env` | `./.e2e/pipeline.env` (**file**, generated by prepare) |
 | processor `resume.yaml` / `candidate_profile.yaml` | the committed e2e fixtures, `:ro` |
 
+The script reads the repo-root `.env` the way compose does, so `E2E_MARKSERV_PORT` can't move the container while `ARTIFACT_BASE_URL` keeps pointing at the old port. It rejects unknown arguments (a typo'd `--Fresh` used to no-op silently), removes a stale `pipeline.env` *directory* left by a run that skipped it, and falls back to wiping root-owned container state via a throwaway container — a plain `rm -rf` fails there for an unprivileged user on Linux.
+
 The generated `pipeline.env` carries `ARTIFACT_BASE_URL=http://127.0.0.1:18081`. It must go in the dotenv file, **not** in compose env — an empty `${ARTIFACT_BASE_URL:-}` in compose would beat the mounted file and the node would silently no-op, leaving `artifact_url` null everywhere downstream. `scripts/e2e-ci-prepare.sh --fresh` also wipes per-run state for determinism (`make e2e-up` uses it).
 
 ### 7.4 Make targets
@@ -225,11 +251,13 @@ The generated `pipeline.env` carries `ARTIFACT_BASE_URL=http://127.0.0.1:18081`.
 ```
 make e2e-up        # prepare + compose up the slice, wait healthy
 make e2e-run       # ./gradlew test in the e2e module against a running stack
-make e2e           # up + run + down
-make e2e REAL_LLM=1  # real oMLX, Tier A assertions only
+make e2e           # up + run + down (tears down on Ctrl-C too)
+make e2e REAL_LLM=1  # real oMLX on 11436, Tier A assertions only
 ```
 
-`make e2e-run` against an already-running stack is the ad-hoc loop — no rebuild, seconds per iteration.
+`make e2e-run` against an already-running stack is the ad-hoc loop — no rebuild, seconds per iteration. It stays correct however long the slice lives: the suite seeds its completed-feed cursor from `/api/jobs/completed/head` before submitting, rather than paging from `since=0` and falling off the 200-event limit.
+
+The health wait fails immediately on a container that has exited or is crash-looping, instead of waiting out its full 240s budget.
 
 The existing `scripts/e2e-smoke.sh` stays as the manual full-fat smoke against real models. It cannot run in CI as written (requires host MLX, pulls in steel via `depends_on`, hard-requires `pipeline_action=TAILOR`).
 
@@ -247,7 +275,13 @@ e2e:
   continue-on-error: true   # phase 3; remove once stable
 ```
 
-Steps: checkout → setup-java 21 → setup-buildx → `scripts/e2e-ci-prepare.sh` → `docker buildx bake` with `cache-from/to: type=gha,mode=max` → `docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d` → wait for health → `./gradlew test` in the e2e module → on failure, dump `docker compose logs` as an artifact → upload Allure results and JUnit XML → `docker compose down -v`.
+Steps: checkout → setup-java 21 → setup-buildx → `scripts/e2e-ci-prepare.sh` → `docker buildx bake` → `docker compose up -d --wait --wait-timeout 300` → `./gradlew test` in the e2e module → write the outcome to `$GITHUB_STEP_SUMMARY` → on failure, dump `docker compose logs` as an artifact → upload Allure results and JUnit XML → `docker compose down -v`.
+
+Three things that matter here:
+
+- **Per-target GHA cache scopes.** `type=gha` defaults to `scope=buildkit` and the Actions cache API is write-once per key, so one shared scope makes the four bake targets race — whichever finishes first wins, and the expensive processor image randomly rebuilds cold. The processor exports `mode=min`: `mode=max` on that image would push every intermediate layer into a 10 GB repo-wide LRU cache and evict the `~/.gradle` entries the five service jobs depend on.
+- **`up --wait`** replaces a hand-rolled inspect loop that could not tell "crash-looping" from "still starting" and waited its full budget per container, serially.
+- **The step summary is load-bearing while the job is `continue-on-error`.** Without it, a failed suite, a slice that never came up, and a job skipped because `bridge`/`pipeline`/`notifier` failed all produce an identical green workflow. Remove it together with `continue-on-error` (exclude the check from branch protection instead, so the job node stays red and visible).
 
 Add `e2e` to the `allure-report` job's `needs:` list so its results are published.
 
@@ -270,6 +304,12 @@ Mitigations: the fake returns HTTP 500 with a loud message on an unmatched promp
 ### 9.2 Canned-fixture brittleness
 
 The canned responses are coupled to the fixture profile through the never-claim, anti-parrot, and coverage gates. Both live in the same directory and change together; the failure mode is a `degraded` node rather than a crash, so **Tier B #12 and #13 are what actually catch it** — Tier A would still pass on a degraded run. This is the main reason exact-value assertions matter.
+
+### 9.2b Port shadowing (closed)
+
+The fake LLM used to default to 11436 — the production oMLX port. See §4.2: binding
+succeeds but proves nothing, and the failure was silent in both directions. Now the
+default is 21436 and `start()` refuses an occupied port.
 
 ### 9.3 Timing
 

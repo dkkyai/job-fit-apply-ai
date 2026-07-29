@@ -10,6 +10,9 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
+import org.junit.jupiter.api.Timeout
+import java.util.concurrent.TimeUnit
+import java.io.IOException
 import java.net.URI
 import java.net.URLDecoder
 import java.net.http.HttpClient
@@ -17,6 +20,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -37,15 +41,33 @@ import kotlin.test.fail
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DisplayName("Bridge → Processor → Notifier happy path")
+// Backstop so a wedged slice fails the run instead of burning the whole CI job budget.
+// Generous: the setup step alone is allowed E2E_TIMEOUT_SECONDS (300 fake / 1800 real).
+@Timeout(value = 40, unit = TimeUnit.MINUTES)
 class HappyPathE2ETest {
 
     private val mapper = ObjectMapper().registerKotlinModule()
-    private val http: HttpClient = HttpClient.newHttpClient()
+
+    // Every request is individually bounded. Without this, pollUntil's deadline bounds
+    // nothing: it is only evaluated *between* probes, so a single hung send (a wedged or
+    // GC-thrashing container that accepts the connection and never answers) would block
+    // forever, well past any suite timeout.
+    private val http: HttpClient = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(5))
+        .build()
+
+    /** GET, or POST when [body] is given. Both carry a per-request timeout. */
+    private fun <T> request(url: String, handler: HttpResponse.BodyHandler<T>, body: String? = null): HttpResponse<T> {
+        val b = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30))
+        if (body != null) b.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)) else b.GET()
+        return http.send(b.build(), handler)
+    }
 
     private val fakeLlm = FakeLlmServer(E2eConfig.fakeLlmPort, E2eConfig.fixturesDir)
     private val sink = MockNotificationSink(E2eConfig.sinkPort)
 
     // Populated once in setup, asserted by the tests.
+    private var completedCursor: Long = 0
     private lateinit var company: String
     private lateinit var jobId: String
     private lateinit var finalStatus: JsonNode
@@ -87,6 +109,14 @@ class HappyPathE2ETest {
     }
 
     private fun submit() {
+        // Seed the completed-feed cursor at the current head *before* submitting. Paging
+        // from since=0 works only until 200 events accumulate, which the documented
+        // long-lived-slice loop (`make e2e-up` once, `make e2e-run` repeatedly) reaches —
+        // and then fails as "job missing from the completed feed", pointing at the wrong
+        // subsystem entirely.
+        completedCursor = mapper.readTree(getString("${E2eConfig.bridgeUrl}/api/jobs/completed/head"))
+            .path("max_seq").asLong(0)
+
         company = "E2E Acme ${System.currentTimeMillis()}"
         val jdText = Files.readString(E2eConfig.fixturesDir.resolve("jd-staff-sdet.txt"))
             .replace("{{COMPANY}}", company)
@@ -123,9 +153,12 @@ class HappyPathE2ETest {
     }
 
     private fun gatherCompletedEvent() {
-        val feed = mapper.readTree(getString("${E2eConfig.bridgeUrl}/api/jobs/completed?since=0&limit=200&all=true"))
+        val feed = mapper.readTree(
+            "${E2eConfig.bridgeUrl}/api/jobs/completed?since=$completedCursor&limit=200&all=true"
+                .let { getString(it) }
+        )
         completedEvent = feed.firstOrNull { it.path("job_id").asText() == jobId }
-            ?: fail("job $jobId missing from the completed feed")
+            ?: fail("job $jobId missing from the completed feed since seq=$completedCursor")
         artifactUrl = completedEvent.path("artifact_url").asText("")
         assertTrue(
             artifactUrl.isNotBlank(),
@@ -139,7 +172,10 @@ class HappyPathE2ETest {
     }
 
     private fun awaitNotifierDelivery() {
-        discordMessages = pollUntil(90, 1000, "notifier to deliver the Discord message") {
+        discordMessages = pollUntil(
+            90, 1000,
+            { "notifier to deliver the Discord message (sink saw: ${sink.describe()})" },
+        ) {
             sink.discordTexts().filter { it.contains(company) }.takeIf { it.isNotEmpty() }
         }
     }
@@ -185,7 +221,13 @@ class HappyPathE2ETest {
     @Test
     @DisplayName("A6: markserv serves the report and the PDF at the artifact URL")
     fun markservServesArtifacts() {
-        // artifact_url is built from ARTIFACT_BASE_URL (markserv) and always ends with /
+        // artifact_url is built from ARTIFACT_BASE_URL (markserv) and always ends with /.
+        // Pin the origin: otherwise an ARTIFACT_BASE_URL pointing at the *production*
+        // markserv still returns 200 here and the assertion proves nothing about the slice.
+        assertTrue(
+            artifactUrl.startsWith("${E2eConfig.markservUrl}/"),
+            "artifact_url origin is not the e2e markserv (${E2eConfig.markservUrl}): $artifactUrl",
+        )
         assertEquals(200, statusOf(artifactUrl.trimEnd('/') + "/report.md"))
         assertEquals(200, statusOf(artifactUrl.trimEnd('/') + "/tailored_resume.pdf"))
     }
@@ -222,6 +264,10 @@ class HappyPathE2ETest {
     @Test
     @DisplayName("A9: notifier posted the Discord message for this job")
     fun discordMessageDelivered() {
+        assertTrue(
+            sink.unknownPaths().isEmpty(),
+            "notifier posted to unexpected URL(s) — wrong channel id or bot token? ${sink.unknownPaths()}",
+        )
         val msg = discordMessages.first()
         assertTrue(msg.startsWith("• "), "unexpected Discord format: $msg")
         assertTrue(msg.contains("(TAILOR)"), "Discord message missing action: $msg")
@@ -268,6 +314,14 @@ class HappyPathE2ETest {
         // Short distinctive fragments — YAML emitters may re-wrap long lines.
         assertTrue(yaml.contains("paved road"), "canned summary missing from tailored_resume.yaml (summary_rewrite degraded?)")
         assertTrue(yaml.contains("Mobile Test Automation"), "canned skill group missing (skills_restructure degraded?)")
+        // BulletRewriteNode silently keeps the ORIGINAL bullet when the role join key
+        // (role|company|start_date) misses, so without a marker on the rewritten text a
+        // wholesale join failure is indistinguishable from a successful rewrite.
+        assertTrue(
+            yaml.contains(FakeLlmServer.BULLET_MARKER),
+            "no rewritten bullet in tailored_resume.yaml — the bullet_rewrite fold-back join " +
+                "matched nothing (role|company|start_date drift?) and every rewrite was discarded",
+        )
     }
 
     @Test
@@ -284,56 +338,79 @@ class HappyPathE2ETest {
     @DisplayName("B15: Telegram sink received the high-fit message")
     fun telegramHighFitDelivered() {
         assumeFalse(E2eConfig.realLlm, "Tier B runs only against the fake LLM")
-        val msgs = pollUntil(30, 1000, "Telegram high-fit message") {
+        val msgs = pollUntil(
+            30, 1000,
+            { "Telegram high-fit message (sink saw: ${sink.describe()})" },
+        ) {
             sink.telegramTexts().filter { it.contains(company.replace("&", "&amp;")) }.takeIf { it.isNotEmpty() }
         }
         val msg = msgs.first()
         assertTrue(msg.startsWith("High-fit:"), "unexpected Telegram format: $msg")
-        assertTrue(msg.contains("72"), "Telegram message missing the score: $msg")
+        // Anchored, not `contains("72")`: the message embeds `company`, which carries a
+        // 13-digit epoch — 12 adjacent digit pairs, so a bare substring check passes by
+        // chance roughly one run in nine even when the score is missing entirely.
+        assertTrue(
+            Regex("""—\s*72\s*$""").containsMatchIn(msg),
+            "Telegram message does not end with the canned score: $msg",
+        )
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────
 
-    private fun <T> pollUntil(deadlineSeconds: Long, intervalMs: Long, what: String, probe: () -> T?): T {
+    /**
+     * Poll until [probe] returns non-null or the deadline passes.
+     *
+     * Transport failures are swallowed and retried, not propagated: every service in the
+     * slice is `restart: unless-stopped` and the JVMs run -XX:+ExitOnOutOfMemoryError, so
+     * a single "connection refused" during a restart is expected and must not kill a poll
+     * that still has minutes of budget. The last such failure is reported if we do time
+     * out, so a slice that never comes back still produces a useful message.
+     *
+     * An AssertionError from inside the probe (e.g. awaitDone's status=error branch) is a
+     * real verdict and propagates immediately.
+     */
+    private fun <T> pollUntil(deadlineSeconds: Long, intervalMs: Long, what: String, probe: () -> T?): T =
+        pollUntil(deadlineSeconds, intervalMs, { what }, probe)
+
+    private fun <T> pollUntil(deadlineSeconds: Long, intervalMs: Long, what: () -> String, probe: () -> T?): T {
         val deadline = System.nanoTime() + deadlineSeconds * 1_000_000_000L
+        var lastTransient: Exception?
         while (true) {
-            probe()?.let { return it }
-            if (System.nanoTime() > deadline) fail("timed out after ${deadlineSeconds}s waiting for $what")
+            try {
+                probe()?.let { return it }
+                lastTransient = null
+            } catch (e: IOException) {
+                lastTransient = e
+            } catch (e: IllegalStateException) {
+                lastTransient = e
+            }
+            if (System.nanoTime() > deadline) {
+                fail(
+                    "timed out after ${deadlineSeconds}s waiting for ${what()}" +
+                        (lastTransient?.let { " (last transport failure: $it)" } ?: "")
+                )
+            }
             Thread.sleep(intervalMs)
         }
     }
 
     private fun getString(url: String): String {
-        val resp = http.send(
-            HttpRequest.newBuilder(URI.create(url)).GET().build(),
-            HttpResponse.BodyHandlers.ofString(),
-        )
+        val resp = request(url, HttpResponse.BodyHandlers.ofString())
         check(resp.statusCode() in 200..299) { "GET $url → ${resp.statusCode()}: ${resp.body().take(300)}" }
         return resp.body()
     }
 
     private fun getBytes(url: String): ByteArray {
-        val resp = http.send(
-            HttpRequest.newBuilder(URI.create(url)).GET().build(),
-            HttpResponse.BodyHandlers.ofByteArray(),
-        )
+        val resp = request(url, HttpResponse.BodyHandlers.ofByteArray())
         check(resp.statusCode() in 200..299) { "GET $url → ${resp.statusCode()}" }
         return resp.body()
     }
 
-    private fun statusOf(url: String): Int = http.send(
-        HttpRequest.newBuilder(URI.create(url)).GET().build(),
-        HttpResponse.BodyHandlers.discarding(),
-    ).statusCode()
+    private fun statusOf(url: String): Int =
+        request(url, HttpResponse.BodyHandlers.discarding()).statusCode()
 
     private fun postJson(url: String, body: String): JsonNode {
-        val resp = http.send(
-            HttpRequest.newBuilder(URI.create(url))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build(),
-            HttpResponse.BodyHandlers.ofString(),
-        )
+        val resp = request(url, HttpResponse.BodyHandlers.ofString(), body = body)
         check(resp.statusCode() in 200..299) { "POST $url → ${resp.statusCode()}: ${resp.body().take(300)}" }
         return mapper.readTree(resp.body())
     }
