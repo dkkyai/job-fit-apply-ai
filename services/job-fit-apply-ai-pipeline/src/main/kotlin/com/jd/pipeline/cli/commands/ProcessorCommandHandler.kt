@@ -4,6 +4,7 @@ import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.ClaimDto
 import com.jd.pipeline.client.WorkItemType
 import com.jd.pipeline.config.Config
+import com.jd.pipeline.nodes.ScoreFitNode
 import com.jd.pipeline.utils.Heartbeat
 import com.jd.pipeline.pipeline.EmailDisposition
 import com.jd.pipeline.pipeline.EmailResolution
@@ -196,6 +197,39 @@ object ProcessorCommandHandler {
         jdText = "", company = null, roleTitle = null, location = null, jobUrl = null, source = source,
     )
 
+    /** The bridge's `POST /api/jobs` rejects a jd_text shorter than this with a 422 (`Routes.kt`). */
+    private const val BRIDGE_MIN_JD_CHARS = 150
+
+    /**
+     * Coerce a digest child's record into something the bridge will accept, or null if it can't be.
+     *
+     * A digest child seeds its jdText with a one-line summary ("<role> @ <company> | … | <url>").
+     * When the per-job scrape fails (e.g. a monster.com card behind Cloudflare) that stub is all
+     * that survives, and some boards' summaries fall under the bridge's [BRIDGE_MIN_JD_CHARS] floor
+     * — so the submit 422s and the child vanishes with no job, no label, and no run-log line. Pad
+     * the stub with a snippet of the raw digest email so it clears the floor, but keep the result
+     * under [ScoreFitNode.MIN_DIGEST_JD_CHARS] so score_fit's thin-digest guard still declines to
+     * score it (rather than scoring one job on the whole digest body) and keeps it visible and
+     * retryable. Return null only when even that can't reach the floor (e.g. an empty email body);
+     * the caller then skips the child with a logged reason instead of firing a doomed 422.
+     */
+    private fun submittableChildRecord(record: JdRecord, child: JDState): JdRecord? {
+        if (record.jdText.length >= BRIDGE_MIN_JD_CHARS) return record
+
+        val emailBody = (child.intake as? IntakeContext.Email)?.rawBody.orEmpty()
+            .replace(Regex("\\s+"), " ").trim()
+        if (emailBody.isBlank()) return null
+
+        val header = if (record.jdText.isEmpty()) "From the job-alert email:\n" else "\n\nFrom the job-alert email:\n"
+        // Headroom kept below the score_fit guard so the padded stub stays a thin digest, not a
+        // fake full JD that would be scored.
+        val budget = ScoreFitNode.MIN_DIGEST_JD_CHARS - 1 - record.jdText.length - header.length
+        if (budget <= 0) return null
+
+        val padded = record.jdText + header + emailBody.take(budget)
+        return if (padded.length >= BRIDGE_MIN_JD_CHARS) record.copy(jdText = padded) else null
+    }
+
     /**
      * Scan/scrape a claimed raw email into a [Resolution]. [Resolution.Terminal] when the item ends
      * here — digest (children re-enqueued as JD_SCRAPED), not-a-job, or an ingestion error — in which
@@ -246,7 +280,18 @@ object ProcessorCommandHandler {
             }
             is EmailDisposition.ReEnqueueChildren -> {
                 for (child in disposition.children) {
-                    runCatching { bridge.submit(ingestion.toJdRecord(child)) }
+                    val record = submittableChildRecord(ingestion.toJdRecord(child), child)
+                    if (record == null) {
+                        // No usable JD text and nothing to pad it with — submitting would 422 and the
+                        // child would vanish silently. Skip it explicitly with a reason instead.
+                        System.err.println(
+                            "[processor] digest child skipped — jd_text under $BRIDGE_MIN_JD_CHARS chars and " +
+                                "no email body to pad it (company='${child.company}', role='${child.roleTitle}', " +
+                                "url='${child.jobUrl}')"
+                        )
+                        continue
+                    }
+                    runCatching { bridge.submit(record) }
                         .onFailure { System.err.println("[processor] digest child submit failed: ${it.message}") }
                 }
                 // parent digest complete → archive
