@@ -34,7 +34,7 @@ if [ -f .env ]; then
   # shellcheck disable=SC1091
   set -a; . ./.env; set +a
 fi
-MARKSERV_PORT="${E2E_MARKSERV_PORT:-18081}"
+MARKSERV_PORT="${E2E_MARKSERV_PORT:-18082}"
 
 FRESH=0
 for arg in "$@"; do
