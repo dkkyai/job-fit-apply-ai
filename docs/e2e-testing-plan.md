@@ -43,8 +43,8 @@ As implemented, the e2e slice is a **separate compose project** (`COMPOSE_PROJEC
 
 ```
 E2E_BRIDGE_URL      default http://127.0.0.1:18765
-E2E_MARKSERV_URL    default http://127.0.0.1:18081
-E2E_DATABASE_URL    default postgresql://jobfit:jobfit@127.0.0.1:15432/jobfit
+E2E_MARKSERV_URL    default http://127.0.0.1:18082
+E2E_DATABASE_URL    default postgresql://jobfit:***@127.0.0.1:15433/jobfit
 E2E_FAKE_LLM_PORT   default 21436   (NOT 11436 — see §4.2; the Makefile sets it to 11436
                                      under REAL_LLM=1 and exports it to up *and* run)
 E2E_SINK_PORT       default 18099
@@ -244,7 +244,7 @@ Compose has several bind-mount sources that don't exist in a fresh checkout, and
 
 The script reads the repo-root `.env` the way compose does, so `E2E_MARKSERV_PORT` can't move the container while `ARTIFACT_BASE_URL` keeps pointing at the old port. It rejects unknown arguments (a typo'd `--Fresh` used to no-op silently), removes a stale `pipeline.env` *directory* left by a run that skipped it, and falls back to wiping root-owned container state via a throwaway container — a plain `rm -rf` fails there for an unprivileged user on Linux.
 
-The generated `pipeline.env` carries `ARTIFACT_BASE_URL=http://127.0.0.1:18081`. It must go in the dotenv file, **not** in compose env — an empty `${ARTIFACT_BASE_URL:-}` in compose would beat the mounted file and the node would silently no-op, leaving `artifact_url` null everywhere downstream. `scripts/e2e-ci-prepare.sh --fresh` also wipes per-run state for determinism (`make e2e-up` uses it).
+The generated `pipeline.env` carries `ARTIFACT_BASE_URL=http://127.0.0.1:18082`. It must go in the dotenv file, **not** in compose env — an empty `${ARTIFACT_BASE_URL:-}` in compose would beat the mounted file and the node would silently no-op, leaving `artifact_url` null everywhere downstream. `scripts/e2e-ci-prepare.sh --fresh` also wipes per-run state for determinism (`make e2e-up` uses it).
 
 ### 7.4 Make targets
 

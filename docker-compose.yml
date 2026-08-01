@@ -146,10 +146,10 @@ services:
   # Self-hosted Steel Browser — the CDP scraping backend (replaces host Chrome).
   # Built FROM SOURCE at a pinned commit: the prebuilt steel-browser images fail to launch Chrome
   # on Apple Silicon under Docker Desktop (bundled Chromium SIGTRAPs); Steel's own api/Dockerfile
-  # (apt Debian arm64 Chromium + xvfb) works. Verified end-to-end at this SHA.
+  # (apt Debian arm64 Chromium + xvfb) works. Verified end-to-end. Updated to latest main 2026-07-20.
   steel:
     build:
-      context: "https://github.com/steel-dev/steel-browser.git#c0f226b8e3b16d0bc2c76a222863d4db6f1aa8f2"
+      context: "https://github.com/steel-dev/steel-browser.git#5880b48c1af107219ff3d904edbb8f6b76bea9b6"
       dockerfile: api/Dockerfile
       args:
         NODE_VERSION: "22.13.0"

@@ -28,10 +28,10 @@ object E2eConfig {
     }
 
     val bridgeUrl: String = get("E2E_BRIDGE_URL", "http://127.0.0.1:18765").trimEnd('/')
-    val markservUrl: String = get("E2E_MARKSERV_URL", "http://127.0.0.1:18081").trimEnd('/')
+    val markservUrl: String = get("E2E_MARKSERV_URL", "http://127.0.0.1:18082").trimEnd('/')
 
     /** postgres URI form (repo convention); converted to JDBC in [pgConnection]. */
-    val databaseUrl: String = get("E2E_DATABASE_URL", "postgresql://jobfit:jobfit@127.0.0.1:15432/jobfit")
+    val databaseUrl: String = get("E2E_DATABASE_URL", "postgresql://jobfit:jobfit@127.0.0.1:15433/jobfit")
 
     /**
      * Must match the value docker compose interpolated at `up` time — both sides read

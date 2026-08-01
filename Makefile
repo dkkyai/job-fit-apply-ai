@@ -13,7 +13,7 @@ SHELL := /bin/bash
 
 # ── E2E suite (services/job-fit-apply-ai-e2e) ────────────────────────────────
 # Isolated compose project: own container names, host ports (bridge 18765,
-# markserv 18081, postgres 15432) and ./.e2e state — safe to run while the
+# markserv 18082, postgres 15433) and ./.e2e state — safe to run while the
 # production stack is up. REAL_LLM=1 skips the fake LLM and lets the processor
 # hit the real local models on host :11436 (Tier B exact-value tests skip).
 #

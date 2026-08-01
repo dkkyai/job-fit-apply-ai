@@ -26,7 +26,7 @@ services:
     container_name: "${COMPOSE_PROJECT_NAME:-jobfit-e2e}-db"
     restart: "no"
     ports: !override
-      - "127.0.0.1:${E2E_POSTGRES_PORT:-15432}:5432"
+      - "127.0.0.1:${E2E_POSTGRES_PORT:-15433}:5432"
     environment:
       # Pinned, not inherited: compose interpolates the repo-root .env regardless of
       # project name, so a dev with custom POSTGRES_* would initialise the e2e DB with
@@ -52,7 +52,7 @@ services:
     restart: "no"
     image: jobfit-e2e/markserv
     ports: !override
-      - "127.0.0.1:${E2E_MARKSERV_PORT:-18081}:8081"
+      - "127.0.0.1:${E2E_MARKSERV_PORT:-18082}:8081"
     volumes:
       - ./.e2e/output:/data:ro
 
