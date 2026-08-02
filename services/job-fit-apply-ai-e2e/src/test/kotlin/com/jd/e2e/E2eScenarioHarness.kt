@@ -39,8 +39,16 @@ data class ScenarioResult(
     val telegramMessages: List<String>,
     val llmCalls: List<String>,
 ) {
-    val completedEvent: JsonNode get() = completedEvents.single()
+    val completedEvent: JsonNode get() = completedEvents.singleOrNull()
+        ?: error("expected exactly one completed event for $jobId, got ${completedEvents.size}: $completedEvents")
 }
+
+/**
+ * Mirrors NOTIFICATION_FIT_THRESHOLD, which docker-compose.e2e.yml pins to 50 for the slice
+ * precisely so this side can be a constant. Change one, change the other — a mismatch shows up
+ * as a 30s timeout waiting for a Telegram that was never going to be sent.
+ */
+private const val NOTIFIER_FIT_THRESHOLD = 50
 
 /** Shared black-box transaction harness. One instance is owned by each E2E test class. */
 class E2eScenarioHarness {
@@ -73,6 +81,14 @@ class E2eScenarioHarness {
         responses: Map<String, List<String>> = emptyMap(),
         submit: E2eScenarioHarness.() -> JsonNode,
     ): ScenarioResult {
+        // A queued plan under REAL_LLM=1 is a caller mistake, not something to paper over:
+        // silently dropping it would leave the scenario asserting canned values against a
+        // real model and fail somewhere far from the cause.
+        check(!E2eConfig.realLlm || responses.isEmpty()) {
+            "runScenario('$company') queued fake-LLM responses ${responses.keys} but E2E_REAL_LLM=1 — " +
+                "a planned-response scenario cannot run against a real model. Tag the test tier-b and " +
+                "guard it with assumeFalse(E2eConfig.realLlm)."
+        }
         if (!E2eConfig.realLlm) fakeLlm.reset(responses)
         sink.reset()
 
@@ -97,35 +113,37 @@ class E2eScenarioHarness {
         }
         println("[e2e] job done: $finalStatus")
 
-        val completedEvents = pollUntil(
+        // First sighting only — the snapshot the "exactly one" verdict is read from is taken
+        // further down, after the notifier round trip and a settle window. A poll that returns
+        // the moment the job appears cannot see a second event, so asserting uniqueness on it
+        // would be very nearly a tautology.
+        val firstSighting = pollUntil(
             30,
             500,
-            "job $jobId to appear once in the completed feed since seq=$completedCursor",
+            "job $jobId to appear in the completed feed since seq=$completedCursor",
         ) {
-            val feed = mapper.readTree(
-                getString("${E2eConfig.bridgeUrl}/api/jobs/completed?since=$completedCursor&limit=200&all=true"),
-            )
-            feed.filter { it.path("job_id").asText() == jobId }.takeIf { it.isNotEmpty() }
+            completedEventsFor(jobId, completedCursor).takeIf { it.isNotEmpty() }
         }
+        println("[e2e] job $jobId in completed feed (${firstSighting.size} event(s) at first sighting)")
 
-        val event = completedEvents.singleOrNull()
-            ?: fail("expected exactly one completed event for $jobId, got ${completedEvents.size}: $completedEvents")
-        val artifactUrl = event.path("artifact_url").asText("").ifBlank { null }
-        val outputDir = artifactUrl?.let {
-            val dirName = URLDecoder.decode(it.trimEnd('/').substringAfterLast('/'), Charsets.UTF_8)
-            E2eConfig.outputDir.resolve(dirName)
-        }
-
-        val discordMessages = pollUntil(
+        val firstDiscord = pollUntil(
             90,
             1000,
             { "notifier to deliver Discord for '$company' (sink saw: ${sink.describe()})" },
         ) {
             sink.discordTexts().filter { it.contains(company) }.takeIf { it.isNotEmpty() }
         }
+        println("[e2e] notifier delivered Discord for '$company' (${firstDiscord.size} message(s) at first sighting)")
 
+        // Everything below is evidence for "exactly one" / "none at all" assertions, which are
+        // only as strong as the window they are given. Notifier.notify() posts Discord and THEN
+        // Telegram inside one call, so a snapshot taken the instant Discord lands would miss a
+        // wrongly-sent Telegram by one HTTP round trip.
+        Thread.sleep(E2eConfig.settleMs)
+
+        val discordMessages = sink.discordTexts().filter { it.contains(company) }
         val telegramCompany = company.replace("&", "&amp;")
-        val telegramMessages = if (finalStatus.path("fit_score").asInt() >= 50) {
+        val telegramMessages = if (finalStatus.path("fit_score").asInt() >= NOTIFIER_FIT_THRESHOLD) {
             pollUntil(
                 30,
                 1000,
@@ -135,6 +153,17 @@ class E2eScenarioHarness {
             }
         } else {
             sink.telegramTexts().filter { it.contains(telegramCompany) }
+        }
+
+        // Re-read the feed now: the notifier round trip above means real time has passed since
+        // the first sighting, so a duplicate completion has had a chance to land and be seen.
+        val completedEvents = pollUntil(10, 500, "completed-feed re-read for job $jobId") {
+            completedEventsFor(jobId, completedCursor).takeIf { it.isNotEmpty() }
+        }
+        val artifactUrl = completedEvents.first().path("artifact_url").asText("").ifBlank { null }
+        val outputDir = artifactUrl?.let {
+            val dirName = URLDecoder.decode(it.trimEnd('/').substringAfterLast('/'), Charsets.UTF_8)
+            E2eConfig.outputDir.resolve(dirName)
         }
 
         val track = loadTrack(company)
@@ -221,6 +250,12 @@ class E2eScenarioHarness {
     }
 
     fun statusOf(url: String): Int = request(url, HttpResponse.BodyHandlers.discarding()).statusCode()
+
+    /** Every completed-feed event for [jobId] since [cursor] — the scenario's own slice of the feed. */
+    private fun completedEventsFor(jobId: String, cursor: Long): List<JsonNode> =
+        mapper.readTree(
+            getString("${E2eConfig.bridgeUrl}/api/jobs/completed?since=$cursor&limit=200&all=true"),
+        ).filter { it.path("job_id").asText() == jobId }
 
     private fun preflight() {
         val health = runCatching { getString("${E2eConfig.bridgeUrl}/health") }

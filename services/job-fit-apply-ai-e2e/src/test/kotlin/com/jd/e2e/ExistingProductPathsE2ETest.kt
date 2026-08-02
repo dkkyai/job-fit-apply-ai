@@ -1,6 +1,7 @@
 package com.jd.e2e
 
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.Assumptions.assumeFalse
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Tag
@@ -24,8 +25,18 @@ import kotlin.test.assertTrue
 class ExistingProductPathsE2ETest {
     private val harness = E2eScenarioHarness()
 
+    /**
+     * The `tier-b` tag alone does not keep these out of a real-LLM run: it only bites when
+     * someone passes `-PexcludeTags` (the Makefile does under REAL_LLM=1; a bare `./gradlew
+     * test` — what CI runs — does not). Every scenario here pins a planned fake response and
+     * an exact call sequence, so against a real model they cannot pass: skip the container
+     * outright rather than fail it. The tag stays — it is what makes `-PexcludeTags` work.
+     */
     @BeforeAll
-    fun startHarness() = harness.start()
+    fun startHarness() {
+        assumeFalse(E2eConfig.realLlm, "fake-LLM-only scenarios: planned responses and exact call sequences")
+        harness.start()
+    }
 
     @AfterAll
     fun tearDown() = harness.stop()

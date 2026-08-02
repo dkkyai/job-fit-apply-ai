@@ -419,7 +419,9 @@ things worth knowing:
   structural and also holds against a real model; Tier B pins exact values (`fit_score`,
   the LLM call sequence, canned content) and catches a *silently degraded* run. The four
   deterministic branch/intake scenarios are tagged `tier-b` because their contracts depend
-  on planned fake responses. `-PexcludeTags=tier-b` therefore runs structural HappyPath only.
+  on planned fake responses. `-PexcludeTags=tier-b` therefore runs structural HappyPath only,
+  and `REAL_LLM=1` passes it. Belt and braces: those scenarios also skip themselves under
+  `E2E_REAL_LLM=1`, since a bare `./gradlew test` (what CI runs) never sees the property.
 
 DB-backed tests (`PostgresGatewayLiveTest`, `TracksApiTest`) connect over TCP to the running `jobfit-db` container and **skip automatically** when it isn't up, so they're CI-safe. `TracksApiTest` self-provisions an isolated `jobfit_test` database so it never touches real data.
 

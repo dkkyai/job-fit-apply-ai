@@ -221,8 +221,12 @@ also changing the LLM. Real-LLM mode always runs Tier A only.
 
 ### Deterministic existing-product-path scenarios (fake LLM only)
 
-`ExistingProductPathsE2ETest` is tagged `tier-b`, so real-LLM and
-`-PexcludeTags=tier-b` runs keep only structural HappyPath coverage.
+`ExistingProductPathsE2ETest` is tagged `tier-b`, and `make e2e REAL_LLM=1` passes
+`-PexcludeTags=tier-b`, so real-LLM runs keep only structural HappyPath coverage. The tag alone
+is not the guard: nothing excludes it unless someone passes the property, and CI runs a bare
+`./gradlew test`. So the class also `assumeFalse(E2eConfig.realLlm)` in `@BeforeAll` — every
+scenario pins a planned response and an exact call sequence, which cannot hold against a real
+model — and `runScenario` refuses outright if a plan is queued while `E2E_REAL_LLM=1`.
 
 | Scenario | Intake / branch | Required evidence |
 |---|---|---|
@@ -235,6 +239,15 @@ Each transaction generates unique correlation data, seeds its own completed-feed
 fake/sink observations, captures a local `ScenarioResult`, and filters notifications by company.
 Queued fake responses are route-specific FIFO plans, which lets one test process multiple ATS
 responses without changing normal happy-path defaults.
+
+**"Exactly one" and "none at all" get a window.** Those two assertion shapes are the only ones
+that can pass by *arriving late* rather than by being right, so the harness never reads them off
+a first sighting. It waits for the job in the feed and the Discord message, then sleeps
+`E2E_SETTLE_MS` (default 1000) before snapshotting notifications and **re-reading** the completed
+feed. Without that, `assertEquals(1, completedEvents.size)` is nearly a tautology — the poll
+returned the instant the job appeared — and the SKIP scenario's "no high-fit Telegram" check
+misses a real regression by one HTTP round trip, since `Notifier.notify()` posts Discord and
+*then* Telegram inside a single call. Positive checks still poll and pay nothing extra.
 
 Plus a Docker-free unit suite on the fake itself (`FakeLlmServerTest`): prompt-marker
 aliasing, the loud-500 contract, the bullet echo, and the occupied-port refusal.
