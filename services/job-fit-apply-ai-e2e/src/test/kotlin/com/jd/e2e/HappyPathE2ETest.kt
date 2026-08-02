@@ -4,13 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.junit.jupiter.api.AfterAll
-import org.junit.jupiter.api.Assumptions.assumeFalse
+import org.junit.jupiter.api.Assertions.assertAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.DisplayName
-import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.Timeout
+import org.junit.jupiter.api.function.Executable
 import java.util.concurrent.TimeUnit
 import java.io.IOException
 import java.net.URI
@@ -32,9 +32,9 @@ import kotlin.test.fail
  * bridge, output dir, markserv, Postgres `tracks`, `/api/tracks`, and the notifier via
  * the in-process [MockNotificationSink].
  *
- * Tier A tests are structural and also hold under `E2E_REAL_LLM=1`.
- * Tier B tests assert exact canned values and the exact LLM call sequence — they are the
- * checks that catch a *silently degraded* run (every tailor-gate failure degrades a node
+ * The Tier A assertion group is structural and also holds under `E2E_REAL_LLM=1`.
+ * The Tier B group asserts exact canned values and the exact LLM call sequence — these are
+ * the checks that catch a *silently degraded* run (every tailor-gate failure degrades a node
  * rather than crashing, so Tier A alone would still pass).
  *
  * Requires the e2e slice to be up: `make e2e-up` (or `make e2e` for the full cycle).
@@ -42,7 +42,7 @@ import kotlin.test.fail
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DisplayName("Bridge → Processor → Notifier happy path")
 // Backstop so a wedged slice fails the run instead of burning the whole CI job budget.
-// Generous: the setup step alone is allowed E2E_TIMEOUT_SECONDS (300 fake / 1800 real).
+// Generous: the scenario is allowed E2E_TIMEOUT_SECONDS (300 fake / 1800 real).
 @Timeout(value = 40, unit = TimeUnit.MINUTES)
 class HappyPathE2ETest {
 
@@ -66,7 +66,7 @@ class HappyPathE2ETest {
     private val fakeLlm = FakeLlmServer(E2eConfig.fakeLlmPort, E2eConfig.fixturesDir)
     private val sink = MockNotificationSink(E2eConfig.sinkPort)
 
-    // Populated once in setup, asserted by the tests.
+    // Populated by the scenario transaction, then asserted by its grouped checks.
     private var completedCursor: Long = 0
     private lateinit var company: String
     private lateinit var jobId: String
@@ -79,15 +79,10 @@ class HappyPathE2ETest {
     private val expectedRole = "Staff Software Engineer in Test"
 
     @BeforeAll
-    fun runTheWholeFlow() {
+    fun startHarness() {
         if (!E2eConfig.realLlm) fakeLlm.start()
         sink.start()
-
         preflight()
-        submit()
-        awaitDone()
-        gatherCompletedEvent()
-        awaitNotifierDelivery()
     }
 
     @AfterAll
@@ -96,7 +91,22 @@ class HappyPathE2ETest {
         sink.stop()
     }
 
-    // ── Setup steps ──────────────────────────────────────────────────────────────
+    @Test
+    @DisplayName("TAILOR: scraped JD completes through Bridge, Processor, artifacts, tracking, and notification")
+    fun tailoredJobCompletesEndToEnd() {
+        submit()
+        awaitDone()
+        gatherCompletedEvent()
+        awaitNotifierDelivery()
+
+        val assertionGroups = mutableListOf<Executable>(Executable { assertTierA() })
+        if (!E2eConfig.realLlm && !java.lang.Boolean.getBoolean("e2e.excludeTierB")) {
+            assertionGroups += Executable { assertTierB() }
+        }
+        assertAll("Bridge → Processor → Notifier happy path", assertionGroups)
+    }
+
+    // ── Harness and scenario steps ───────────────────────────────────────────────
 
     private fun preflight() {
         val health = runCatching { getString("${E2eConfig.bridgeUrl}/health") }
@@ -182,30 +192,38 @@ class HappyPathE2ETest {
 
     // ── Tier A — structural (hold under both fake and real LLM) ─────────────────
 
-    @Test
-    @DisplayName("A2: pipeline_action is TAILOR with fit_score >= 50")
-    fun tailoredWithPassingScore() {
+    private fun assertTierA() = assertAll(
+        "Tier A — structural",
+        listOf(
+            Executable { assertEquals("done", finalStatus.path("status").asText()) },
+            Executable { tailoredWithPassingScore() },
+            Executable { bridgeServesPdf() },
+            Executable { bridgeServesCoverLetter() },
+            Executable { outputDirComplete() },
+            Executable { markservServesArtifacts() },
+            Executable { tracksRowInPostgres() },
+            Executable { tracksApiReturnsRow() },
+            Executable { discordMessageDelivered() },
+            Executable { completedFeedHasJob() },
+        ),
+    )
+
+    private fun tailoredWithPassingScore() {
         assertEquals("TAILOR", finalStatus.path("pipeline_action").asText())
         assertTrue(finalStatus.path("fit_score").asInt() >= 50, "fit_score below threshold: $finalStatus")
     }
 
-    @Test
-    @DisplayName("A3: bridge serves a real resume.pdf")
-    fun bridgeServesPdf() {
+    private fun bridgeServesPdf() {
         val bytes = getBytes("${E2eConfig.bridgeUrl}/api/jobs/$jobId/resume.pdf")
         assertTrue(bytes.size > 1000, "resume.pdf suspiciously small: ${bytes.size} bytes")
         assertEquals("%PDF-", String(bytes.copyOfRange(0, 5), Charsets.US_ASCII))
     }
 
-    @Test
-    @DisplayName("A4: bridge serves a non-empty cover_letter.txt")
-    fun bridgeServesCoverLetter() {
+    private fun bridgeServesCoverLetter() {
         assertTrue(getString("${E2eConfig.bridgeUrl}/api/jobs/$jobId/cover_letter.txt").isNotBlank())
     }
 
-    @Test
-    @DisplayName("A5: output dir has the full artifact set and no render litter")
-    fun outputDirComplete() {
+    private fun outputDirComplete() {
         assertTrue(Files.isDirectory(jobOutputDir), "output dir missing: $jobOutputDir")
         for (f in listOf("tailored_resume.yaml", "tailored_resume.tex", "tailored_resume.html", "report.md")) {
             assertTrue(Files.exists(jobOutputDir.resolve(f)), "missing $f in $jobOutputDir")
@@ -218,9 +236,7 @@ class HappyPathE2ETest {
         assertTrue(!Files.exists(jobOutputDir.resolve("render_pdf.log")), "leftover render_pdf.log (success should remove it)")
     }
 
-    @Test
-    @DisplayName("A6: markserv serves the report and the PDF at the artifact URL")
-    fun markservServesArtifacts() {
+    private fun markservServesArtifacts() {
         // artifact_url is built from ARTIFACT_BASE_URL (markserv) and always ends with /.
         // Pin the origin: otherwise an ARTIFACT_BASE_URL pointing at the *production*
         // markserv still returns 200 here and the assertion proves nothing about the slice.
@@ -232,9 +248,7 @@ class HappyPathE2ETest {
         assertEquals(200, statusOf(artifactUrl.trimEnd('/') + "/tailored_resume.pdf"))
     }
 
-    @Test
-    @DisplayName("A7: the tracks row landed in Postgres with the expected fields")
-    fun tracksRowInPostgres() {
+    private fun tracksRowInPostgres() {
         E2eConfig.pgConnection().use { conn ->
             conn.prepareStatement(
                 "SELECT role_title, pipeline_action, artifact_url, output_path FROM tracks WHERE company = ?"
@@ -251,9 +265,7 @@ class HappyPathE2ETest {
         }
     }
 
-    @Test
-    @DisplayName("A8: GET /api/tracks (the backlog UI's data path) returns the row")
-    fun tracksApiReturnsRow() {
+    private fun tracksApiReturnsRow() {
         val tracks = mapper.readTree(getString("${E2eConfig.bridgeUrl}/api/tracks"))
         assertTrue(
             tracks.any { it.path("company").asText() == company },
@@ -261,9 +273,7 @@ class HappyPathE2ETest {
         )
     }
 
-    @Test
-    @DisplayName("A9: notifier posted the Discord message for this job")
-    fun discordMessageDelivered() {
+    private fun discordMessageDelivered() {
         assertTrue(
             sink.unknownPaths().isEmpty(),
             "notifier posted to unexpected URL(s) — wrong channel id or bot token? ${sink.unknownPaths()}",
@@ -273,28 +283,29 @@ class HappyPathE2ETest {
         assertTrue(msg.contains("(TAILOR)"), "Discord message missing action: $msg")
     }
 
-    @Test
-    @DisplayName("A10: completed feed carries the job with a monotonic completed_seq")
-    fun completedFeedHasJob() {
+    private fun completedFeedHasJob() {
         assertEquals("done", completedEvent.path("status").asText())
         assertTrue(completedEvent.path("completed_seq").asLong() >= 1, "bad completed_seq: $completedEvent")
     }
 
     // ── Tier B — exact values (fake LLM only; catch silently-degraded runs) ────
 
-    @Test
-    @Tag("tier-b")
-    @DisplayName("B11: fit_score equals the canned value exactly")
-    fun exactFitScore() {
-        assumeFalse(E2eConfig.realLlm, "Tier B runs only against the fake LLM")
+    private fun assertTierB() = assertAll(
+        "Tier B — exact fake-LLM values",
+        listOf(
+            Executable { exactFitScore() },
+            Executable { exactCallSequence() },
+            Executable { tailoredYamlHasCannedContent() },
+            Executable { exactCoverLetter() },
+            Executable { telegramHighFitDelivered() },
+        ),
+    )
+
+    private fun exactFitScore() {
         assertEquals(72, finalStatus.path("fit_score").asInt())
     }
 
-    @Test
-    @Tag("tier-b")
-    @DisplayName("B12: the fake LLM served exactly the expected call sequence")
-    fun exactCallSequence() {
-        assumeFalse(E2eConfig.realLlm, "Tier B runs only against the fake LLM")
+    private fun exactCallSequence() {
         assertEquals(
             listOf(
                 "score_fit", "jd_extraction", "gap_analysis", "summary_rewrite",
@@ -305,11 +316,7 @@ class HappyPathE2ETest {
         )
     }
 
-    @Test
-    @Tag("tier-b")
-    @DisplayName("B13: tailored_resume.yaml carries the canned summary and skill groups")
-    fun tailoredYamlHasCannedContent() {
-        assumeFalse(E2eConfig.realLlm, "Tier B runs only against the fake LLM")
+    private fun tailoredYamlHasCannedContent() {
         val yaml = Files.readString(jobOutputDir.resolve("tailored_resume.yaml"))
         // Short distinctive fragments — YAML emitters may re-wrap long lines.
         assertTrue(yaml.contains("paved road"), "canned summary missing from tailored_resume.yaml (summary_rewrite degraded?)")
@@ -324,20 +331,12 @@ class HappyPathE2ETest {
         )
     }
 
-    @Test
-    @Tag("tier-b")
-    @DisplayName("B14: cover_letter.txt equals the canned cover letter")
-    fun exactCoverLetter() {
-        assumeFalse(E2eConfig.realLlm, "Tier B runs only against the fake LLM")
+    private fun exactCoverLetter() {
         val expected = Files.readString(E2eConfig.fixturesDir.resolve("llm/cover_letter.txt")).trim()
         assertEquals(expected, getString("${E2eConfig.bridgeUrl}/api/jobs/$jobId/cover_letter.txt").trim())
     }
 
-    @Test
-    @Tag("tier-b")
-    @DisplayName("B15: Telegram sink received the high-fit message")
-    fun telegramHighFitDelivered() {
-        assumeFalse(E2eConfig.realLlm, "Tier B runs only against the fake LLM")
+    private fun telegramHighFitDelivered() {
         val msgs = pollUntil(
             30, 1000,
             { "Telegram high-fit message (sink saw: ${sink.describe()})" },

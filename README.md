@@ -412,9 +412,11 @@ things worth knowing:
   both is possible but the more-specific socket wins, so sharing the port makes the e2e
   run silently hit real models — or, with oMLX down, makes the fake answer the *production*
   processor with fixture data. `REAL_LLM=1` selects 11436 on purpose and skips the fake.
-- **Tier A vs Tier B.** Tier A is structural and also holds against a real model; Tier B
-  pins exact values (`fit_score`, the LLM call sequence, canned content) and is what
-  catches a *silently degraded* run. `-PexcludeTags=tier-b` runs Tier A alone.
+- **Tier A vs Tier B.** The happy path is one scenario-level test with grouped checks, so
+  submission, waiting, and verification are included in its reported duration. Tier A is
+  structural and also holds against a real model; Tier B pins exact values (`fit_score`,
+  the LLM call sequence, canned content) and catches a *silently degraded* run.
+  `-PexcludeTags=tier-b` runs the scenario with Tier A checks alone.
 
 DB-backed tests (`PostgresGatewayLiveTest`, `TracksApiTest`) connect over TCP to the running `jobfit-db` container and **skip automatically** when it isn't up, so they're CI-safe. `TracksApiTest` self-provisions an isolated `jobfit_test` database so it never touches real data.
 

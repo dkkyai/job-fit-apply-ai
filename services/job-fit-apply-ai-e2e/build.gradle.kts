@@ -41,17 +41,19 @@ allure {
 }
 
 tasks.test {
-    // `-PexcludeTags=tier-b` runs Tier A alone (structural assertions that also hold
-    // against a real model) without having to flip E2E_REAL_LLM, which would change the
-    // LLM as well as the assertion set. Without this the @Tag("tier-b") annotations are
-    // decorative — nothing consumes them.
+    val excludedTags = (project.findProperty("excludeTags") as String?)
+        ?.split(',')?.map(String::trim)?.filter(String::isNotEmpty).orEmpty()
+    val includedTags = (project.findProperty("includeTags") as String?)
+        ?.split(',')?.map(String::trim)?.filter(String::isNotEmpty).orEmpty()
+
+    // HappyPath is one scenario-level test, so its exact fake-LLM checks are grouped
+    // inside that test rather than exposed as separate @Tag methods. Preserve the
+    // documented Tier-A-only switch by passing the exclusion into the test JVM.
+    systemProperty("e2e.excludeTierB", excludedTags.contains("tier-b"))
+
     useJUnitPlatform {
-        (project.findProperty("excludeTags") as String?)
-            ?.split(',')?.map(String::trim)?.filter(String::isNotEmpty)
-            ?.let { excludeTags(*it.toTypedArray()) }
-        (project.findProperty("includeTags") as String?)
-            ?.split(',')?.map(String::trim)?.filter(String::isNotEmpty)
-            ?.let { includeTags(*it.toTypedArray()) }
+        if (excludedTags.isNotEmpty()) excludeTags(*excludedTags.toTypedArray())
+        if (includedTags.isNotEmpty()) includeTags(*includedTags.toTypedArray())
     }
     // An e2e run is never up-to-date — it exercises external state, not inputs Gradle can hash.
     outputs.upToDateWhen { false }

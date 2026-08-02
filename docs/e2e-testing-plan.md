@@ -1,7 +1,7 @@
 # E2E Testing Plan — v1
 
-Status: implemented (phases 0–3); verified locally — happy path 15/15 in ~12s against the
-fake LLM, mutation checks confirm Tier B catches silently-degraded runs that Tier A misses
+Status: implemented (phases 0–3); verified locally — one happy-path scenario with 15 grouped
+checks against the fake LLM; mutation checks confirm Tier B catches silently-degraded runs that Tier A misses
 Scope: Bridge → Processor → Notifier, verified via Bridge, Postgres/backlog, and markserv.
 
 ---
@@ -193,10 +193,13 @@ The e2e module then runs a **mock sink** — a second in-process Ktor server on 
 9. The mock sink received a Discord message matching `• {company} — [{title}]({artifactUrl}) — **{score}** (TAILOR)`.
 10. `GET /api/jobs/completed?since=0&all=true` includes the job with a monotonic `completed_seq`.
 
-### Tier B — exact values (fake LLM only, `@Tag("tier-b")`, skipped under `E2E_REAL_LLM=1`)
+### Tier B — exact values (fake LLM only; skipped under `E2E_REAL_LLM=1`)
 
-The tag is wired: `./gradlew test -PexcludeTags=tier-b` runs Tier A alone without also
-flipping the LLM, and `-PincludeTags=tier-b` does the inverse.
+The happy path is one scenario-level `@Test`: submission, waiting, evidence gathering, and
+verification are all timed as part of that test. Tier A and Tier B are nested `assertAll`
+groups, not independent test methods sharing state from `@BeforeAll`. By default the fake
+run executes both groups; `./gradlew test -PexcludeTags=tier-b` runs Tier A alone without
+also changing the LLM. Real-LLM mode always runs Tier A only.
 
 11. `fit_score` equals the canned value exactly.
 12. The fake LLM served exactly the expected 8-call sequence in order.
