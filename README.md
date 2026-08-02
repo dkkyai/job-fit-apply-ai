@@ -398,11 +398,13 @@ make doctor
 
 ### Black-box E2E (`services/job-fit-apply-ai-e2e`)
 
-`make e2e` submits a fixture JD through the Bridge and asserts the whole chain — bridge
-status, the rendered PDF/artifact set, markserv, the `tracks` row, `/api/tracks`, the
-completed feed, and the Discord/Telegram payloads — against a **fake LLM** that runs in
-the test JVM and serves canned responses, so assertions can pin exact values rather than
-"a file exists". Design doc: [`docs/e2e-testing-plan.md`](docs/e2e-testing-plan.md).
+`make e2e` runs a scenario-based black-box suite through the Bridge and asserts the whole
+chain — bridge status, rendered artifacts, markserv, `tracks`, `/api/tracks`, the completed
+feed, and Discord/Telegram payloads — against a **fake LLM** in the test JVM. Besides the
+pre-scraped happy path, deterministic scenarios cover low-fit SKIP, one ATS refinement pass,
+captured-page intake through `/api/pages`, and direct recruiter-email intake through
+`/api/emails` (including draft-reply composition). This pins exact values and branch behavior,
+not merely "a file exists". Design doc: [`docs/e2e-testing-plan.md`](docs/e2e-testing-plan.md).
 
 It runs in its own compose project (`jobfit-e2e-<checkout hash>`, alternate ports, state
 in a gitignored `./.e2e/`), so it is safe to run while the production stack is up. Two
@@ -415,8 +417,9 @@ things worth knowing:
 - **Tier A vs Tier B.** The happy path is one scenario-level test with grouped checks, so
   submission, waiting, and verification are included in its reported duration. Tier A is
   structural and also holds against a real model; Tier B pins exact values (`fit_score`,
-  the LLM call sequence, canned content) and catches a *silently degraded* run.
-  `-PexcludeTags=tier-b` runs the scenario with Tier A checks alone.
+  the LLM call sequence, canned content) and catches a *silently degraded* run. The four
+  deterministic branch/intake scenarios are tagged `tier-b` because their contracts depend
+  on planned fake responses. `-PexcludeTags=tier-b` therefore runs structural HappyPath only.
 
 DB-backed tests (`PostgresGatewayLiveTest`, `TracksApiTest`) connect over TCP to the running `jobfit-db` container and **skip automatically** when it isn't up, so they're CI-safe. `TracksApiTest` self-provisions an isolated `jobfit_test` database so it never touches real data.
 

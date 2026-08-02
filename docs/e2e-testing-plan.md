@@ -1,14 +1,15 @@
 # E2E Testing Plan — v1
 
-Status: implemented (phases 0–3); verified locally — one happy-path scenario with 15 grouped
-checks against the fake LLM; mutation checks confirm Tier B catches silently-degraded runs that Tier A misses
-Scope: Bridge → Processor → Notifier, verified via Bridge, Postgres/backlog, and markserv.
+Status: implemented and expanded — one structural happy path plus four deterministic
+existing-product-path scenarios; Tier B catches silently-degraded runs that Tier A misses.
+Scope: Bridge intake → Processor → Notifier, verified via Bridge, Postgres/backlog, and markserv.
 
 ---
 
 ## 1. Goals
 
-- One black-box happy-path test that submits a JD the way the Extension/JSearch do and asserts the whole chain produced the right artifacts.
+- A reusable scenario harness that submits through Bridge intake routes and captures terminal status,
+  scenario-local completed-feed evidence, artifacts, tracking rows, notifications, and LLM calls.
 - Runs in GitHub CI on every PR.
 - Runs ad hoc against a local stack with one command.
 - Deterministic enough to assert *values*, not just "a file exists".
@@ -16,9 +17,10 @@ Scope: Bridge → Processor → Notifier, verified via Bridge, Postgres/backlog,
 
 ## 2. Non-goals for v1
 
-- The Poller / Gmail ingest path. Submitting through `POST /api/emails` creates a bridge row whose `message_id` maps to no real Gmail message; the Poller's write-back loop would then fail or hang on it. Excluded deliberately.
-- Steel / Chrome CDP scraping. The chosen route bypasses it entirely (see §4).
-- The recruiter-reply / `DraftReplyComposer` path.
+- The Poller / Gmail write-back path. Direct recruiter intake through `POST /api/emails` and
+  `DraftReplyComposer` are covered, but no real Gmail message is read or mutated.
+- Steel / Chrome CDP network scraping. The captured-page scenario supplies raw page text and
+  exercises `ScrapeJdNode` extraction without starting Steel or fetching an external board.
 - Multi-job concurrency and dedup-window behaviour (phase 5).
 
 ---
@@ -66,7 +68,10 @@ This is JSearch's route. Beyond avoiding the Poller problem, it skips ingestion 
 
 `ProcessingPipeline` then runs: `checkDuplicate → scoreFit → tailor → coverLetter → renderPdf → addArtifactUrl → supabaseTrack`. PDF rendering needs only `python3` + pyyaml/jinja2 + `tectonic`, all already in the pipeline Dockerfile — no browser.
 
-The Extension's route (`POST /api/pages`, `JD_PAGE_RAW`) adds one LLM extraction step. Worth adding in phase 5 once the fake LLM exists; not needed for v1 coverage.
+The Extension route (`POST /api/pages`, `JD_PAGE_RAW`) is covered with captured text and one
+`scrape_jd` extraction call. The recruiter route (`POST /api/emails`, `EMAIL_RAW`) is covered
+with one `scan_email` call and `job_url: null`, so no external scrape runs. A direct recruiter
+email continues as the same claimed Bridge work item; it does not enqueue a child job.
 
 ---
 
@@ -110,11 +115,15 @@ For local runs against a real oMLX, `REAL_LLM=1` skips starting the fake *and* s
 
 ### 4.3 Call inventory and dispatch table
 
-Eight calls on the lean happy path. Match on `messages[0].content` substring, in this order:
+Eight calls on the lean happy path; ingestion scenarios add explicit routes. Match on
+`messages[0].content` substring:
 
 | # | Marker | Route | Mode |
 |---|---|---|---|
 | 1 | `Write a professional yet casual cover letter` | cover_letter | prose |
+| 1a | `# Draft Reply Skill` | draft_reply | prose |
+| 1b | `# SCAN_SKILL` | scan_email | JSON |
+| 1c | `# SCRAPE_SKILL` | scrape_jd | JSON |
 | 2 | `# JD_EXTRACTION_SKILL` / `<job_description>` | jd_extraction | JSON |
 | 3 | `# GAP_ANALYSIS_SKILL` | gap_analysis | JSON |
 | 4 | `# SUMMARY_REWRITE_SKILL` + `YOUR PREVIOUS OUTPUT WAS INVALID` | summary retry-1 | prose |
@@ -151,7 +160,10 @@ That assertion immediately earned its keep. `CANDIDATE ROLES` occurs **twice** i
 
 **Suppressing the refine pass** (keeps the run at exactly 8 calls and deterministic). Refine triggers when `overallScore < 80` or any of leaked-terms / doubled-words / missing-terms is non-empty. The clean lever: from `jd_extraction`, return `exact_match_terms: []` and make every `must_have` entry longer than five words. `coverageKeywords()` then yields an empty universe and coverage is hardcoded to 100. Combined with high `ats_validation` sub-scores, no refine fires.
 
-Phase 5 adds a second fixture set that *deliberately* triggers refine, to cover that branch.
+The refinement scenario deliberately queues a low first ATS response and a passing second
+response. It asserts one 12-call flow, including `summary_rewrite:refine`,
+`bullet_rewrite:refine`, and `skills_restructure:refine`, and verifies refined content reaches
+the final YAML.
 
 ### 4.5 Fixture profile and résumé
 
@@ -206,6 +218,23 @@ also changing the LLM. Real-LLM mode always runs Tier A only.
 13. `tailored_resume.yaml` contains the canned summary, the canned skill groups, and the bullet-rewrite marker.
 14. `cover_letter.txt` equals the canned cover letter.
 15. Telegram sink received the high-fit message, ending in the canned score (anchored — a bare `contains("72")` passes by chance, since the message embeds a 13-digit epoch nonce).
+
+### Deterministic existing-product-path scenarios (fake LLM only)
+
+`ExistingProductPathsE2ETest` is tagged `tier-b`, so real-LLM and
+`-PexcludeTags=tier-b` runs keep only structural HappyPath coverage.
+
+| Scenario | Intake / branch | Required evidence |
+|---|---|---|
+| Low-fit SKIP | `POST /api/jobs`, score `42` | `done/SKIP`, no artifacts, one completed event, Discord only, exactly `score_fit` |
+| ATS refinement | `POST /api/jobs`, low then high ATS plan | exactly one refinement pass, 12-call sequence, refined marker in final YAML |
+| Captured page | `POST /api/pages`, `JD_PAGE_RAW` | `scrape_jd` first, captured URL/JD in tracking, no Steel/network dependency |
+| Direct recruiter email | `POST /api/emails`, `EMAIL_RAW` | same work item completes once, `message_id` preserved, no `scrape_jd`, one `draft_reply` |
+
+Each transaction generates unique correlation data, seeds its own completed-feed cursor, resets
+fake/sink observations, captures a local `ScenarioResult`, and filters notifications by company.
+Queued fake responses are route-specific FIFO plans, which lets one test process multiple ATS
+responses without changing normal happy-path defaults.
 
 Plus a Docker-free unit suite on the fake itself (`FakeLlmServerTest`): prompt-marker
 aliasing, the loud-500 contract, the bullet echo, and the occupied-port refusal.

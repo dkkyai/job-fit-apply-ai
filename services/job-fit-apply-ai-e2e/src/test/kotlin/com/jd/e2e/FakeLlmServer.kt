@@ -14,6 +14,8 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -50,6 +52,18 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
      * iterator is not itself synchronized.
      */
     val calls: MutableList<String> = CopyOnWriteArrayList()
+
+    /** Per-route FIFO responses installed by one scenario; defaults resume when exhausted. */
+    private val responsePlan = ConcurrentHashMap<String, ConcurrentLinkedQueue<String>>()
+
+    /** Reset all observable state before a scenario and optionally install queued responses. */
+    fun reset(responses: Map<String, List<String>> = emptyMap()) {
+        calls.clear()
+        responsePlan.clear()
+        responses.forEach { (route, content) ->
+            responsePlan[route] = ConcurrentLinkedQueue(content)
+        }
+    }
 
     /**
      * Binding is not enough to prove we own the port. A JVM binds `0.0.0.0:$port`
@@ -132,6 +146,10 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
             if (prompt.contains("YOUR PREVIOUS OUTPUT WAS INVALID") || prompt.contains("REJECTED DRAFT")) append(":retry")
         }
         fun name(n: String) = n + suffix
+        fun response(route: String, default: () -> String): Pair<String, String> {
+            val routedName = name(route)
+            return routedName to (responsePlan[routedName]?.poll() ?: default())
+        }
         // The cover-letter prompt also contains score_fit's fallback marker
         // ("\n\nJOB DESCRIPTION:\n", GenerateCoverLetterNode). Identify it positively and
         // exclude it from the score branch, so the two can't alias if either prompt drifts.
@@ -140,22 +158,28 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
         val isCoverLetter = prompt.contains("Write a professional yet casual cover letter") ||
             prompt.contains("CANDIDATE STRENGTHS TO HIGHLIGHT")
         return when {
+            prompt.contains("# Draft Reply Skill") || prompt.contains("You are drafting a professional reply to a recruiter") ->
+                response("draft_reply") { fixture("draft_reply.txt") }
             isCoverLetter ->
-                name("cover_letter") to fixture("cover_letter.txt")
+                response("cover_letter") { fixture("cover_letter.txt") }
+            prompt.contains("# SCAN_SKILL") ->
+                response("scan_email") { fixture("scan_email.json") }
+            prompt.contains("# SCRAPE_SKILL") ->
+                response("scrape_jd") { fixture("scrape_jd.json") }
             prompt.contains("JD_EXTRACTION_SKILL") || prompt.contains("<job_description>") ->
-                name("jd_extraction") to fixture("jd_extraction.json")
+                response("jd_extraction") { fixture("jd_extraction.json") }
             prompt.contains("GAP_ANALYSIS_SKILL") ->
-                name("gap_analysis") to fixture("gap_analysis.json")
+                response("gap_analysis") { fixture("gap_analysis.json") }
             prompt.contains("SUMMARY_REWRITE_SKILL") ->
-                name("summary_rewrite") to fixture("summary.txt")
+                response("summary_rewrite") { fixture("summary.txt") }
             prompt.contains("BULLET_REWRITE_SKILL") ->
-                name("bullet_rewrite") to bulletEcho(prompt)
+                response("bullet_rewrite") { bulletEcho(prompt) }
             prompt.contains("SKILLS_RESTRUCTURE_SKILL") ->
-                name("skills_restructure") to fixture("skills_restructure.json")
+                response("skills_restructure") { fixture("skills_restructure.json") }
             prompt.contains("ATS_VALIDATION_SKILL") ->
-                name("ats_validation") to fixture("ats_validation.json")
+                response("ats_validation") { fixture("ats_validation.json") }
             prompt.contains("SCORE_SKILL") || (!isCoverLetter && prompt.contains("\n\nJOB DESCRIPTION:\n")) ->
-                name("score_fit") to fixture("score_fit.json")
+                response("score_fit") { fixture("score_fit.json") }
             else -> null
         }
     }
