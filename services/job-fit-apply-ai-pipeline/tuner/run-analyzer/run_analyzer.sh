@@ -16,6 +16,8 @@
 #   RUN_ANALYZER_MODEL     analysis model (oMLX local default Qwen3.5-9B-OptiQ-4bit)
 #   JD_BRIDGE_URL          bridge base URL (default http://127.0.0.1:8765)
 #   RUN_ANALYZER_AUTOFIX   set to 1 to arm the --autofix loop (default off)
+#   RUN_ANALYZER_TELEGRAM_BOT_TOKEN / _CHAT_ID
+#                         analyzer Telegram destination (falls back to TELEGRAM_*)
 #   PROJECT_DIR            pipeline checkout (auto-detected from this script's location)
 #   Cadence gate (analysis only defers small batches; see analyze.py):
 #     RUN_ANALYZER_MIN_BATCH       analyze once >= N new jobs accrue    (default 10)
@@ -90,9 +92,12 @@ if [ -f "$PROJECT_DIR/.env" ]; then
     export OLLAMA_CLOUD_BASE_URL="${OLLAMA_CLOUD_BASE_URL:-$(grep -E '^OLLAMA_CLOUD_BASE_URL=' "$PROJECT_DIR/.env" | cut -d= -f2-)}"
     export MLX_LOCAL_BASE_URL="${MLX_LOCAL_BASE_URL:-$(grep -E '^MLX_LOCAL_BASE_URL=' "$PROJECT_DIR/.env" | cut -d= -f2-)}"
     export MLX_API_KEY="${MLX_API_KEY:-$(grep -E '^MLX_API_KEY=' "$PROJECT_DIR/.env" | cut -d= -f2-)}"
-    # Notification creds (Discord/Telegram) — no-op downstream when blank.
+    # Notification creds — namespaced analyzer Telegram values win; generic values remain
+    # as a backward-compatible fallback in analyzer/notify.py.
     export DISCORD_BOT_TOKEN="${DISCORD_BOT_TOKEN:-$(grep -E '^DISCORD_BOT_TOKEN=' "$PROJECT_DIR/.env" | cut -d= -f2-)}"
     export DISCORD_CHANNEL_ID="${DISCORD_CHANNEL_ID:-$(grep -E '^DISCORD_CHANNEL_ID=' "$PROJECT_DIR/.env" | cut -d= -f2-)}"
+    export RUN_ANALYZER_TELEGRAM_BOT_TOKEN="${RUN_ANALYZER_TELEGRAM_BOT_TOKEN:-$(grep -E '^RUN_ANALYZER_TELEGRAM_BOT_TOKEN=' "$PROJECT_DIR/.env" | cut -d= -f2-)}"
+    export RUN_ANALYZER_TELEGRAM_CHAT_ID="${RUN_ANALYZER_TELEGRAM_CHAT_ID:-$(grep -E '^RUN_ANALYZER_TELEGRAM_CHAT_ID=' "$PROJECT_DIR/.env" | cut -d= -f2-)}"
     export TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-$(grep -E '^TELEGRAM_BOT_TOKEN=' "$PROJECT_DIR/.env" | cut -d= -f2-)}"
     export TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-$(grep -E '^TELEGRAM_CHAT_ID=' "$PROJECT_DIR/.env" | cut -d= -f2-)}"
     MODEL="${RUN_ANALYZER_MODEL:-$(grep -E '^RUN_ANALYZER_MODEL=' "$PROJECT_DIR/.env" | cut -d= -f2-)}"

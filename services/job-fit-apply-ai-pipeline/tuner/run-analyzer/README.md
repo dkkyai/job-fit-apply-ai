@@ -88,7 +88,9 @@ Config (env; `run_analyzer.sh` also reads these from the project `.env`):
 | `RUN_ANALYZER_AUTOFIX_SEVERITY` | `high` | min severity to auto-fix (`high` \| `medium` \| `low`) |
 | `MLX_LOCAL_BASE_URL` / `MLX_API_KEY` | oMLX local | OpenAI-wire backend |
 | `OLLAMA_CLOUD_BASE_URL` / `OLLAMA_API_KEY` | — | for `:ollama-cloud` models |
-| `DISCORD_*` / `TELEGRAM_*` | — | notifications (no-op when blank) |
+| `DISCORD_*` | — | Discord notifications (no-op when blank) |
+| `RUN_ANALYZER_TELEGRAM_BOT_TOKEN` / `RUN_ANALYZER_TELEGRAM_CHAT_ID` | `TELEGRAM_*` | analyzer-specific Telegram destination; blank values fall back to the legacy generic credentials |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | — | backward-compatible Telegram fallback (no-op when blank) |
 
 The metrics are computed deterministically in Python and are accurate regardless of model; a
 **stronger model produces better root-cause + file-path accuracy** in the findings — local
@@ -156,7 +158,7 @@ first **non-deferred** run, look for:
    also blinds the audit's `jdTextLen`/`outputPath`). A few stragglers stay below the threshold.
 4. **Audit coverage** — the `[audit] candidates=N audited=M` line; `audited=0` usually means the
    per-job output dirs / tracks weren't readable (often tied to run-log-missing).
-5. **Notification** — with `DISCORD_*`/`TELEGRAM_*` set, a first non-deferred run pings once
+5. **Notification** — with `DISCORD_*` or analyzer-specific/legacy Telegram credentials set, a first non-deferred run pings once
    (everything is NEW). No ping ⇒ blank creds or nothing new/worsening.
 6. **Trend warms up** — `state/metrics_history.jsonl` grows one line per non-empty run; the
    rolling baseline (and regression judgement) only becomes meaningful after several runs.

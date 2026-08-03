@@ -276,9 +276,12 @@ services:
       # Heap cap (see bridge). Notifier is a lightweight completed-event consumer.
       JAVA_TOOL_OPTIONS: "-Xmx256m -XX:MaxMetaspaceSize=128m -XX:+ExitOnOutOfMemoryError"
       JD_BRIDGE_URL: "http://bridge:8765"
-      # Discord/Telegram creds — put these in the repo-root .env (gitignored). Blank → nothing sent.
+      # Discord/Telegram creds — put these in the repo-root .env (gitignored). Namespaced
+      # notifier values win; generic Telegram values remain a backward-compatible fallback.
       DISCORD_BOT_TOKEN: "${DISCORD_BOT_TOKEN:-}"
       DISCORD_CHANNEL_ID: "${DISCORD_CHANNEL_ID:-}"
+      NOTIFIER_TELEGRAM_BOT_TOKEN: "${NOTIFIER_TELEGRAM_BOT_TOKEN:-}"
+      NOTIFIER_TELEGRAM_CHAT_ID: "${NOTIFIER_TELEGRAM_CHAT_ID:-}"
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
       NOTIFICATION_FIT_THRESHOLD: "${NOTIFICATION_FIT_THRESHOLD:-50}"
