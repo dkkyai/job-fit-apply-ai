@@ -414,13 +414,13 @@ jobs:
 
   # ── 5. E2E — Bridge → Processor → Notifier against the compose slice ────────
   # Fake LLM + notification sink run inside the test JVM (services/job-fit-apply-ai-e2e);
-  # containers reach them via host.docker.internal. Non-blocking while it bakes in —
-  # remove continue-on-error once it has been green for ~a week.
+  # containers reach them via host.docker.internal. Blocking as of 2026-08-03: 13 consecutive
+  # green runs since it landed on 2026-07-29, including the four-scenario expansion in #58.
+  # A red suite now fails the workflow — see the junit-results-e2e / e2e-compose-logs artifacts.
   e2e:
     name: E2E — Bridge → Processor → Notifier
     runs-on: ubuntu-latest
     needs: [bridge, pipeline, notifier]
-    continue-on-error: true
     # Backstop against a wedged slice burning the 6h default job budget.
     timeout-minutes: 45
 
@@ -508,22 +508,8 @@ jobs:
           done
 
       - name: Run e2e suite
-        id: run_e2e
         working-directory: services/job-fit-apply-ai-e2e
         run: chmod +x ./gradlew && ./gradlew test
-
-      # The job is continue-on-error, so a failure leaves the workflow green and the
-      # Allure upload/download both degrade quietly — without this, "the suite failed"
-      # and "the suite never ran" produce byte-identical output. Keep it until
-      # continue-on-error is removed and the job speaks for itself.
-      - name: Report e2e outcome
-        if: always()
-        run: |
-          case "${{ steps.run_e2e.outcome }}" in
-            success) echo "✅ **E2E suite passed.**" >> "$GITHUB_STEP_SUMMARY" ;;
-            failure) echo "❌ **E2E suite FAILED** — this job is \`continue-on-error\`, so the workflow is still green. See the \`junit-results-e2e\` / \`e2e-compose-logs\` artifacts." >> "$GITHUB_STEP_SUMMARY" ;;
-            *)       echo "⚠️ **E2E suite did not run** (outcome: \`${{ steps.run_e2e.outcome }}\`) — the slice most likely never came up." >> "$GITHUB_STEP_SUMMARY" ;;
-          esac
 
       - name: Dump compose logs
         if: failure()
