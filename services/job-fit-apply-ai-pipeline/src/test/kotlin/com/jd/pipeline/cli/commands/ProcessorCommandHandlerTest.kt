@@ -63,7 +63,9 @@ class ProcessorCommandHandlerTest {
     fun processorProcessesClaimAndPostsResult() {
         val record = fakeRecord()
         val result = successResult()
-        val claim  = ClaimDto(jobId = "job-1", jdRecord = record)
+        // Carries a fence: the handler must hand it back on postResult, or a displaced worker
+        // could overwrite the attempt that replaced it (bridge refuses a mismatch).
+        val claim  = ClaimDto(jobId = "job-1", jdRecord = record, claimToken = "token-1")
 
         val resultPosted = CountDownLatch(1)
 
@@ -80,7 +82,7 @@ class ProcessorCommandHandlerTest {
                 null
             }
         whenever(pipeline.invoke(record)).doReturn(result)
-        doAnswer { resultPosted.countDown() }.whenever(bridge).postResult(any(), any())
+        doAnswer { resultPosted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
         processorThread.isDaemon = true
         processorThread.start()
@@ -88,7 +90,7 @@ class ProcessorCommandHandlerTest {
         assertTrue(resultPosted.await(5, TimeUnit.SECONDS), "processor should post result within 5s")
 
         verify(pipeline).invoke(record)
-        verify(bridge).postResult("job-1", result)
+        verify(bridge).postResult("job-1", result, "token-1")
     }
 
     @Test
@@ -111,7 +113,7 @@ class ProcessorCommandHandlerTest {
                 null
             }
         whenever(pipeline.invoke(record)).thenThrow(RuntimeException("pipeline exploded"))
-        doAnswer { resultPosted.countDown() }.whenever(bridge).postResult(any(), any())
+        doAnswer { resultPosted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
         processorThread.isDaemon = true
         processorThread.start()
@@ -120,7 +122,8 @@ class ProcessorCommandHandlerTest {
 
         verify(bridge).postResult(
             org.mockito.kotlin.eq("job-err"),
-            org.mockito.kotlin.argThat { error != null && error!!.contains("pipeline exploded") }
+            org.mockito.kotlin.argThat { error != null && error!!.contains("pipeline exploded") },
+            org.mockito.kotlin.anyOrNull(),
         )
     }
 
@@ -167,14 +170,14 @@ class ProcessorCommandHandlerTest {
             whenever(ingestion.invoke(any())).doReturn(ingested(isJobPosting = true))
             whenever(ingestion.toJdRecord(any(), anyOrNull())).doReturn(record)
             whenever(pipeline.invoke(record)).doReturn(successResult())
-            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
             processorThread.isDaemon = true
             processorThread.start()
 
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post result within 5s")
             verify(pipeline).invoke(record)
-            verify(bridge).postResult(eq("job-email"), any())
+            verify(bridge).postResult(eq("job-email"), any(), anyOrNull())
         }
 
         @Test
@@ -193,7 +196,7 @@ class ProcessorCommandHandlerTest {
             whenever(bridge.claim()).doReturn(emailClaim()).doAnswer { processorThread.interrupt(); null }
             whenever(ingestion.invoke(any())).doReturn(ingested(isJobPosting = false, isDigest = true, children = children))
             whenever(ingestion.toJdRecord(any(), anyOrNull())).doReturn(childRecord)
-            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
             processorThread.isDaemon = true
             processorThread.start()
@@ -202,7 +205,7 @@ class ProcessorCommandHandlerTest {
             verify(bridge, times(2)).submit(childRecord)      // one per job-posting child
             // parent digest completed → JD_Processed_Digest so the Poller archives it (not a null
             // label that would loop the parent through JD_Processing forever)
-            verify(bridge).postResult(eq("job-email"), argThat { terminalLabel == TerminalLabel.JD_PROCESSED_DIGEST })
+            verify(bridge).postResult(eq("job-email"), argThat { terminalLabel == TerminalLabel.JD_PROCESSED_DIGEST }, anyOrNull())
             verify(pipeline, never()).invoke(any())           // the digest parent itself is never processed
         }
 
@@ -218,14 +221,14 @@ class ProcessorCommandHandlerTest {
 
             whenever(bridge.claim()).doReturn(emailClaim()).doAnswer { processorThread.interrupt(); null }
             whenever(ingestion.invoke(any())).doReturn(ingested(isJobPosting = false))
-            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
             processorThread.isDaemon = true
             processorThread.start()
 
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should complete the non-job within 5s")
             // JD_Not_Found so the Poller excludes it from the intake query (no null-label loop)
-            verify(bridge).postResult(eq("job-email"), argThat { terminalLabel == TerminalLabel.JD_NOT_FOUND })
+            verify(bridge).postResult(eq("job-email"), argThat { terminalLabel == TerminalLabel.JD_NOT_FOUND }, anyOrNull())
             verify(pipeline, never()).invoke(any())
             verify(bridge, never()).submit(any())
         }
@@ -242,7 +245,7 @@ class ProcessorCommandHandlerTest {
             val posted = CountDownLatch(1)
 
             whenever(bridge.claim()).doReturn(badClaim).doAnswer { processorThread.interrupt(); null }
-            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
             processorThread.isDaemon = true
             processorThread.start()
@@ -250,7 +253,7 @@ class ProcessorCommandHandlerTest {
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a skip within 5s")
             verify(bridge).postResult(eq("job-bad"), argThat {
                 error != null && error!!.contains("missing email payload") && terminalLabel == TerminalLabel.JD_ERROR
-            })
+            }, anyOrNull())
             verify(ingestion, never()).invoke(any())
             verify(pipeline, never()).invoke(any())
         }
@@ -294,13 +297,13 @@ class ProcessorCommandHandlerTest {
             val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
             val posted = CountDownLatch(1)
             whenever(bridge.claim()).doReturn(pageClaim()).doAnswer { processorThread.interrupt(); null }
-            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
             processorThread.isDaemon = true
             processorThread.start()
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post result within 5s")
 
-            verify(bridge).postResult(eq("job-page"), any())
+            verify(bridge).postResult(eq("job-page"), any(), anyOrNull())
             val record = recordCaptor.firstValue
             assertEquals(IngestionSource.EXTENSION, record.source)
             assertEquals("https://linkedin.com/jobs/view/123", record.idempotencyKey)
@@ -321,13 +324,13 @@ class ProcessorCommandHandlerTest {
             val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
             val posted = CountDownLatch(1)
             whenever(bridge.claim()).doReturn(pageClaim()).doAnswer { processorThread.interrupt(); null }
-            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
             processorThread.isDaemon = true
             processorThread.start()
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a skip within 5s")
 
-            verify(bridge).postResult(eq("job-page"), argThat { error != null && error!!.contains("job posting") })
+            verify(bridge).postResult(eq("job-page"), argThat { error != null && error!!.contains("job posting") }, anyOrNull())
             verify(pipeline, never()).invoke(any())
         }
 
@@ -342,13 +345,13 @@ class ProcessorCommandHandlerTest {
             val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
             val posted = CountDownLatch(1)
             whenever(bridge.claim()).doReturn(badClaim).doAnswer { processorThread.interrupt(); null }
-            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
             processorThread.isDaemon = true
             processorThread.start()
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a skip within 5s")
 
-            verify(bridge).postResult(eq("job-bad-page"), argThat { error != null && error!!.contains("missing page payload") })
+            verify(bridge).postResult(eq("job-bad-page"), argThat { error != null && error!!.contains("missing page payload") }, anyOrNull())
             verify(pipeline, never()).invoke(any())
         }
     }
@@ -375,7 +378,7 @@ class ProcessorCommandHandlerTest {
                 val posted = CountDownLatch(1)
 
                 whenever(bridge.claim()).doReturn(claim).doAnswer { processorThread.interrupt(); null }
-                doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any())
+                doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
                 processorThread.isDaemon = true
                 processorThread.start()

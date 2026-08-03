@@ -297,4 +297,69 @@ class ExistingProductPathsE2ETest {
         assertEquals(72, healthy.finalStatus.path("fit_score").asInt())
         assertTrue(!healthy.artifactUrl.isNullOrBlank(), NO_ARTIFACT_URL_HINT)
     }
+
+    /**
+     * Issue #56, scenario 2 — duplicate submission and late completion.
+     *
+     * Two different hazards with one shared requirement: a second *anything* must not produce a
+     * second set of side effects. Bridge dedupe already covered the submission half. The
+     * completion half did not: `recordResult` burned a fresh `completed_seq` and overwrote the
+     * row whatever state it was in, so a worker retrying a lost response — or one displaced by
+     * stale-claim requeue — pushed the job through the completed feed twice and the Notifier
+     * delivered it twice.
+     *
+     * The displaced-worker half is unit-tested in the bridge (`StoreCompletionReliabilityTest`):
+     * provoking a real requeue here would need a stale window shorter than a job takes to
+     * process, which would make every other scenario flaky.
+     */
+    @Test
+    @DisplayName("a duplicate submission and a late duplicate completion create no second side effect")
+    fun duplicateSubmissionAndLateCompletionAreInert() {
+        val nonce = System.currentTimeMillis().toString()
+        val company = "E2E Dup $nonce"
+        val role = "Staff Software Engineer in Test"
+        val idempotencyKey = "e2e-dup-$nonce"
+        val jdText = harness.fixture("jd-staff-sdet.txt", mapOf("COMPANY" to company))
+
+        val result = harness.runScenario(company) {
+            submitScrapedJob(company = company, roleTitle = role, jdText = jdText, idempotencyKey = idempotencyKey)
+        }
+        assertEquals("TAILOR", result.finalStatus.path("pipeline_action").asText())
+        assertEquals(1, result.completedEvents.size)
+        assertEquals(1, harness.countTracks(company), "the first run must produce exactly one tracks row")
+
+        // 1. Re-submitting the identical payload is absorbed by the dedup window, not re-queued.
+        val resubmitted = harness.submitScrapedJob(
+            company = company, roleTitle = role, jdText = jdText, idempotencyKey = idempotencyKey,
+        )
+        assertTrue(resubmitted.path("deduped").asBoolean(false), "identical resubmission must dedupe: $resubmitted")
+        assertEquals(result.jobId, resubmitted.path("job_id").asText(), "dedupe must return the original job")
+
+        // 2. A late duplicate completion — a worker retrying a response it never saw land — is
+        //    accepted as a no-op, not replayed. 200 rather than an error: the desired end state
+        //    already holds, and the worker has nothing useful to do with a failure here.
+        val (status, body) = harness.postForResponse(
+            "${E2eConfig.bridgeUrl}/api/jobs/${result.jobId}/result",
+            """{"pipeline_action":"SKIP","fit_score":1,"error":null}""",
+        )
+        assertEquals(200, status, "a duplicate completion must not be an error: $body")
+        assertTrue(body.contains("already_recorded"), "expected the duplicate to be reported as ignored: $body")
+
+        // 3. Nothing moved: the first result still stands and no new event, row, or ping appeared.
+        Thread.sleep(E2eConfig.settleMs * 2)
+        val after = harness.completedEventsSince(result.completedCursor)
+        assertEquals(
+            1, after.count { it.path("job_id").asText() == result.jobId },
+            "a duplicate completion must not emit a second completed event",
+        )
+        assertEquals(1, after.count { it.path("company").asText() == company }, "no second job may appear for this company")
+
+        val status2 = harness.getString("${E2eConfig.bridgeUrl}/api/jobs/${result.jobId}")
+        assertTrue(status2.contains("\"fit_score\":72"), "the first result must win over the duplicate: $status2")
+        assertTrue(status2.contains("TAILOR"), "the duplicate must not rewrite pipeline_action: $status2")
+
+        assertEquals(1, harness.countTracks(company), "a duplicate must not write a second tracks row")
+        assertEquals(1, harness.sink.discordTexts().count { it.contains(company) }, "one job, one Discord message")
+        assertEquals(1, harness.sink.telegramTexts().count { it.contains(company) }, "one job, one Telegram message")
+    }
 }
