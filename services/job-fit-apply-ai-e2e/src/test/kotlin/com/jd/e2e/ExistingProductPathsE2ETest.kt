@@ -1,6 +1,7 @@
 package com.jd.e2e
 
 import com.jd.e2e.FakeLlmServer.Companion.failure
+import com.jd.e2e.MockNotificationSink.Companion.failure as sinkFailure
 import com.jd.e2e.FakeLlmServer.Companion.ok
 import org.junit.jupiter.api.Assumptions.assumeFalse
 import org.junit.jupiter.api.BeforeAll
@@ -361,5 +362,67 @@ class ExistingProductPathsE2ETest {
         assertEquals(1, harness.countTracks(company), "a duplicate must not write a second tracks row")
         assertEquals(1, harness.sink.discordTexts().count { it.contains(company) }, "one job, one Discord message")
         assertEquals(1, harness.sink.telegramTexts().count { it.contains(company) }, "one job, one Telegram message")
+    }
+
+    /**
+     * Issue #56, scenario 8 — Notifier delivery acknowledgement and cursor recovery.
+     *
+     * The old failure mode was invisible from both ends: `NotificationClient` logged a non-2xx and
+     * returned normally, so `notify()` reported success on a 500 and `drainOnce` persisted the
+     * cursor past the event. The notification was dropped permanently, and nothing anywhere said so.
+     *
+     * With delivery results plumbed through, a refused post holds the cursor and the next pass
+     * redelivers. The partial-success policy matters here: Telegram lands on the first attempt
+     * while Discord is refused, so the retry must re-send Discord *only*.
+     */
+    @Test
+    @DisplayName("a refused Discord post is retried, delivered once, and does not duplicate Telegram")
+    fun refusedDeliveryIsRetriedWithoutDuplicating() {
+        val nonce = System.currentTimeMillis().toString()
+        val company = "E2E Retry $nonce"
+        val result = harness.runScenario(
+            company = company,
+            // One refusal, then the channel recovers. If the cursor advanced over the failure the
+            // message would never arrive at all and this scenario would time out waiting for it.
+            sinkResponses = mapOf("discord" to listOf(sinkFailure(500))),
+        ) {
+            submitScrapedJob(
+                company = company,
+                roleTitle = "Staff Software Engineer in Test",
+                jdText = harness.fixture("jd-staff-sdet.txt", mapOf("COMPANY" to company)),
+                idempotencyKey = "e2e-retry-$nonce",
+            )
+        }
+
+        assertEquals("TAILOR", result.finalStatus.path("pipeline_action").asText())
+
+        // Two attempts, one delivery: the refusal was retried rather than dropped.
+        val discordAttempts = harness.sink.attempts("discord").filter { it.body.path("content").asText().contains(company) }
+        assertEquals(2, discordAttempts.size, "expected one refused attempt and one redelivery")
+        assertEquals(listOf(500, 200), discordAttempts.map { it.status })
+        assertEquals(1, result.discordMessages.size, "the user must see exactly one Discord message")
+        assertTrue(result.discordMessages.single().contains("(TAILOR)"))
+
+        // Telegram landed on the first attempt and must not be re-sent by the Discord retry.
+        val telegramCompany = company.replace("&", "&amp;")
+        val telegramAttempts = harness.sink.attempts("telegram").filter { it.body.path("text").asText().contains(telegramCompany) }
+        assertEquals(1, telegramAttempts.size, "a channel that already landed must not be re-sent")
+        assertEquals(1, result.telegramMessages.size)
+
+        // Exactly one completed event, and the retry did not replay it into the feed.
+        assertEquals(1, result.completedEvents.size)
+
+        // The cursor recovered: the next job notifies normally rather than being stuck behind it.
+        val nextCompany = "E2E After Retry $nonce"
+        val next = harness.runScenario(nextCompany) {
+            submitScrapedJob(
+                company = nextCompany,
+                roleTitle = "Staff Software Engineer in Test",
+                jdText = harness.fixture("jd-staff-sdet.txt", mapOf("COMPANY" to nextCompany)),
+                idempotencyKey = "e2e-after-retry-$nonce",
+            )
+        }
+        assertEquals(1, next.discordMessages.size, "the cursor must not be parked after recovery")
+        assertTrue(next.discordMessages.single().contains("(TAILOR)"))
     }
 }
