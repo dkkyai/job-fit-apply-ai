@@ -84,8 +84,20 @@ class BridgeClient(
         }
     }
 
-    fun postResult(jobId: String, result: ProcessingResult) {
-        val json = mapper.writeValueAsString(result)
+    /**
+     * POST the terminal result. [claimToken] is the fence the bridge handed out with the claim:
+     * if this claim was requeued and re-claimed while we were working, the bridge refuses the
+     * write (409) rather than letting us overwrite the attempt that replaced us.
+     */
+    fun postResult(jobId: String, result: ProcessingResult, claimToken: String? = null) {
+        val json = if (claimToken == null) {
+            mapper.writeValueAsString(result)
+        } else {
+            mapper.writeValueAsString(
+                mapper.valueToTree<com.fasterxml.jackson.databind.node.ObjectNode>(result)
+                    .put("claim_token", claimToken),
+            )
+        }
         val req = HttpPost("$baseUrl/api/jobs/$jobId/result").apply {
             entity = StringEntity(json, ContentType.APPLICATION_JSON)
         }
@@ -161,6 +173,8 @@ data class ClaimDto(
     val jdRecord: JdRecord? = null,               // set for JD_SCRAPED
     val email: ClaimedEmail? = null,              // set for EMAIL_RAW
     val pageCapture: ClaimedPageCapture? = null,  // set for JD_PAGE_RAW
+    /** Fence for this claim; present it on postResult. Null against a pre-fencing bridge. */
+    val claimToken: String? = null,
 )
 
 /** Parse a /api/queue/claim response body into a [ClaimDto], branching on the work-item type. */
@@ -168,14 +182,15 @@ internal fun parseClaimTree(tree: com.fasterxml.jackson.databind.JsonNode): Clai
     val mapper = Json.mapper
     val jobId = tree.get("job_id").asText()
     val type = tree.get("type")?.asText() ?: WorkItemType.JD_SCRAPED
+    val token = tree.get("claim_token")?.takeIf { !it.isNull }?.asText()
     val payload = tree.get("jd_record")
         ?: throw RuntimeException("claim response missing jd_record")
     return when (type) {
         WorkItemType.EMAIL_RAW ->
-            ClaimDto(jobId = jobId, type = type, email = mapper.treeToValue(payload, ClaimedEmail::class.java))
+            ClaimDto(jobId = jobId, type = type, email = mapper.treeToValue(payload, ClaimedEmail::class.java), claimToken = token)
         WorkItemType.JD_PAGE_RAW ->
-            ClaimDto(jobId = jobId, type = type, pageCapture = mapper.treeToValue(payload, ClaimedPageCapture::class.java))
+            ClaimDto(jobId = jobId, type = type, pageCapture = mapper.treeToValue(payload, ClaimedPageCapture::class.java), claimToken = token)
         else ->
-            ClaimDto(jobId = jobId, type = type, jdRecord = mapper.treeToValue(payload, JdRecord::class.java))
+            ClaimDto(jobId = jobId, type = type, jdRecord = mapper.treeToValue(payload, JdRecord::class.java), claimToken = token)
     }
 }

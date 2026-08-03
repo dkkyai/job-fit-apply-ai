@@ -314,8 +314,29 @@ class E2eScenarioHarness {
 
     fun statusOf(url: String): Int = request(url, HttpResponse.BodyHandlers.discarding()).statusCode()
 
+    /**
+     * POST returning status *and* body without throwing, for endpoints whose refusal is the
+     * thing under test — a duplicate result is a 200 the caller must inspect, and a fenced-off
+     * one is a 409.
+     */
+    fun postForResponse(url: String, body: String): Pair<Int, String> {
+        val response = request(url, HttpResponse.BodyHandlers.ofString(), body)
+        return response.statusCode() to response.body()
+    }
+
+    /** How many `tracks` rows exist for [company] — one logical job must produce exactly one. */
+    fun countTracks(company: String): Int = E2eConfig.pgConnection().use { connection ->
+        connection.prepareStatement("SELECT COUNT(*) FROM tracks WHERE company = ?").use { statement ->
+            statement.setString(1, company)
+            statement.executeQuery().use { result ->
+                result.next()
+                result.getInt(1)
+            }
+        }
+    }
+
     /** Every completed-feed event since [cursor] — this scenario's slice, all job ids. */
-    private fun completedEventsSince(cursor: Long): List<JsonNode> =
+    fun completedEventsSince(cursor: Long): List<JsonNode> =
         mapper.readTree(
             getString("${E2eConfig.bridgeUrl}/api/jobs/completed?since=$cursor&limit=200&all=true"),
         ).toList()

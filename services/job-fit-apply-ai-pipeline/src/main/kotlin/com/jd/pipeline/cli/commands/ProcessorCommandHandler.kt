@@ -78,7 +78,7 @@ object ProcessorCommandHandler {
                         // CLAIMED, so the stale-claim sweep re-queues it and we spin on it forever.
                         System.err.println("[processor] claim ${claimed.jobId} (${claimed.type}) has no jd_record — failing it")
                         val terminal = postTerminal(
-                            bridge, claimed.jobId, emptyLogRecord(IngestionSource.MANUAL),
+                            bridge, claimed, emptyLogRecord(IngestionSource.MANUAL),
                             skipResult("${claimed.type} claim has no jd_record", TerminalLabel.JD_ERROR),
                         )
                         recordTerminal(claimed.jobId, terminal, jobStartedAt)
@@ -120,12 +120,12 @@ object ProcessorCommandHandler {
                     }
                 }
                 if (files.isNotEmpty()) bridge.uploadArtifacts(claimed.jobId, files)
-                bridge.postResult(claimed.jobId, result)
+                bridge.postResult(claimed.jobId, result, claimed.claimToken)
                 println("[processor] Job ${claimed.jobId} complete — ${result.pipelineAction}, score=${result.fitScore}")
             } catch (e: Exception) {
                 System.err.println("[processor] Failed to post result for ${claimed.jobId}: ${e.message}")
                 runCatching {
-                    bridge.postResult(claimed.jobId, result.copy(error = "Failed to post result: ${e.message}"))
+                    bridge.postResult(claimed.jobId, result.copy(error = "Failed to post result: ${e.message}"), claimed.claimToken)
                 }
             }
 
@@ -167,12 +167,14 @@ object ProcessorCommandHandler {
      */
     private fun postTerminal(
         bridge: BridgeClient,
-        jobId: String,
+        claimed: ClaimDto,
         record: JdRecord,
         result: ProcessingResult,
     ): Resolution.Terminal {
-        runCatching { bridge.postResult(jobId, result) }
-            .onFailure { System.err.println("[processor] Failed to post terminal result for $jobId: ${it.message}") }
+        // The claim carries the fence: a terminal posted after this claim was requeued and
+        // re-claimed is refused by the bridge rather than overwriting its replacement.
+        runCatching { bridge.postResult(claimed.jobId, result, claimed.claimToken) }
+            .onFailure { System.err.println("[processor] Failed to post terminal result for ${claimed.jobId}: ${it.message}") }
         return Resolution.Terminal(record, result)
     }
 
@@ -206,7 +208,7 @@ object ProcessorCommandHandler {
         val email = claimed.email
         if (email == null) {
             return postTerminal(
-                bridge, claimed.jobId, emptyLogRecord(IngestionSource.EMAIL),
+                bridge, claimed, emptyLogRecord(IngestionSource.EMAIL),
                 skipResult("EMAIL_RAW claim missing email payload", TerminalLabel.JD_ERROR),
             )
         }
@@ -227,7 +229,7 @@ object ProcessorCommandHandler {
         } catch (e: Exception) {
             System.err.println("[processor] ingestion failed for ${claimed.jobId}: ${e.message}")
             return postTerminal(
-                bridge, claimed.jobId, logRecordOf(emailState, IngestionSource.EMAIL),
+                bridge, claimed, logRecordOf(emailState, IngestionSource.EMAIL),
                 skipResult("ingestion: ${e.message}", TerminalLabel.JD_ERROR),
             )
         }
@@ -240,7 +242,7 @@ object ProcessorCommandHandler {
                 // user has no signal it needs a retry.
                 System.err.println("[processor] ingestion error for ${claimed.jobId}: ${disposition.message}")
                 postTerminal(
-                    bridge, claimed.jobId, logRecordOf(ingState, IngestionSource.EMAIL),
+                    bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
                     skipResult(disposition.message, TerminalLabel.JD_ERROR),
                 )
             }
@@ -251,14 +253,14 @@ object ProcessorCommandHandler {
                 }
                 // parent digest complete → archive
                 postTerminal(
-                    bridge, claimed.jobId, logRecordOf(ingState, IngestionSource.EMAIL),
+                    bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
                     skipResult(null, TerminalLabel.JD_PROCESSED_DIGEST),
                 )
             }
             EmailDisposition.SkipNotJob ->
                 // not a job posting
                 postTerminal(
-                    bridge, claimed.jobId, logRecordOf(ingState, IngestionSource.EMAIL),
+                    bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
                     skipResult(null, TerminalLabel.JD_NOT_FOUND),
                 )
             EmailDisposition.Process ->
@@ -277,7 +279,7 @@ object ProcessorCommandHandler {
         val cap = claimed.pageCapture
         if (cap == null) {
             return postTerminal(
-                bridge, claimed.jobId, emptyLogRecord(IngestionSource.EXTENSION),
+                bridge, claimed, emptyLogRecord(IngestionSource.EXTENSION),
                 skipResult("JD_PAGE_RAW claim missing page payload"),
             )
         }
@@ -291,7 +293,7 @@ object ProcessorCommandHandler {
         } catch (e: Exception) {
             System.err.println("[processor] page extraction failed for ${claimed.jobId}: ${e.message}")
             return postTerminal(
-                bridge, claimed.jobId, logRecordOf(state, IngestionSource.EXTENSION),
+                bridge, claimed, logRecordOf(state, IngestionSource.EXTENSION),
                 skipResult("extraction: ${e.message}"),
             )
         }
@@ -300,7 +302,7 @@ object ProcessorCommandHandler {
         // if the LLM couldn't extract a usable JD, treat the page as "not a job posting".
         if (extracted.error.isNotBlank() || extracted.jdText.length < 150) {
             return postTerminal(
-                bridge, claimed.jobId, logRecordOf(extracted, IngestionSource.EXTENSION),
+                bridge, claimed, logRecordOf(extracted, IngestionSource.EXTENSION),
                 skipResult("This page doesn't look like a job posting (no JD could be extracted)"),
             )
         }

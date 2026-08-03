@@ -237,6 +237,7 @@ model — and `runScenario` refuses outright if a plan is queued while `E2E_REAL
 | Captured page | `POST /api/pages`, `JD_PAGE_RAW` | `scrape_jd` first, captured URL/JD in tracking, no Steel/network dependency |
 | Direct recruiter email | `POST /api/emails`, `EMAIL_RAW` | same work item completes once, `message_id` preserved, no `scrape_jd`, one `draft_reply` |
 | Processor error (#56 s3) | `POST /api/jobs`, injected `score_fit` 500 | terminal `error` naming the stage, nothing published, tracked as `skip` not success, Discord error only, next job completes |
+| Duplicate/late completion (#56 s2) | `POST /api/jobs` twice + a replayed result POST | resubmission dedupes to the same job, the replayed result is `already_recorded`, and no second event/track/notification appears |
 
 Each transaction generates unique correlation data, seeds its own completed-feed cursor, resets
 fake/sink observations, captures a local `ScenarioResult`, and filters notifications by company.
