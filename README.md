@@ -367,7 +367,7 @@ output/
     └── ats_score.txt                 # ATS composite scorecard
 ```
 
-The pipeline writes into `services/job-fit-apply-ai-pipeline/output/`, which is bind-mounted read-only into `jobfit-markserv` and rendered at `http://<tailscale-name>:8081/<job-dir>/report.md`. Browser-triggered jobs also expose artifacts via the bridge at `GET /api/jobs/{id}/resume.pdf` and `/cover_letter.txt`.
+The pipeline writes into `${JFAA_DATA_ROOT}/pipeline-output/` on the host (the Processor's `/app/output`; see [docs/data-root-migration.md](docs/data-root-migration.md)), which is bind-mounted read-only into `jobfit-markserv` and rendered at `http://<tailscale-name>:8081/<job-dir>/report.md`. Browser-triggered jobs also expose artifacts via the bridge at `GET /api/jobs/{id}/resume.pdf` and `/cover_letter.txt`.
 
 ---
 

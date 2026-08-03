@@ -50,12 +50,17 @@ MODE="analyze"
 # ── Resolve paths (worktree-friendly: derive from this script's location) ────────────
 ANALYZER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$(cd "$ANALYZER_DIR/../.." && pwd)}"
+REPO_ROOT="$(cd "$PROJECT_DIR/../.." && pwd)"
 STATE_DIR="$ANALYZER_DIR/state"
 mkdir -p "$STATE_DIR"
 
 RUN_TS="$(date +%Y%m%d_%H%M%S)"
 export RUN_TS
-export RUN_LOG="$PROJECT_DIR/output/runs/run_log.jsonl"
+# The processor writes run_log.jsonl into its /app/output bind, whose host source moved out of the
+# checkout in #67. Resolve it the same way compose does — a hardcoded $PROJECT_DIR/output would read
+# a frozen pre-migration copy and report run_log_missing for every job.
+. "$REPO_ROOT/scripts/jfaa-data-root.sh"
+export RUN_LOG="$(jfaa_pipeline_output)/runs/run_log.jsonl"
 export FINDINGS_DIR="$ANALYZER_DIR/findings/$RUN_TS"
 export CURSOR_FILE="$STATE_DIR/cursor"
 export PENDING_FILE="$STATE_DIR/pending_since"

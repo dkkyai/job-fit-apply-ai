@@ -20,7 +20,10 @@ cd "$ROOT"
 
 BRIDGE="http://127.0.0.1:${JD_BRIDGE_PORT:-8765}"
 TIMEOUT="${SMOKE_TIMEOUT:-1800}"
-OUTPUT_DIR="services/job-fit-apply-ai-pipeline/output"
+# This smoke drives the BASE compose stack, so it must read the same root-derived host tree the
+# processor writes to (#67) — not the pre-migration checkout path.
+. "$ROOT/scripts/jfaa-data-root.sh"
+OUTPUT_DIR="$(jfaa_pipeline_output)"
 
 say()  { printf "\033[1m[e2e]\033[0m %s\n" "$1"; }
 pass() { printf "\033[32m[e2e] ✓ %s\033[0m\n" "$1"; }

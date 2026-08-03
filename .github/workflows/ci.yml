@@ -393,7 +393,20 @@ jobs:
           flags: notifier
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  # ── 4d. Run-analyzer (Python unittest, stdlib-only) ─────────────────────────
+  # ── 4d. Compose data-root mount contract (docker only — no JVM, no build) ──
+  # Its own job: the contract is pure `docker compose config`, so it should report in seconds
+  # rather than waiting behind the e2e job's three upstream Kotlin builds.
+  compose-data-root:
+    name: Compose — data-root contract
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Compose data-root contract
+        run: make compose-data-root-test
+
+  # ── 4e. Run-analyzer (Python unittest, stdlib-only) ─────────────────────────
   run-analyzer:
     name: Run-analyzer — unittest
     runs-on: ubuntu-latest

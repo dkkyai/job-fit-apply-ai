@@ -9,7 +9,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help up down restart status serve doctor logs e2e e2e-up e2e-run e2e-down e2e-logs e2e-smoke processor-test
+.PHONY: help up down restart status serve doctor logs data-root-check compose-data-root-test e2e e2e-up e2e-run e2e-down e2e-logs e2e-smoke processor-test
 
 # ── E2E suite (services/job-fit-apply-ai-e2e) ────────────────────────────────
 # Isolated compose project: own container names, host ports (bridge 18765,
@@ -39,14 +39,14 @@ help: ## Show available targets
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-9s\033[0m %s\n", $$1, $$2}'
 
-up: ## Start containers + configure Tailscale Serve
+up: data-root-check ## Start containers + configure Tailscale Serve
 	docker compose up -d
 	./scripts/setup-tailscale-serve.sh
 
 down: ## Stop & remove containers (named volumes / data are kept)
 	docker compose down
 
-restart: ## Recreate containers from current compose config
+restart: data-root-check ## Recreate containers from current compose config
 	docker compose up -d --force-recreate
 
 status: ## Show container status + Tailscale Serve config
@@ -59,6 +59,12 @@ serve: ## (Re)configure Tailscale Serve only
 
 doctor: ## Check prerequisites & health (read-only)
 	./scripts/doctor.sh
+
+data-root-check: ## Refuse to start on an unmigrated Pipeline data root (#67)
+	@./scripts/check-data-root-migration.sh
+
+compose-data-root-test: ## Validate production/E2E data-root mount contracts
+	python3 ./scripts/test-compose-data-root.py
 
 e2e: ## Full e2e cycle: up + run + down (REAL_LLM=1 for real local models)
 	@trap '$(MAKE) e2e-down' INT TERM; \
