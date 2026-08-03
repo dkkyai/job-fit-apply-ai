@@ -11,10 +11,16 @@ import subprocess
 import urllib.request
 
 ENV = os.environ
+
+
+def _credential(primary, legacy):
+    return ENV.get(primary, "").strip() or ENV.get(legacy, "").strip()
+
+
 DISCORD_TOKEN = ENV.get("DISCORD_BOT_TOKEN", "")
 DISCORD_CHANNEL = ENV.get("DISCORD_CHANNEL_ID", "")
-TELEGRAM_TOKEN = ENV.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT = ENV.get("TELEGRAM_CHAT_ID", "")
+TELEGRAM_TOKEN = _credential("RUN_ANALYZER_TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT = _credential("RUN_ANALYZER_TELEGRAM_CHAT_ID", "TELEGRAM_CHAT_ID")
 GH_BIN = ENV.get("GH_BIN", "gh")
 BRANCH_PREFIX = ENV.get("RUN_ANALYZER_AUTOFIX_BRANCH_PREFIX", "analyzer/autofix")
 

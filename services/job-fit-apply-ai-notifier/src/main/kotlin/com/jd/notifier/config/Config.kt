@@ -2,6 +2,9 @@ package com.jd.notifier.config
 
 import io.github.cdimascio.dotenv.Dotenv
 
+internal fun resolveCredential(primary: String?, legacy: String?): String =
+    primary?.trim()?.takeIf { it.isNotEmpty() } ?: legacy?.trim().orEmpty()
+
 /**
  * Notifier configuration. A completed-feed event consumer: polls the bridge event stream and sends
  * Discord (per job) + Telegram (high-fit) messages. Tracks its own cursor.
@@ -20,8 +23,14 @@ object Config {
     // ── Messaging channels (silently disabled when creds are blank) ──────────────
     val DISCORD_BOT_TOKEN: String  = get("DISCORD_BOT_TOKEN", "")
     val DISCORD_CHANNEL_ID: String = get("DISCORD_CHANNEL_ID", "")
-    val TELEGRAM_BOT_TOKEN: String = get("TELEGRAM_BOT_TOKEN", "")
-    val TELEGRAM_CHAT_ID: String   = get("TELEGRAM_CHAT_ID", "")
+    val TELEGRAM_BOT_TOKEN: String = resolveCredential(
+        get("NOTIFIER_TELEGRAM_BOT_TOKEN", ""),
+        get("TELEGRAM_BOT_TOKEN", ""),
+    )
+    val TELEGRAM_CHAT_ID: String = resolveCredential(
+        get("NOTIFIER_TELEGRAM_CHAT_ID", ""),
+        get("TELEGRAM_CHAT_ID", ""),
+    )
 
     /** API hosts, overridable so tests/e2e can point at a local sink. */
     val DISCORD_API_BASE: String  = get("DISCORD_API_BASE", "https://discord.com")
