@@ -9,6 +9,15 @@
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Match Docker Compose's repo-root configuration so path diagnostics cover both the portable
+# JFAA_DATA_ROOT layout and legacy per-service overrides. This file is user-owned/gitignored.
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 FAILS=0
 WARNS=0
 ok()   { printf "  \033[32m✓\033[0m %s\n" "$1"; }
@@ -111,7 +120,13 @@ for f in services/job-fit-apply-ai-pipeline/.env \
 done
 
 hdr "Gmail (containerized Poller owns all Gmail)"
-POLLER_SECRETS="${JD_POLLER_SECRETS_HOST:-$HOME/.openclaw/jd-poller-secrets}"
+if [ -n "${JD_POLLER_SECRETS_HOST:-}" ]; then
+  POLLER_SECRETS="$JD_POLLER_SECRETS_HOST"
+elif [ -n "${JFAA_DATA_ROOT:-}" ]; then
+  POLLER_SECRETS="$JFAA_DATA_ROOT/poller-secrets"
+else
+  POLLER_SECRETS="$HOME/.local/share/jfaa/poller-secrets"
+fi
 if [ -f "$POLLER_SECRETS/tokens/gmail_token.json" ]; then
   # Warn if the token is stale (Testing-mode refresh token expires ~weekly).
   if [ -n "$(find "$POLLER_SECRETS/tokens/gmail_token.json" -mtime +6 2>/dev/null)" ]; then

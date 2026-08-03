@@ -7,9 +7,11 @@
 # Postgres volume, its bridge store, or the real resume.yaml / candidate_profile.yaml /
 # pipeline .env. Container names track COMPOSE_PROJECT_NAME for the same reason.
 #
-# The e2e slice is: db, bridge, markserv, processor, notifier.
-# (No poller/jsearch/frontend/steel — `depends_on: !override` on the processor
-# drops the steel health dependency; a JD_SCRAPED job never scrapes.)
+# The e2e slice is: db, bridge, markserv, processor, notifier. Poller and JSearch
+# are disabled by default and their mounts are redirected to ./.e2e so even an
+# explicit profile activation cannot touch production Gmail credentials or state.
+# Frontend/Steel are not started by the e2e targets; `depends_on: !override` on the
+# processor drops the Steel health dependency, and a JD_SCRAPED job never scrapes.
 #
 # Run `scripts/e2e-ci-prepare.sh` first — it creates ./.e2e/* including the
 # pipeline dotenv file (a *file* bind-mount source: if it does not exist Docker
@@ -56,6 +58,22 @@ services:
     volumes:
       - ./.e2e/output:/data:ro
 
+  # Keep these production-only ingestion services out of a direct merged-compose `up`.
+  # Their mounts remain explicitly redirected so an intentional profile activation is
+  # still isolated from JFAA_DATA_ROOT and real Gmail credentials/API quotas.
+  poller:
+    profiles: ["e2e-disabled"]
+    volumes:
+      - ./.e2e/poller-secrets:/secrets
+
+  jsearch:
+    profiles: ["e2e-disabled"]
+    environment:
+      # Never inherit a developer's production quota credential in an explicitly enabled profile.
+      JSEARCH_API_KEY: ""
+    volumes:
+      - ./.e2e/jsearch-state:/state
+
   processor:
     container_name: "${COMPOSE_PROJECT_NAME:-jobfit-e2e}-processor"
     restart: "no"
@@ -100,6 +118,10 @@ services:
       # Dummy creds so the configured-checks pass and requests actually fire.
       DISCORD_BOT_TOKEN: "e2e-discord-token"
       DISCORD_CHANNEL_ID: "e2e-channel"
+      # Override both namespaced and legacy values: namespaced credentials take precedence in the
+      # notifier, and no real bot credential may enter the E2E container.
+      NOTIFIER_TELEGRAM_BOT_TOKEN: "e2e-telegram-token"
+      NOTIFIER_TELEGRAM_CHAT_ID: "e2e-chat"
       TELEGRAM_BOT_TOKEN: "e2e-telegram-token"
       TELEGRAM_CHAT_ID: "e2e-chat"
       # Default 20s poll would dominate the test's wall clock.
