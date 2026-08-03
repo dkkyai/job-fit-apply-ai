@@ -32,7 +32,14 @@ class BridgeClient(
      * POST /api/jobs — submit a record; returns the job_id.
      * Returns the existing job_id if the bridge deduped the submission.
      */
-    fun submit(record: JdRecord): String {
+    fun submit(record: JdRecord): String = submitDetailed(record).jobId
+
+    /**
+     * As [submit], but keeps the bridge's `deduped` flag. Digest fan-out needs it: "the child was
+     * already submitted by an earlier attempt" and "the child was newly queued" are both success,
+     * and telling them apart is what makes a retried fan-out verifiably non-duplicating.
+     */
+    fun submitDetailed(record: JdRecord): SubmitOutcome {
         val json = mapper.writeValueAsString(record)
         val req = HttpPost("$baseUrl/api/jobs").apply {
             entity = StringEntity(json, ContentType.APPLICATION_JSON)
@@ -40,7 +47,11 @@ class BridgeClient(
         return http.execute(req) { resp ->
             val body = EntityUtils.toString(resp.entity, Charsets.UTF_8)
             check(resp.code in 200..202) { "POST /api/jobs → ${resp.code}: $body" }
-            mapper.readTree(body).get("job_id").asText()
+            val tree = mapper.readTree(body)
+            SubmitOutcome(
+                jobId = tree.get("job_id").asText(),
+                deduped = tree.get("deduped")?.asBoolean(false) ?: false,
+            )
         }
     }
 
@@ -166,6 +177,9 @@ data class ClaimedPageCapture(
     val text: String,
     val title: String = "",
 )
+
+/** Result of a submission: the job it maps to, and whether the bridge deduped it. */
+data class SubmitOutcome(val jobId: String, val deduped: Boolean)
 
 data class ClaimDto(
     val jobId: String,

@@ -178,6 +178,52 @@ object ProcessorCommandHandler {
         return Resolution.Terminal(record, result)
     }
 
+    /** What one digest fan-out achieved. [failed] is empty exactly when every child is accounted for. */
+    private data class FanOutReport(
+        val total: Int,
+        val queued: List<String> = emptyList(),
+        val deduped: List<String> = emptyList(),
+        val failed: List<String> = emptyList(),
+    ) {
+        override fun toString() =
+            "$total child(ren): ${queued.size} queued, ${deduped.size} already present, ${failed.size} failed"
+    }
+
+    /**
+     * Submit every discovered child, giving each a **stable** idempotency key derived from the
+     * parent message. Without one, a retried digest re-queues children that already exist: the
+     * bridge can only dedupe on job_url, and a child extracted from inline text has none.
+     *
+     * The key prefers the child's URL over its position, because a re-scan of the same digest can
+     * legitimately return the children in a different order — an index-only key would then map the
+     * same posting to a different identity and duplicate it.
+     */
+    private fun submitDigestChildren(
+        children: List<JDState>,
+        parentMessageId: String,
+        bridge: BridgeClient,
+        ingestion: IngestionPipeline,
+    ): FanOutReport {
+        val queued = mutableListOf<String>()
+        val deduped = mutableListOf<String>()
+        val failed = mutableListOf<String>()
+        children.forEachIndexed { index, child ->
+            val identity = child.jobUrl.ifBlank { "#$index" }
+            val key = "$parentMessageId|$identity"
+            // Everything inside the try: an `onSuccess` block runs *outside* runCatching's
+            // protection, so a throw while classifying the outcome would escape and kill the
+            // processor loop — losing not just this child but the parent's terminal result.
+            try {
+                val outcome = bridge.submitDetailed(ingestion.toJdRecord(child, idempotencyKey = key))
+                if (outcome.deduped) deduped += key else queued += key
+            } catch (e: Exception) {
+                System.err.println("[processor] digest child submit failed ($key): ${e.message}")
+                failed += "$key: ${e.message}"
+            }
+        }
+        return FanOutReport(children.size, queued, deduped, failed)
+    }
+
     /**
      * A JdRecord built straight from ingestion [state] (NOT via the pipeline's toJdRecord) purely so
      * a terminal outcome carries enough identity — company/role/jobUrl/jd-length/intake — for the
@@ -247,15 +293,29 @@ object ProcessorCommandHandler {
                 )
             }
             is EmailDisposition.ReEnqueueChildren -> {
-                for (child in disposition.children) {
-                    runCatching { bridge.submit(ingestion.toJdRecord(child)) }
-                        .onFailure { System.err.println("[processor] digest child submit failed: ${it.message}") }
+                val fanOut = submitDigestChildren(disposition.children, email.messageId, bridge, ingestion)
+                println("[processor] digest ${claimed.jobId} fan-out: $fanOut")
+                if (fanOut.failed.isEmpty()) {
+                    // parent digest complete → archive
+                    postTerminal(
+                        bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
+                        skipResult(null, TerminalLabel.JD_PROCESSED_DIGEST),
+                    )
+                } else {
+                    // A digest whose children did not all land is NOT "processed". Reporting
+                    // success here is how siblings get silently lost: the parent is archived, the
+                    // failed children exist nowhere, and nothing is left to retry from. JD_Error
+                    // keeps it visible and retryable — and because children carry stable
+                    // idempotency keys, the retry re-submits only what is missing.
+                    postTerminal(
+                        bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
+                        skipResult(
+                            "digest fan-out incomplete: ${fanOut.failed.size} of ${fanOut.total} children " +
+                                "failed to enqueue (${fanOut.failed.joinToString("; ")})",
+                            TerminalLabel.JD_ERROR,
+                        ),
+                    )
                 }
-                // parent digest complete → archive
-                postTerminal(
-                    bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
-                    skipResult(null, TerminalLabel.JD_PROCESSED_DIGEST),
-                )
             }
             EmailDisposition.SkipNotJob ->
                 // not a job posting
