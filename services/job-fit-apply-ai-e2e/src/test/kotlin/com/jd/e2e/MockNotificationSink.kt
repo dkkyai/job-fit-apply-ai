@@ -63,6 +63,11 @@ class MockNotificationSink(private val port: Int) {
         engine?.stop(500, 2000)
     }
 
+    /** Isolate observations between scenario-level transactions. */
+    fun reset() {
+        received.clear()
+    }
+
     fun discordTexts(): List<String> =
         received.filter { it.channel == "discord" }.map { it.body.path("content").asText() }
 

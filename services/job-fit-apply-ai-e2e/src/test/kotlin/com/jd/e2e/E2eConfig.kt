@@ -58,6 +58,14 @@ object E2eConfig {
 
     val timeoutSeconds: Long = getLong("E2E_TIMEOUT_SECONDS", "300")
 
+    /**
+     * Grace window a scenario waits before snapshotting the evidence its "exactly one" and
+     * "none at all" assertions read. Those two shapes are the only ones that can pass by
+     * arriving late rather than by being right, so they get a window; every positive check
+     * still polls. Raise it on a slow runner — it is paid once per scenario, not per check.
+     */
+    val settleMs: Long = getLong("E2E_SETTLE_MS", "1000")
+
     /** 1 = don't start the fake; the container's MLX port is a real local model server. */
     val realLlm: Boolean = get("E2E_REAL_LLM", "0") == "1"
 

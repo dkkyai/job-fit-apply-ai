@@ -88,7 +88,7 @@ e2e-run: ## Run the suite against the already-running e2e slice (ad-hoc loop)
 	  E2E_FAKE_LLM_PORT=$(E2E_FAKE_LLM_PORT) \
 	  E2E_SINK_PORT=$(E2E_SINK_PORT) \
 	  E2E_TIMEOUT_SECONDS=$${E2E_TIMEOUT_SECONDS:-$(if $(filter 1,$(REAL_LLM)),1800,300)} \
-	  ./gradlew test
+	  ./gradlew test $(if $(filter 1,$(REAL_LLM)),-PexcludeTags=tier-b)
 
 e2e-down: ## Stop the e2e slice and remove its volumes
 	$(COMPOSE_E2E) down -v --remove-orphans

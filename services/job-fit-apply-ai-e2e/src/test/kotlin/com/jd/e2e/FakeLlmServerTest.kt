@@ -177,6 +177,53 @@ class FakeLlmServerTest {
     }
 
     @Test
+    @DisplayName("a response plan serves queued route responses in order and reset clears calls")
+    fun responsePlansAreStatefulAndResettable() {
+        server.reset(
+            mapOf(
+                "score_fit" to listOf(
+                    """{"fit_score":42,"marker":"first"}""",
+                    """{"fit_score":88,"marker":"second"}""",
+                ),
+            ),
+        )
+
+        val first = mapper.readTree(content(ask("# SCORE_SKILL\n\nJOB DESCRIPTION:\nfixture")))
+        val second = mapper.readTree(content(ask("# SCORE_SKILL\n\nJOB DESCRIPTION:\nfixture")))
+
+        assertEquals(42, first.path("fit_score").asInt())
+        assertEquals("first", first.path("marker").asText())
+        assertEquals(88, second.path("fit_score").asInt())
+        assertEquals("second", second.path("marker").asText())
+        assertEquals(listOf("score_fit", "score_fit"), server.calls.toList())
+
+        server.reset()
+        assertTrue(server.calls.isEmpty(), "reset must isolate call history between scenarios")
+        assertEquals(72, mapper.readTree(content(ask("# SCORE_SKILL\n\nJOB DESCRIPTION:\nfixture"))).path("fit_score").asInt())
+    }
+
+    @Test
+    @DisplayName("email scan and captured-page extraction have distinct loud routes")
+    fun ingestionPromptsRouteIndependently() {
+        server.reset(
+            mapOf(
+                "scan_email" to listOf("""{"is_job_posting":true,"company":"Email Co"}"""),
+                "scrape_jd" to listOf("""{"company":"Page Co","jd_text":"fixture"}"""),
+                "draft_reply" to listOf("fixture reply"),
+            ),
+        )
+
+        val scan = mapper.readTree(content(ask("# SCAN_SKILL\n\nSUBJECT: Staff SDET\n\nVISIBLE_BODY:\nfixture")))
+        val scrape = mapper.readTree(content(ask("# SCRAPE_SKILL\n\nJOB PAGE URL: https://example.test/job\n\nCONTENT:\nfixture")))
+        val draft = content(ask("# Draft Reply Skill\n\nYou are drafting a professional email reply to a recruiter"))
+
+        assertEquals("Email Co", scan.path("company").asText())
+        assertEquals("Page Co", scrape.path("company").asText())
+        assertEquals("fixture reply", draft)
+        assertEquals(listOf("scan_email", "scrape_jd", "draft_reply"), server.calls.toList())
+    }
+
+    @Test
     @DisplayName("start() refuses a port another process already answers on")
     fun refusesAnOccupiedPort() {
         ServerSocket(0).use { squatter ->
