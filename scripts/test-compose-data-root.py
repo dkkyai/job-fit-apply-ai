@@ -121,7 +121,13 @@ def test_independent_overrides() -> None:
     assert_markserv_excludes_state(config, state)
 
 
-def test_repository_dotenv_cannot_change_contract_inputs() -> None:
+def test_harness_is_isolated_from_repository_dotenv() -> None:
+    """The suite must not read a developer's real .env.
+
+    compose_config() always passes an empty --env-file, which overrides COMPOSE_ENV_FILES and
+    the default .env. This asserts that isolation holds — NOT that the repo .env is inert.
+    Setting JFAA_DATA_ROOT there is the supported way to configure a host.
+    """
     home = Path(os.environ["HOME"])
     fallback = home / ".local/share/jfaa"
     with tempfile.TemporaryDirectory() as directory:
@@ -144,9 +150,13 @@ def test_repository_dotenv_cannot_change_contract_inputs() -> None:
 
 def test_documented_exact_mirror_helper() -> None:
     guide = (ROOT / "docs/data-root-migration.md").read_text()
-    match = re.search(r"```bash\n(mirror_validate\(\) \{.*?\n)```", guide, re.DOTALL)
-    assert match, "Could not extract mirror helper from migration guide"
-    helper = match.group(1)
+    blocks = re.findall(r"```bash\n(.*?)```", guide, re.DOTALL)
+    required = ("mirror_validate()", "mirror_preview()", "mirror_apply()")
+    matches = [b for b in blocks if all(fn in b for fn in required)]
+    assert len(matches) == 1, (
+        f"expected exactly one bash block defining {required}, found {len(matches)}"
+    )
+    helper = matches[0]
 
     with tempfile.TemporaryDirectory() as directory:
         base = Path(directory)
@@ -233,7 +243,7 @@ def main() -> None:
         test_portable_fallback,
         test_root_with_spaces,
         test_independent_overrides,
-        test_repository_dotenv_cannot_change_contract_inputs,
+        test_harness_is_isolated_from_repository_dotenv,
         test_documented_exact_mirror_helper,
         test_e2e_overlay_replaces_production_sources,
     )

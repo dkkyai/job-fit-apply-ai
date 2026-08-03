@@ -17,6 +17,8 @@ if [ -f .env ]; then
   . ./.env
   set +a
 fi
+# shellcheck disable=SC1091
+. "$ROOT/scripts/jfaa-data-root.sh"
 
 FAILS=0
 WARNS=0
@@ -118,6 +120,23 @@ for f in services/job-fit-apply-ai-pipeline/.env \
   elif [ -d "$f" ]; then bad "$f is a DIRECTORY (created by docker before the file existed) — remove it and create the real file"
   else bad "missing: $f — the processor container needs it (bind-mounted read-only)"; fi
 done
+
+hdr "Pipeline data root (durable artifacts + browser session state)"
+# Same precedence compose uses; see scripts/jfaa-data-root.sh.
+PIPELINE_OUTPUT="$(jfaa_pipeline_output)"
+PIPELINE_STATE="$(jfaa_pipeline_state)"
+for pair in "output:$PIPELINE_OUTPUT:$(jfaa_legacy_pipeline_output)" \
+            "state:$PIPELINE_STATE:$(jfaa_legacy_pipeline_state)"; do
+  what="${pair%%:*}"; rest="${pair#*:}"; cur="${rest%%:*}"; legacy="${rest#*:}"
+  if jfaa_unmigrated "$legacy" "$cur"; then
+    bad "pipeline $what NOT migrated — $legacy has data, $cur is empty (see docs/data-root-migration.md)"
+  elif [ -d "$cur" ]; then ok "pipeline $what: $cur"
+  else warn "pipeline $what dir does not exist yet: $cur (docker will create it on first start)"; fi
+done
+# Authenticated Steel/browser cookies live here; markserv must never serve them.
+if [ -d "$PIPELINE_STATE" ] && [ "$(stat -f '%Lp' "$PIPELINE_STATE" 2>/dev/null || stat -c '%a' "$PIPELINE_STATE" 2>/dev/null)" != "700" ]; then
+  warn "pipeline state is not mode 700: $PIPELINE_STATE (holds authenticated browser session state)"
+fi
 
 hdr "Gmail (containerized Poller owns all Gmail)"
 if [ -n "${JD_POLLER_SECRETS_HOST:-}" ]; then

@@ -171,7 +171,9 @@ chmod 700 "$DATA_ROOT" "$DATA_ROOT/poller-secrets" "$DATA_ROOT/pipeline-state"
 
 ```bash
 make compose-data-root-test
+make data-root-check
 docker compose config
+./scripts/doctor.sh
 ```
 
 Confirm:
@@ -180,6 +182,16 @@ Confirm:
 - Processor output is RW and Markserv output is RO;
 - Processor `/app/state` alone uses `pipeline-state`;
 - no production source remains under the repository checkout.
+
+`make data-root-check` is the automated version of the failure this guide exists to prevent: it
+exits non-zero when a legacy tree still holds data and its root-derived counterpart is empty.
+`make up` and `make restart` run it first, so an unmigrated host refuses to start instead of coming
+up with empty artifact and session directories. Set `JFAA_SKIP_DATA_ROOT_CHECK=1` only when you
+genuinely intend to start fresh. `./scripts/doctor.sh` reports the same condition as a failed check.
+
+> Deploying a single service directly (`docker compose build <svc> && docker compose up -d <svc>`)
+> bypasses the Make targets and therefore the guard. Run `make data-root-check` first when you
+> deploy that way on a host that has not yet migrated.
 
 ### 7. Recreate only affected services
 
