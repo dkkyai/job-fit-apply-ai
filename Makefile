@@ -9,7 +9,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help up down restart status serve doctor logs e2e e2e-up e2e-run e2e-down e2e-logs e2e-smoke processor-test
+.PHONY: help up down restart status serve doctor logs compose-data-root-test e2e e2e-up e2e-run e2e-down e2e-logs e2e-smoke processor-test
 
 # ── E2E suite (services/job-fit-apply-ai-e2e) ────────────────────────────────
 # Isolated compose project: own container names, host ports (bridge 18765,
@@ -59,6 +59,9 @@ serve: ## (Re)configure Tailscale Serve only
 
 doctor: ## Check prerequisites & health (read-only)
 	./scripts/doctor.sh
+
+compose-data-root-test: ## Validate production/E2E data-root mount contracts
+	python3 ./scripts/test-compose-data-root.py
 
 e2e: ## Full e2e cycle: up + run + down (REAL_LLM=1 for real local models)
 	@trap '$(MAKE) e2e-down' INT TERM; \

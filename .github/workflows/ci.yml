@@ -434,6 +434,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate Compose data-root contract
+        run: make compose-data-root-test
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

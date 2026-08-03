@@ -92,8 +92,8 @@ services:
       # tailnet-exposed container (bridge/frontend next): bind 127.0.0.1, front with serve.
       - "127.0.0.1:${MARKSERV_PORT:-8081}:8081"
     volumes:
-      # The pipeline (host, or a container later) writes reports here; markserv only reads.
-      - ./services/job-fit-apply-ai-pipeline/output:/data:ro
+      # Same root-derived host dir Processor writes at /app/output; Markserv only reads.
+      - "${JD_PIPELINE_OUTPUT_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/pipeline-output}:/data:ro"
     healthcheck:
       # 127.0.0.1 (not localhost): markserv binds IPv4 only, and localhost resolves to ::1 first.
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8081/ || exit 1"]
@@ -253,10 +253,10 @@ services:
       # report/notification links. The value lives in services/.../pipeline/.env (markserv tailnet URL).
     volumes:
       # Same host dir markserv serves read-only at :8081 — reports/PDFs keep their URLs.
-      - ./services/job-fit-apply-ai-pipeline/output:/app/output
-      # Steel persisted session state (STEEL_STORAGE_STATE_PATH, PROJECT_DIR/state). Host-mounted so
-      # the exported cookies survive processor restarts and are backup-able. Gitignored (state/).
-      - ./services/job-fit-apply-ai-pipeline/state:/app/state
+      - "${JD_PIPELINE_OUTPUT_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/pipeline-output}:/app/output"
+      # Steel persisted session state (STEEL_STORAGE_STATE_PATH, PROJECT_DIR/state). Root-derived so
+      # exported cookies survive restarts and are backup-able; keep private and never serve via Markserv.
+      - "${JD_PIPELINE_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/pipeline-state}:/app/state"
       # Pipeline secrets + per-node model config (gitignored). dotenv reads /app/.env; real env
       # vars above win over it (Config.get precedence), so host-specific endpoints inside are
       # safely overridden.
