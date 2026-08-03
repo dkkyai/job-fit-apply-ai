@@ -238,6 +238,7 @@ model — and `runScenario` refuses outright if a plan is queued while `E2E_REAL
 | Direct recruiter email | `POST /api/emails`, `EMAIL_RAW` | same work item completes once, `message_id` preserved, no `scrape_jd`, one `draft_reply` |
 | Processor error (#56 s3) | `POST /api/jobs`, injected `score_fit` 500 | terminal `error` naming the stage, nothing published, tracked as `skip` not success, Discord error only, next job completes |
 | Duplicate/late completion (#56 s2) | `POST /api/jobs` twice + a replayed result POST | resubmission dedupes to the same job, the replayed result is `already_recorded`, and no second event/track/notification appears |
+| Notifier retry (#56 s8) | Discord refuses once via the sink plan | two Discord attempts but one delivery, Telegram not re-sent, cursor recovers for the next job |
 
 Each transaction generates unique correlation data, seeds its own completed-feed cursor, resets
 fake/sink observations, captures a local `ScenarioResult`, and filters notifications by company.

@@ -42,6 +42,12 @@ object Config {
     // ── Loop + state ─────────────────────────────────────────────────────────────
     val POLL_INTERVAL_MS: Long = get("NOTIFIER_POLL_INTERVAL_MS", "20000").toLong()
     val CURSOR_FILE: String = get("NOTIFIER_CURSOR_FILE", "/state/notifier-cursor.txt")
+
+    /** Retryable-delivery policy. After MAX_DELIVERY_ATTEMPTS the event is dead-lettered (logged
+     *  loudly and skipped) so one poisoned event cannot block every later notification. */
+    val MAX_DELIVERY_ATTEMPTS: Int = get("NOTIFIER_MAX_DELIVERY_ATTEMPTS", "5").toInt()
+    val DELIVERY_BACKOFF_BASE_MS: Long = get("NOTIFIER_DELIVERY_BACKOFF_BASE_MS", "1000").toLong()
+    val DELIVERY_BACKOFF_CAP_MS: Long = get("NOTIFIER_DELIVERY_BACKOFF_CAP_MS", "60000").toLong()
     val HEARTBEAT_FILE: String = get("HEARTBEAT_FILE", "/tmp/notifier-heartbeat")
     val HEALTH_MAX_AGE_MS: Long = get("HEALTH_MAX_AGE_MS", "120000").toLong()
 }
