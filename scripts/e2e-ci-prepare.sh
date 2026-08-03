@@ -52,15 +52,15 @@ wipe() {
   if rm -rf "$@" 2>/dev/null; then return 0; fi
   echo "[e2e-prepare] state is root-owned, wiping via a throwaway container"
   docker run --rm -v "$ROOT/$E2E_DIR:/wipe" alpine:3 \
-    sh -c 'rm -rf /wipe/bridge-store /wipe/notifier-state /wipe/output /wipe/state'
+    sh -c 'rm -rf /wipe/bridge-store /wipe/notifier-state /wipe/jsearch-state /wipe/poller-secrets /wipe/output /wipe/state'
 }
 
 if [ "$FRESH" = "1" ]; then
   echo "[e2e-prepare] wiping per-run state under $E2E_DIR/"
-  wipe "$E2E_DIR/bridge-store" "$E2E_DIR/notifier-state" "$E2E_DIR/output" "$E2E_DIR/state"
+  wipe "$E2E_DIR/bridge-store" "$E2E_DIR/notifier-state" "$E2E_DIR/jsearch-state" "$E2E_DIR/poller-secrets" "$E2E_DIR/output" "$E2E_DIR/state"
 fi
 
-mkdir -p "$E2E_DIR/output" "$E2E_DIR/state" "$E2E_DIR/bridge-store" "$E2E_DIR/notifier-state"
+mkdir -p "$E2E_DIR/output" "$E2E_DIR/state" "$E2E_DIR/bridge-store" "$E2E_DIR/notifier-state" "$E2E_DIR/jsearch-state" "$E2E_DIR/poller-secrets"
 
 # If a previous run started compose without this script, Docker will have created a
 # *directory* at the dotenv path; `cat >` would then die with "Is a directory".
