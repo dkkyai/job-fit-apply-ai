@@ -2,6 +2,7 @@ package com.jd.pipeline.cli.commands
 
 import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.ClaimDto
+import com.jd.pipeline.client.SubmitOutcome
 import com.jd.pipeline.client.ClaimedEmail
 import com.jd.pipeline.client.WorkItemType
 import com.jd.pipeline.nodes.ScrapeJdNode
@@ -24,6 +25,7 @@ import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -196,17 +198,57 @@ class ProcessorCommandHandlerTest {
             whenever(bridge.claim()).doReturn(emailClaim()).doAnswer { processorThread.interrupt(); null }
             whenever(ingestion.invoke(any())).doReturn(ingested(isJobPosting = false, isDigest = true, children = children))
             whenever(ingestion.toJdRecord(any(), anyOrNull())).doReturn(childRecord)
+            whenever(bridge.submitDetailed(any())).doReturn(SubmitOutcome("child-1", deduped = false))
             doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
             processorThread.isDaemon = true
             processorThread.start()
 
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should complete the parent within 5s")
-            verify(bridge, times(2)).submit(childRecord)      // one per job-posting child
+            verify(bridge, times(2)).submitDetailed(childRecord)      // one per job-posting child
+            // Each child carries a stable key derived from the parent message, so a retried digest
+            // re-submits only what is missing instead of duplicating what already landed.
+            verify(ingestion).toJdRecord(any(), eq("m1|#0"))
+            verify(ingestion).toJdRecord(any(), eq("m1|#1"))
             // parent digest completed → JD_Processed_Digest so the Poller archives it (not a null
             // label that would loop the parent through JD_Processing forever)
             verify(bridge).postResult(eq("job-email"), argThat { terminalLabel == TerminalLabel.JD_PROCESSED_DIGEST }, anyOrNull())
             verify(pipeline, never()).invoke(any())           // the digest parent itself is never processed
+        }
+
+        @Test
+        @DisplayName("a child that fails to enqueue makes the parent an error, not a processed digest")
+        fun lostChildFailsTheParent() {
+            val bridge = mock<BridgeClient>()
+            val pipeline = mock<ProcessingPipeline>()
+            val ingestion = mock<IngestionPipeline>()
+
+            val children = listOf(ingested(isJobPosting = true), ingested(isJobPosting = true))
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
+            val posted = CountDownLatch(1)
+
+            whenever(bridge.claim()).doReturn(emailClaim()).doAnswer { processorThread.interrupt(); null }
+            whenever(ingestion.invoke(any())).doReturn(ingested(isJobPosting = false, isDigest = true, children = children))
+            whenever(ingestion.toJdRecord(any(), anyOrNull())).doReturn(fakeRecord())
+            whenever(bridge.submitDetailed(any()))
+                .doReturn(SubmitOutcome("child-1", deduped = false))
+                .doThrow(RuntimeException("bridge down"))
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
+
+            processorThread.isDaemon = true
+            processorThread.start()
+
+            assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should complete the parent within 5s")
+            // Archiving the parent here is how siblings get silently lost: the failed child exists
+            // nowhere and there is nothing left to retry from.
+            verify(bridge).postResult(
+                eq("job-email"),
+                argThat {
+                    terminalLabel == TerminalLabel.JD_ERROR &&
+                        error != null && error!!.contains("1 of 2 children")
+                },
+                anyOrNull(),
+            )
         }
 
         @Test
