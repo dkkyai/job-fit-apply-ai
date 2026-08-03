@@ -31,6 +31,12 @@ data class ScenarioResult(
     val completedCursor: Long,
     val finalStatus: JsonNode,
     val completedEvents: List<JsonNode>,
+    /**
+     * Every completed event since this scenario's cursor, *whatever* its `job_id`. A duplicate
+     * processed as a second job, or a digest child, carries an id the submitter never saw — so
+     * per-job filtering cannot observe it. Correlate on company / message_id here instead.
+     */
+    val allCompletedEvents: List<JsonNode>,
     val artifactUrl: String?,
     val outputDir: Path?,
     val track: TrackEvidence,
@@ -41,6 +47,10 @@ data class ScenarioResult(
 ) {
     val completedEvent: JsonNode get() = completedEvents.singleOrNull()
         ?: error("expected exactly one completed event for $jobId, got ${completedEvents.size}: $completedEvents")
+
+    /** Completed events for [company], including any this scenario did not submit directly. */
+    fun eventsForCompany(company: String = this.company): List<JsonNode> =
+        allCompletedEvents.filter { it.path("company").asText() == company }
 }
 
 /**
@@ -115,7 +125,14 @@ class E2eScenarioHarness {
 
     fun runScenario(
         company: String,
-        responses: Map<String, List<String>> = emptyMap(),
+        responses: Map<String, List<FakeLlmServer.PlannedResponse>> = emptyMap(),
+        sinkResponses: Map<String, List<MockNotificationSink.PlannedResponse>> = emptyMap(),
+        /**
+         * The terminal bridge status this scenario is asserting about. Reaching the *other*
+         * terminal state is itself a failure, and is reported as one — a fault-injection
+         * scenario that silently completes `done` would otherwise assert against a healthy run.
+         */
+        expectTerminal: String = "done",
         submit: E2eScenarioHarness.() -> JsonNode,
     ): ScenarioResult {
         // A queued plan under REAL_LLM=1 is a caller mistake, not something to paper over:
@@ -127,7 +144,7 @@ class E2eScenarioHarness {
                 "guard it with assumeFalse(E2eConfig.realLlm)."
         }
         if (!E2eConfig.realLlm) fakeLlm.reset(responses)
-        sink.reset()
+        sink.reset(sinkResponses)
 
         val completedCursor = mapper.readTree(getString("${E2eConfig.bridgeUrl}/api/jobs/completed/head"))
             .path("max_seq").asLong(0)
@@ -137,15 +154,20 @@ class E2eScenarioHarness {
         assertTrue(!submitResponse.path("deduped").asBoolean(false), "unique scenario input unexpectedly deduped: $submitResponse")
         println("[e2e] submitted job $jobId as '$company'")
 
-        val finalStatus = pollUntil(E2eConfig.timeoutSeconds, 2000, "job $jobId to reach done") {
+        val finalStatus = pollUntil(E2eConfig.timeoutSeconds, 2000, "job $jobId to reach $expectTerminal") {
             val status = mapper.readTree(getString("${E2eConfig.bridgeUrl}/api/jobs/$jobId"))
-            when (status.path("status").asText()) {
-                "done" -> status
+            when (val reached = status.path("status").asText()) {
+                expectTerminal -> status
                 "error" -> fail(
                     "job $jobId ended in status=error: ${status.path("error").asText()} " +
                         "(fake-llm calls so far: ${fakeLlm.calls})",
                 )
-                else -> null
+                "done" -> fail(
+                    "job $jobId completed as done, but this scenario expects terminal " +
+                        "'$expectTerminal' — the injected fault did not take effect " +
+                        "(fake-llm calls: ${fakeLlm.calls})",
+                )
+                else -> null.also { _ -> check(reached.isNotBlank()) { "blank status for $jobId" } }
             }
         }
         println("[e2e] job done: $finalStatus")
@@ -194,9 +216,12 @@ class E2eScenarioHarness {
 
         // Re-read the feed now: the notifier round trip above means real time has passed since
         // the first sighting, so a duplicate completion has had a chance to land and be seen.
-        val completedEvents = pollUntil(10, 500, "completed-feed re-read for job $jobId") {
-            completedEventsFor(jobId, completedCursor).takeIf { it.isNotEmpty() }
+        val allCompletedEvents = pollUntil(10, 500, "completed-feed re-read for job $jobId") {
+            completedEventsSince(completedCursor).takeIf { events ->
+                events.any { it.path("job_id").asText() == jobId }
+            }
         }
+        val completedEvents = allCompletedEvents.filter { it.path("job_id").asText() == jobId }
         val artifactUrl = completedEvents.first().path("artifact_url").asText("").ifBlank { null }
         val outputDir = artifactUrl?.let {
             val dirName = URLDecoder.decode(it.trimEnd('/').substringAfterLast('/'), Charsets.UTF_8)
@@ -214,6 +239,7 @@ class E2eScenarioHarness {
             completedCursor = completedCursor,
             finalStatus = finalStatus,
             completedEvents = completedEvents,
+            allCompletedEvents = allCompletedEvents,
             artifactUrl = artifactUrl,
             outputDir = outputDir,
             track = track,
@@ -288,11 +314,14 @@ class E2eScenarioHarness {
 
     fun statusOf(url: String): Int = request(url, HttpResponse.BodyHandlers.discarding()).statusCode()
 
-    /** Every completed-feed event for [jobId] since [cursor] — the scenario's own slice of the feed. */
-    private fun completedEventsFor(jobId: String, cursor: Long): List<JsonNode> =
+    /** Every completed-feed event since [cursor] — this scenario's slice, all job ids. */
+    private fun completedEventsSince(cursor: Long): List<JsonNode> =
         mapper.readTree(
             getString("${E2eConfig.bridgeUrl}/api/jobs/completed?since=$cursor&limit=200&all=true"),
-        ).filter { it.path("job_id").asText() == jobId }
+        ).toList()
+
+    private fun completedEventsFor(jobId: String, cursor: Long): List<JsonNode> =
+        completedEventsSince(cursor).filter { it.path("job_id").asText() == jobId }
 
     private fun preflight() {
         val health = runCatching { getString("${E2eConfig.bridgeUrl}/health") }

@@ -236,11 +236,34 @@ model — and `runScenario` refuses outright if a plan is queued while `E2E_REAL
 | ATS refinement | `POST /api/jobs`, low then high ATS plan | exactly one refinement pass, 12-call sequence, refined marker in final YAML |
 | Captured page | `POST /api/pages`, `JD_PAGE_RAW` | `scrape_jd` first, captured URL/JD in tracking, no Steel/network dependency |
 | Direct recruiter email | `POST /api/emails`, `EMAIL_RAW` | same work item completes once, `message_id` preserved, no `scrape_jd`, one `draft_reply` |
+| Processor error (#56 s3) | `POST /api/jobs`, injected `score_fit` 500 | terminal `error` naming the stage, nothing published, tracked as `skip` not success, Discord error only, next job completes |
 
 Each transaction generates unique correlation data, seeds its own completed-feed cursor, resets
 fake/sink observations, captures a local `ScenarioResult`, and filters notifications by company.
 Queued fake responses are route-specific FIFO plans, which lets one test process multiple ATS
 responses without changing normal happy-path defaults.
+
+### Fault injection
+
+Fixture *text* can only exercise the happy path. The contracts worth testing are the degradation
+ones — every tailor-gate failure degrades a node rather than crashing — so both fakes can be told
+to misbehave on cue, per route or per channel, FIFO, with defaults resuming once a queue empties:
+
+- `FakeLlmServer.PlannedResponse` — `ok` / `failure(status)` / `malformed` / `empty` / `stall(ms)`.
+  A failure is still recorded in `calls`, so exact-sequence assertions survive an injected fault.
+  Note `LlmClient` retries **429 only**; every other status throws on the first attempt, so one
+  queued 500 is enough to fail a node.
+- `MockNotificationSink.PlannedResponse` — `ok` / `failure(status)` / `stall(ms)` per channel,
+  with `attempts(channel)` counting refused posts and `delivered(channel)` counting only accepted
+  ones. That distinction is what separates "retried once then succeeded" from "delivered once";
+  `discordTexts()` / `telegramTexts()` report deliveries.
+
+`ScenarioResult.allCompletedEvents` carries every completed event since the scenario's cursor
+regardless of `job_id`, with `eventsForCompany()` over it. Per-job filtering cannot see a
+duplicate processed as a *second* job, or a digest child — both carry ids the submitter never saw.
+
+`runScenario(expectTerminal = "error")` asserts about a terminal failure; reaching the other
+terminal state fails loudly rather than quietly asserting against a healthy run.
 
 **"Exactly one" and "none at all" get a window.** Those two assertion shapes are the only ones
 that can pass by *arriving late* rather than by being right, so the harness never reads them off
