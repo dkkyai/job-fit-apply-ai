@@ -191,9 +191,9 @@ jobs:
       - name: Run unit tests
         run: ./gradlew test --tests "com.jd.pipeline.nodes.*" --tests "com.jd.pipeline.cli.*" --tests "com.jd.pipeline.pipeline.*" --tests "com.jd.pipeline.utils.*" --tests "com.jd.pipeline.fixtures.*" --tests "com.jd.pipeline.functional.*" --tests "com.jd.pipeline.client.*" --tests "com.jd.pipeline.config.*" --tests "com.jd.pipeline.models.*" --tests "com.jd.pipeline.state.*"
 
+      # Blocking as of 2026-08-03 — green on every run inspected since 2026-08-01.
       - name: Run integration tests
         run: ./gradlew test --tests "com.jd.pipeline.integration.*"
-        continue-on-error: true
 
       - name: JaCoCo coverage report
         run: ./gradlew jacocoTestReport
