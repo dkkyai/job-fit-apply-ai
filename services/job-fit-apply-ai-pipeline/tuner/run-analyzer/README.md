@@ -73,7 +73,8 @@ RUN_ANALYZER_MODEL=minimax-m3:ollama-cloud ./tuner/run-analyzer/run_analyzer.sh
 
 Empty windows exit immediately (before any model call), so frequent scheduling is cheap.
 
-Config (env; `run_analyzer.sh` also reads these from the project `.env`):
+Config (env; `run_analyzer.sh` also reads these from
+`services/job-fit-apply-ai-pipeline/.env`, not the repository-root Compose `.env`):
 
 | var | default | purpose |
 |---|---|---|

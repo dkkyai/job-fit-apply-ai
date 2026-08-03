@@ -13,8 +13,9 @@ import urllib.request
 ENV = os.environ
 
 
-def _credential(primary, legacy):
-    return ENV.get(primary, "").strip() or ENV.get(legacy, "").strip()
+def _credential(primary, legacy, env=None):
+    source = ENV if env is None else env
+    return source.get(primary, "").strip() or source.get(legacy, "").strip()
 
 
 DISCORD_TOKEN = ENV.get("DISCORD_BOT_TOKEN", "")
