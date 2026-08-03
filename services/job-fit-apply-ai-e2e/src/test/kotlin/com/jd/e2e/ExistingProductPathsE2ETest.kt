@@ -1,5 +1,7 @@
 package com.jd.e2e
 
+import com.jd.e2e.FakeLlmServer.Companion.failure
+import com.jd.e2e.FakeLlmServer.Companion.ok
 import org.junit.jupiter.api.Assumptions.assumeFalse
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.DisplayName
@@ -45,7 +47,7 @@ class ExistingProductPathsE2ETest {
         val company = "E2E Skip $nonce"
         val result = harness.runScenario(
             company = company,
-            responses = mapOf("score_fit" to listOf(harness.fixture("llm/score_fit_skip.json"))),
+            responses = mapOf("score_fit" to listOf(ok(harness.fixture("llm/score_fit_skip.json")))),
         ) {
             submitScrapedJob(
                 company = company,
@@ -88,10 +90,10 @@ class ExistingProductPathsE2ETest {
             company = company,
             responses = mapOf(
                 "ats_validation" to listOf(
-                    harness.fixture("llm/ats_validation_refine.json"),
-                    harness.fixture("llm/ats_validation.json"),
+                    ok(harness.fixture("llm/ats_validation_refine.json")),
+                    ok(harness.fixture("llm/ats_validation.json")),
                 ),
-                "summary_rewrite:refine" to listOf(harness.fixture("llm/summary_refined.txt")),
+                "summary_rewrite:refine" to listOf(ok(harness.fixture("llm/summary_refined.txt"))),
             ),
         ) {
             submitScrapedJob(
@@ -134,7 +136,7 @@ class ExistingProductPathsE2ETest {
             company = company,
             responses = mapOf(
                 "scrape_jd" to listOf(
-                    harness.fixture("llm/scrape_jd.json", mapOf("COMPANY" to company, "ROLE" to role)),
+                    ok(harness.fixture("llm/scrape_jd.json", mapOf("COMPANY" to company, "ROLE" to role))),
                 ),
             ),
         ) {
@@ -181,7 +183,7 @@ class ExistingProductPathsE2ETest {
             company = company,
             responses = mapOf(
                 "scan_email" to listOf(
-                    harness.fixture("llm/scan_email.json", mapOf("COMPANY" to company, "ROLE" to role)),
+                    ok(harness.fixture("llm/scan_email.json", mapOf("COMPANY" to company, "ROLE" to role))),
                 ),
             ),
         ) {
@@ -218,5 +220,81 @@ class ExistingProductPathsE2ETest {
         assertEquals(result.jobId, result.completedEvent.path("job_id").asText())
         assertTrue(result.discordMessages.single().contains("(TAILOR)"))
         assertEquals(1, result.telegramMessages.size)
+    }
+
+    /**
+     * Issue #56, scenario 3 — the Processor error contract.
+     *
+     * The failure mode is not the one the issue originally assumed. `ScoreFitNode` catches every
+     * exception and returns `fitScore = 0f, error = "score_fit: …"`, so the pipeline is never
+     * aborted and the job is never stuck `claimed`; the error reaches the bridge through
+     * `ProcessingResult.error` instead. What that leaves behind is a **score-0 SKIP that also
+     * wrote a tracks row** — a broken LLM shaped exactly like a genuine low-fit skip. The
+     * assertions below pin the parts that hold and the parts that make the two distinguishable.
+     */
+    @Test
+    @DisplayName("a failing score_fit call ends the job in error, publishes nothing, and does not wedge the loop")
+    fun scoreFitFailureIsTerminalAndRecoverable() {
+        val nonce = System.currentTimeMillis().toString()
+        val company = "E2E Fail $nonce"
+        val failed = harness.runScenario(
+            company = company,
+            // One queued 500 is enough: LlmClient retries 429 only, so a 500 throws on the
+            // first attempt. A second queued failure would never be consumed.
+            responses = mapOf("score_fit" to listOf(failure(500))),
+            expectTerminal = "error",
+        ) {
+            submitScrapedJob(
+                company = company,
+                roleTitle = "Staff Software Engineer in Test",
+                jdText = harness.fixture("jd-staff-sdet.txt", mapOf("COMPANY" to company)),
+                idempotencyKey = "e2e-fail-$nonce",
+            )
+        }
+
+        assertEquals("error", failed.finalStatus.path("status").asText())
+        assertTrue(
+            failed.finalStatus.path("error").asText().startsWith("score_fit:"),
+            "the error must name the failing stage: ${failed.finalStatus.path("error").asText()}",
+        )
+        assertEquals(0, failed.finalStatus.path("fit_score").asInt())
+        assertEquals(listOf("score_fit"), failed.llmCalls, "no node may run after the scoring failure")
+
+        // Nothing published: no artifact endpoints, no artifact_url, no output directory.
+        assertFalse(failed.finalStatus.has("artifacts"), "a failed run must not advertise artifact endpoints")
+        assertNull(failed.artifactUrl, "a failed run must not publish artifact_url")
+        assertNull(failed.outputDir, "a failed run must not create an output directory")
+        assertEquals(404, harness.statusOf("${E2eConfig.bridgeUrl}/api/jobs/${failed.jobId}/resume.pdf"))
+        assertEquals(404, harness.statusOf("${E2eConfig.bridgeUrl}/api/jobs/${failed.jobId}/cover_letter.txt"))
+
+        // Exactly one completed event, and no second job appeared under this company.
+        assertEquals(1, failed.completedEvents.size)
+        assertEquals(1, failed.eventsForCompany().size, "a failed run must not fan out or re-enqueue")
+
+        // Tracked, but not as a success — and not silently as a genuine low-fit skip.
+        assertEquals("skip", failed.track.pipelineAction, "a failed run must not be tracked as a success")
+        assertTrue(failed.track.artifactUrl.isNullOrBlank())
+        assertTrue(failed.track.outputPath.isNullOrBlank())
+
+        // Notified as an error, never as a high-fit win.
+        assertTrue(
+            failed.discordMessages.single().contains("error:"),
+            "Discord must report the failure: ${failed.discordMessages.single()}",
+        )
+        assertTrue(failed.telegramMessages.isEmpty(), "a failed run must not emit a high-fit Telegram alert")
+
+        // The loop survived: the very next healthy job completes normally.
+        val healthyCompany = "E2E Recover $nonce"
+        val healthy = harness.runScenario(healthyCompany) {
+            submitScrapedJob(
+                company = healthyCompany,
+                roleTitle = "Staff Software Engineer in Test",
+                jdText = harness.fixture("jd-staff-sdet.txt", mapOf("COMPANY" to healthyCompany)),
+                idempotencyKey = "e2e-recover-$nonce",
+            )
+        }
+        assertEquals("TAILOR", healthy.finalStatus.path("pipeline_action").asText())
+        assertEquals(72, healthy.finalStatus.path("fit_score").asInt())
+        assertTrue(!healthy.artifactUrl.isNullOrBlank(), NO_ARTIFACT_URL_HINT)
     }
 }

@@ -1,6 +1,9 @@
 package com.jd.e2e
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.jd.e2e.FakeLlmServer.Companion.failure
+import com.jd.e2e.FakeLlmServer.Companion.malformed
+import com.jd.e2e.FakeLlmServer.Companion.ok
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.DisplayName
@@ -182,8 +185,8 @@ class FakeLlmServerTest {
         server.reset(
             mapOf(
                 "score_fit" to listOf(
-                    """{"fit_score":42,"marker":"first"}""",
-                    """{"fit_score":88,"marker":"second"}""",
+                    ok("""{"fit_score":42,"marker":"first"}"""),
+                    ok("""{"fit_score":88,"marker":"second"}"""),
                 ),
             ),
         )
@@ -207,9 +210,9 @@ class FakeLlmServerTest {
     fun ingestionPromptsRouteIndependently() {
         server.reset(
             mapOf(
-                "scan_email" to listOf("""{"is_job_posting":true,"company":"Email Co"}"""),
-                "scrape_jd" to listOf("""{"company":"Page Co","jd_text":"fixture"}"""),
-                "draft_reply" to listOf("fixture reply"),
+                "scan_email" to listOf(ok("""{"is_job_posting":true,"company":"Email Co"}""")),
+                "scrape_jd" to listOf(ok("""{"company":"Page Co","jd_text":"fixture"}""")),
+                "draft_reply" to listOf(ok("fixture reply")),
             ),
         )
 
@@ -221,6 +224,36 @@ class FakeLlmServerTest {
         assertEquals("Page Co", scrape.path("company").asText())
         assertEquals("fixture reply", draft)
         assertEquals(listOf("scan_email", "scrape_jd", "draft_reply"), server.calls.toList())
+    }
+
+    @Test
+    @DisplayName("an injected failure is served as that status, still recorded, and consumed once")
+    fun injectedFailuresAreServedRecordedAndConsumed() {
+        server.reset(mapOf("score_fit" to listOf(failure(500), failure(429))))
+
+        val first  = ask("# SCORE_SKILL\n\nJOB DESCRIPTION:\nfixture")
+        val second = ask("# SCORE_SKILL\n\nJOB DESCRIPTION:\nfixture")
+        val third  = ask("# SCORE_SKILL\n\nJOB DESCRIPTION:\nfixture")
+
+        assertEquals(500, first.statusCode())
+        assertEquals(429, second.statusCode())
+        // Plan exhausted → the fixture default resumes, so a scenario only perturbs what it queues.
+        assertEquals(200, third.statusCode())
+        assertEquals(72, mapper.readTree(content(third)).path("fit_score").asInt())
+        // A failed call is still a call: exact-sequence assertions must survive an injected fault.
+        assertEquals(listOf("score_fit", "score_fit", "score_fit"), server.calls.toList())
+    }
+
+    @Test
+    @DisplayName("a malformed body is served verbatim, not wrapped in a completion envelope")
+    fun malformedBodiesAreServedVerbatim() {
+        server.reset(mapOf("gap_analysis" to listOf(malformed("<html>gateway</html>"))))
+
+        val resp = ask("# GAP_ANALYSIS_SKILL\n\nfixture")
+
+        assertEquals(200, resp.statusCode())
+        assertEquals("<html>gateway</html>", resp.body())
+        assertEquals(listOf("gap_analysis"), server.calls.toList())
     }
 
     @Test

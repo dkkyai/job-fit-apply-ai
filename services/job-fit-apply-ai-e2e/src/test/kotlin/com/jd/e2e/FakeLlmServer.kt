@@ -12,6 +12,7 @@ import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.delay
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
@@ -38,9 +39,49 @@ import java.util.concurrent.CopyOnWriteArrayList
  * carries those markers) so tests can assert the exact call sequence.
  */
 class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
+    /**
+     * One queued reply for a route.
+     *
+     * The happy path only ever needs [content]. The failure fields exist because the
+     * *interesting* pipeline contracts are the degradation ones — every tailor-gate failure
+     * degrades a node rather than crashing — and those cannot be provoked from fixture text.
+     * Note that a failure is still a served call: it lands in [calls], so an assertion on the
+     * exact sequence keeps working across an injected fault.
+     */
+    data class PlannedResponse(
+        /** Served as `choices[0].message.content`. Ignored when [rawBody] is set. */
+        val content: String? = null,
+        /** Non-2xx makes the fake answer with this code instead of a completion. */
+        val status: Int = 200,
+        /** Stall before answering — for hard-timeout paths. */
+        val delayMs: Long = 0,
+        /** Sent verbatim instead of a well-formed completion envelope. */
+        val rawBody: String? = null,
+    )
+
     companion object {
         /** Appended to every rewritten bullet so the fold-back join is observable. */
         const val BULLET_MARKER = "(e2e-rewrite)"
+
+        /** A normal completion carrying [content]. */
+        fun ok(content: String) = PlannedResponse(content = content)
+
+        /**
+         * An HTTP failure. `LlmClient` retries **429 only** (exponential backoff); every other
+         * status throws on the first attempt, so one queued 500 is enough to fail a node.
+         */
+        fun failure(status: Int, body: String = """{"error":"e2e injected $status"}""") =
+            PlannedResponse(status = status, rawBody = body)
+
+        /** A well-formed 200 whose body is not a completion envelope. */
+        fun malformed(body: String = "not json at all") = PlannedResponse(rawBody = body)
+
+        /** A completion whose content is blank — `LlmClient` rejects this explicitly. */
+        fun empty() = PlannedResponse(content = "")
+
+        /** A slow reply, for exercising the client's hard timeout. */
+        fun stall(delayMs: Long, content: String = "") =
+            PlannedResponse(content = content, delayMs = delayMs)
     }
 
     private val mapper = ObjectMapper().registerKotlinModule()
@@ -54,14 +95,14 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
     val calls: MutableList<String> = CopyOnWriteArrayList()
 
     /** Per-route FIFO responses installed by one scenario; defaults resume when exhausted. */
-    private val responsePlan = ConcurrentHashMap<String, ConcurrentLinkedQueue<String>>()
+    private val responsePlan = ConcurrentHashMap<String, ConcurrentLinkedQueue<PlannedResponse>>()
 
     /** Reset all observable state before a scenario and optionally install queued responses. */
-    fun reset(responses: Map<String, List<String>> = emptyMap()) {
+    fun reset(responses: Map<String, List<PlannedResponse>> = emptyMap()) {
         calls.clear()
         responsePlan.clear()
-        responses.forEach { (route, content) ->
-            responsePlan[route] = ConcurrentLinkedQueue(content)
+        responses.forEach { (route, planned) ->
+            responsePlan[route] = ConcurrentLinkedQueue(planned)
         }
     }
 
@@ -114,14 +155,25 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
                                 HttpStatusCode.InternalServerError,
                             )
                         } else {
-                            val (route, content) = routed
+                            val (route, planned) = routed
+                            // Recorded before the reply is shaped, so an injected fault still
+                            // appears in the call sequence — a scenario asserting "score_fit ran
+                            // and then nothing did" needs the failed call to be visible.
                             calls += route
-                            println("[fake-llm] served $route (model=$model)")
+                            if (planned.delayMs > 0) delay(planned.delayMs)
+                            val failing = planned.status !in 200..299
+                            println(
+                                "[fake-llm] served $route (model=$model)" +
+                                    (if (failing) " → HTTP ${planned.status} (injected)" else "") +
+                                    (if (planned.delayMs > 0) " after ${planned.delayMs}ms" else ""),
+                            )
+                            val payload = planned.rawBody ?: mapper.writeValueAsString(
+                                mapOf("choices" to listOf(mapOf("message" to mapOf("content" to planned.content.orEmpty())))),
+                            )
                             call.respondText(
-                                mapper.writeValueAsString(
-                                    mapOf("choices" to listOf(mapOf("message" to mapOf("content" to content))))
-                                ),
+                                payload,
                                 ContentType.Application.Json,
+                                HttpStatusCode.fromValue(planned.status),
                             )
                         }
                     }
@@ -140,15 +192,15 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
         engine?.stop(500, 2000)
     }
 
-    private fun dispatch(prompt: String): Pair<String, String>? {
+    private fun dispatch(prompt: String): Pair<String, PlannedResponse>? {
         val suffix = buildString {
             if (prompt.contains("PREVIOUS VALIDATION FEEDBACK (revision pass")) append(":refine")
             if (prompt.contains("YOUR PREVIOUS OUTPUT WAS INVALID") || prompt.contains("REJECTED DRAFT")) append(":retry")
         }
         fun name(n: String) = n + suffix
-        fun response(route: String, default: () -> String): Pair<String, String> {
+        fun response(route: String, default: () -> String): Pair<String, PlannedResponse> {
             val routedName = name(route)
-            return routedName to (responsePlan[routedName]?.poll() ?: default())
+            return routedName to (responsePlan[routedName]?.poll() ?: ok(default()))
         }
         // The cover-letter prompt also contains score_fit's fallback marker
         // ("\n\nJOB DESCRIPTION:\n", GenerateCoverLetterNode). Identify it positively and
