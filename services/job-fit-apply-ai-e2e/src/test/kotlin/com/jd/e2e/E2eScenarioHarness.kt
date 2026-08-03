@@ -50,7 +50,44 @@ data class ScenarioResult(
  */
 private const val NOTIFIER_FIT_THRESHOLD = 50
 
-/** Shared black-box transaction harness. One instance is owned by each E2E test class. */
+/**
+ * The one misconfiguration that produces a TAILOR run with no `artifact_url`, named at the point
+ * of failure so the assertion does not just say "it was null".
+ */
+const val NO_ARTIFACT_URL_HINT: String =
+    "completed event carries no artifact_url — ARTIFACT_BASE_URL is not reaching the processor " +
+        "(it must live in .e2e/pipeline.env, not the compose `environment:` block)"
+
+/**
+ * The single harness every E2E class shares.
+ *
+ * The fake LLM and the sink bind *fixed* ports — the ones docker compose interpolated into the
+ * containers at `up` time, so they cannot be per-class ephemeral. An instance per test class
+ * therefore has two objects competing for one port pair: safe today only because JUnit runs
+ * classes sequentially in a single fork (the `@Execution(SAME_THREAD)` annotations do not
+ * provide this — parallel execution is simply off), and even then it depends on Netty releasing
+ * the port between classes. When it loses that race the symptom is FakeLlmServer's
+ * "something is already listening" message, which blames a stray oMLX and sends you hunting in
+ * the wrong place. One instance, started on first use, stopped when the test JVM exits.
+ */
+object SharedE2eHarness {
+    private val harness = E2eScenarioHarness()
+    private var started = false
+
+    @Synchronized
+    fun start(): E2eScenarioHarness {
+        if (!started) {
+            harness.start()
+            // No @AfterAll can own this: the next class still needs the servers up. The test JVM
+            // is short-lived and the servers are in-process, so exit is the right teardown point.
+            Runtime.getRuntime().addShutdownHook(Thread(harness::stop, "e2e-harness-stop"))
+            started = true
+        }
+        return harness
+    }
+}
+
+/** Black-box transaction harness. Obtain the shared instance via [SharedE2eHarness]. */
 class E2eScenarioHarness {
     val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
     val fakeLlm = FakeLlmServer(E2eConfig.fakeLlmPort, E2eConfig.fixturesDir)

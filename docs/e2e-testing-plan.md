@@ -111,6 +111,8 @@ The fake runs **in-process in the test JVM**, listening on `0.0.0.0:$E2E_FAKE_LL
 
 Binding alone therefore proves nothing, so `FakeLlmServer.start()` refuses to start if anything already answers on the port — turning what was a five-minute mystery timeout into an immediate, named diagnosis.
 
+Because the port is fixed (compose baked it into the containers at `up` time, so it cannot be per-class ephemeral), the fake and the notification sink are owned by **one JVM-wide `SharedE2eHarness`**, not one instance per test class. Two instances would compete for the same port pair — today only sequential class execution and prompt Netty shutdown keep them apart, and when that slips the symptom is the occupied-port refusal above, which blames a stray oMLX and points the investigation at the wrong machine. Started on first use, stopped by a JVM shutdown hook: no `@AfterAll` can own it, because the next class still needs the servers up.
+
 For local runs against a real oMLX, `REAL_LLM=1` skips starting the fake *and* sets `E2E_FAKE_LLM_PORT=11436` for both `up` and `run`, so the container points at the real backend (see §7.3 — the toggle is really a launcher flag, since the var is baked into the container at `up` time).
 
 ### 4.3 Call inventory and dispatch table

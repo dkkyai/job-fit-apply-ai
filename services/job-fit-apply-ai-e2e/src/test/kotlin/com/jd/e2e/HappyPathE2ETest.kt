@@ -1,6 +1,5 @@
 package com.jd.e2e
 
-import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.DisplayName
@@ -29,14 +28,16 @@ import kotlin.test.assertTrue
 @DisplayName("Bridge → Processor → Notifier happy path")
 @Timeout(value = 40, unit = TimeUnit.MINUTES)
 class HappyPathE2ETest {
-    private val harness = E2eScenarioHarness()
+    private lateinit var harness: E2eScenarioHarness
     private val expectedRole = "Staff Software Engineer in Test"
 
+    // Shared, not owned: the fake LLM and the sink bind fixed ports, so a per-class instance
+    // would compete with the other E2E class for them. Teardown belongs to the JVM — see
+    // [SharedE2eHarness].
     @BeforeAll
-    fun startHarness() = harness.start()
-
-    @AfterAll
-    fun tearDown() = harness.stop()
+    fun startHarness() {
+        harness = SharedE2eHarness.start()
+    }
 
     @Test
     @DisplayName("TAILOR: scraped JD completes through Bridge, Processor, artifacts, tracking, and notification")
@@ -179,8 +180,9 @@ class HappyPathE2ETest {
     }
 
     private fun artifactUrl(result: ScenarioResult): String =
-        assertNotNull(result.artifactUrl, "TAILOR scenario completed without artifact_url")
+        assertNotNull(result.artifactUrl, NO_ARTIFACT_URL_HINT)
 
+    /** The output dir is derived from artifact_url, so it goes missing for the same reason. */
     private fun outputDir(result: ScenarioResult): Path =
-        assertNotNull(result.outputDir, "TAILOR scenario completed without an output directory")
+        assertNotNull(result.outputDir, NO_ARTIFACT_URL_HINT)
 }

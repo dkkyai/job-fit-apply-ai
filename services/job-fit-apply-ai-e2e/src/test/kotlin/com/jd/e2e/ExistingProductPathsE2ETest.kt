@@ -1,6 +1,5 @@
 package com.jd.e2e
 
-import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assumptions.assumeFalse
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.DisplayName
@@ -23,7 +22,7 @@ import kotlin.test.assertTrue
 @DisplayName("Existing product-path E2E scenarios")
 @Timeout(value = 40, unit = TimeUnit.MINUTES)
 class ExistingProductPathsE2ETest {
-    private val harness = E2eScenarioHarness()
+    private lateinit var harness: E2eScenarioHarness
 
     /**
      * The `tier-b` tag alone does not keep these out of a real-LLM run: it only bites when
@@ -35,11 +34,9 @@ class ExistingProductPathsE2ETest {
     @BeforeAll
     fun startHarness() {
         assumeFalse(E2eConfig.realLlm, "fake-LLM-only scenarios: planned responses and exact call sequences")
-        harness.start()
+        // Shared with HappyPathE2ETest — fixed ports, JVM-scoped teardown. See [SharedE2eHarness].
+        harness = SharedE2eHarness.start()
     }
-
-    @AfterAll
-    fun tearDown() = harness.stop()
 
     @Test
     @DisplayName("low-fit JD completes as SKIP without tailoring artifacts")
@@ -107,8 +104,7 @@ class ExistingProductPathsE2ETest {
 
         assertEquals("TAILOR", result.finalStatus.path("pipeline_action").asText())
         assertEquals(72, result.finalStatus.path("fit_score").asInt())
-        assertTrue(!result.artifactUrl.isNullOrBlank())
-        val outputDir = requireNotNull(result.outputDir)
+        val outputDir = requireNotNull(result.outputDir) { NO_ARTIFACT_URL_HINT }
         val yaml = java.nio.file.Files.readString(outputDir.resolve("tailored_resume.yaml"))
         assertTrue(yaml.contains("ATS_REFINED_MARKER"), "final artifact does not contain the refinement output")
         assertEquals(
@@ -160,7 +156,7 @@ class ExistingProductPathsE2ETest {
         assertEquals(role, result.track.roleTitle)
         assertEquals(captureUrl, result.track.jobUrl)
         assertTrue(result.track.jdText.contains("PAGE_CAPTURE_JD_MARKER"))
-        assertTrue(!result.artifactUrl.isNullOrBlank())
+        assertTrue(!result.artifactUrl.isNullOrBlank(), NO_ARTIFACT_URL_HINT)
         assertEquals(
             listOf(
                 "scrape_jd", "score_fit", "jd_extraction", "gap_analysis", "summary_rewrite",
@@ -209,7 +205,7 @@ class ExistingProductPathsE2ETest {
         assertEquals(role, result.track.roleTitle)
         assertTrue(result.track.jobUrl.isBlank(), "direct email fixture must not trigger external scraping")
         assertTrue(result.track.jdText.contains("EMAIL_SCAN_JD_MARKER"))
-        assertTrue(!result.artifactUrl.isNullOrBlank())
+        assertTrue(!result.artifactUrl.isNullOrBlank(), NO_ARTIFACT_URL_HINT)
         assertEquals(
             listOf(
                 "scan_email", "score_fit", "jd_extraction", "gap_analysis", "summary_rewrite",
