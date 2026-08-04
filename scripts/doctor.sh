@@ -9,16 +9,28 @@
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# Match Docker Compose's repo-root configuration so path diagnostics cover both the portable
-# JFAA_DATA_ROOT layout and legacy per-service overrides. This file is user-owned/gitignored.
-if [ -f .env ]; then
+# Match Docker Compose's configuration so path diagnostics cover both the portable
+# JFAA_DATA_ROOT layout and legacy per-service overrides. ENV_FILE selects the instance
+# (Makefile passes .env.test for `make doctor INSTANCE=test`); default is the prod .env.
+# These files are user-owned/gitignored.
+ENV_FILE="${ENV_FILE:-.env}"
+if [ -f "$ENV_FILE" ]; then
   set -a
-  # shellcheck disable=SC1091
-  . ./.env
+  # shellcheck disable=SC1090,SC1091
+  . "./$ENV_FILE"
   set +a
 fi
+export JFAA_ENV_FILE="$ROOT/$ENV_FILE"
 # shellcheck disable=SC1091
 . "$ROOT/scripts/jfaa-data-root.sh"
+
+# Instance identity: container names carry the prefix; intake services (poller/jsearch)
+# exist only where COMPOSE_PROFILES activates them — a test instance sets it empty.
+P="${CONTAINER_PREFIX:-jobfit}"
+case "${COMPOSE_PROFILES-intake}" in
+  *intake*) INTAKE=1 ;;
+  *)        INTAKE=0 ;;
+esac
 
 FAILS=0
 WARNS=0
@@ -33,50 +45,57 @@ port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && { exec 3>&-; retu
 hdr "Docker"
 if docker info >/dev/null 2>&1; then ok "Docker daemon running"; else bad "Docker daemon NOT running (start Docker Desktop)"; fi
 
-hdr "Compose services"
-if running jobfit-db; then
-  if docker exec jobfit-db pg_isready -U "${POSTGRES_USER:-jobfit}" -d "${POSTGRES_DB:-jobfit}" >/dev/null 2>&1; then
-    ok "db (jobfit-db) up & accepting connections"
+hdr "Compose services (prefix: $P)"
+if running "$P-db"; then
+  if docker exec "$P-db" pg_isready -U "${POSTGRES_USER:-jobfit}" -d "${POSTGRES_DB:-jobfit}" >/dev/null 2>&1; then
+    ok "db ($P-db) up & accepting connections"
   else bad "db container up but not accepting connections"; fi
-else bad "db (jobfit-db) not running  →  make up"; fi
-if running jobfit-bridge; then
-  if [ "$(docker inspect -f '{{.State.Health.Status}}' jobfit-bridge 2>/dev/null)" = "healthy" ]; then
-    ok "bridge (jobfit-bridge) healthy"
+else bad "db ($P-db) not running  →  make up"; fi
+if running "$P-bridge"; then
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-bridge" 2>/dev/null)" = "healthy" ]; then
+    ok "bridge ($P-bridge) healthy"
   else warn "bridge container up but not healthy yet"; fi
-else bad "bridge (jobfit-bridge) not running  →  make up"; fi
-if running jobfit-markserv; then
-  if [ "$(docker inspect -f '{{.State.Health.Status}}' jobfit-markserv 2>/dev/null)" = "healthy" ]; then
-    ok "markserv (jobfit-markserv) healthy"
+else bad "bridge ($P-bridge) not running  →  make up"; fi
+if running "$P-markserv"; then
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-markserv" 2>/dev/null)" = "healthy" ]; then
+    ok "markserv ($P-markserv) healthy"
   else warn "markserv container up but not healthy yet"; fi
 else warn "markserv not running  →  make up"; fi
-if running jobfit-frontend; then
-  if [ "$(docker inspect -f '{{.State.Health.Status}}' jobfit-frontend 2>/dev/null)" = "healthy" ]; then
-    ok "frontend (jobfit-frontend) healthy"
+if running "$P-frontend"; then
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-frontend" 2>/dev/null)" = "healthy" ]; then
+    ok "frontend ($P-frontend) healthy"
   else warn "frontend container up but not healthy yet"; fi
-else bad "frontend (jobfit-frontend) not running  →  make up"; fi
-if running jobfit-poller; then
-  if [ "$(docker inspect -f '{{.State.Health.Status}}' jobfit-poller 2>/dev/null)" = "healthy" ]; then
-    ok "poller (jobfit-poller) healthy — Gmail intake + write-back"
-  else warn "poller container up but not healthy (loops stalled?  →  docker logs jobfit-poller)"; fi
-else bad "poller (jobfit-poller) not running  →  make up"; fi
-if running jobfit-jsearch; then
-  if [ "$(docker inspect -f '{{.State.Health.Status}}' jobfit-jsearch 2>/dev/null)" = "healthy" ]; then
-    ok "jsearch (jobfit-jsearch) healthy — daily JSearch API intake"
-  else warn "jsearch container up but not healthy (needs JSEARCH_API_KEY?  →  docker logs jobfit-jsearch)"; fi
-else warn "jsearch (jobfit-jsearch) not running  →  set JSEARCH_API_KEY in .env, then make up"; fi
-if running jobfit-notifier; then
-  if [ "$(docker inspect -f '{{.State.Health.Status}}' jobfit-notifier 2>/dev/null)" = "healthy" ]; then
-    ok "notifier (jobfit-notifier) healthy — Discord/Telegram from the completed-event stream"
-  else warn "notifier container up but not healthy  →  docker logs jobfit-notifier"; fi
-else warn "notifier (jobfit-notifier) not running  →  make up"; fi
-if running jobfit-processor; then
-  if [ "$(docker inspect -f '{{.State.Health.Status}}' jobfit-processor 2>/dev/null)" = "healthy" ]; then
-    ok "processor (jobfit-processor) healthy — scan/scrape/score/tailor"
-  else warn "processor container up but not healthy (loop stalled?  →  docker logs jobfit-processor)"; fi
-else bad "processor (jobfit-processor) not running  →  make up"; fi
+else bad "frontend ($P-frontend) not running  →  make up"; fi
+if [ "$INTAKE" = "1" ]; then
+  if running "$P-poller"; then
+    if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-poller" 2>/dev/null)" = "healthy" ]; then
+      ok "poller ($P-poller) healthy — Gmail intake + write-back"
+    else warn "poller container up but not healthy (loops stalled?  →  docker logs $P-poller)"; fi
+  else bad "poller ($P-poller) not running  →  make up"; fi
+  if running "$P-jsearch"; then
+    if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-jsearch" 2>/dev/null)" = "healthy" ]; then
+      ok "jsearch ($P-jsearch) healthy — daily JSearch API intake"
+    else warn "jsearch container up but not healthy (needs JSEARCH_API_KEY?  →  docker logs $P-jsearch)"; fi
+  else warn "jsearch ($P-jsearch) not running  →  set JSEARCH_API_KEY in .env, then make up"; fi
+else
+  ok "intake services (poller/jsearch) intentionally absent — COMPOSE_PROFILES has no 'intake' (jobs enter via make replay)"
+  if running "$P-poller" || running "$P-jsearch"; then
+    bad "intake container running for prefix $P but COMPOSE_PROFILES excludes intake — a second poller races prod on Gmail"
+  fi
+fi
+if running "$P-notifier"; then
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-notifier" 2>/dev/null)" = "healthy" ]; then
+    ok "notifier ($P-notifier) healthy — Discord/Telegram from the completed-event stream"
+  else warn "notifier container up but not healthy  →  docker logs $P-notifier"; fi
+else warn "notifier ($P-notifier) not running  →  make up"; fi
+if running "$P-processor"; then
+  if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-processor" 2>/dev/null)" = "healthy" ]; then
+    ok "processor ($P-processor) healthy — scan/scrape/score/tailor"
+  else warn "processor container up but not healthy (loop stalled?  →  docker logs $P-processor)"; fi
+else bad "processor ($P-processor) not running  →  make up"; fi
 
 hdr "Postgres data"
-CNT="$(docker exec jobfit-db psql -U "${POSTGRES_USER:-jobfit}" -d "${POSTGRES_DB:-jobfit}" -tAc 'SELECT count(*) FROM tracks;' 2>/dev/null || true)"
+CNT="$(docker exec "$P-db" psql -U "${POSTGRES_USER:-jobfit}" -d "${POSTGRES_DB:-jobfit}" -tAc 'SELECT count(*) FROM tracks;' 2>/dev/null || true)"
 if [ -n "$CNT" ]; then ok "tracks table present (${CNT} rows)"; else warn "could not query tracks table"; fi
 
 hdr ".env files"
@@ -94,9 +113,12 @@ if "$TS" status >/dev/null 2>&1; then ok "Tailscale up & logged in"; else bad "T
 if "$TS" serve status 2>/dev/null | grep -qi 'tailnet only'; then ok "Tailscale Serve configured"; else warn "no Tailscale Serve config  →  make serve"; fi
 
 hdr "Tailnet-exposed services (host loopback)"
-port_open 8081 && ok "markserv on 127.0.0.1:8081" || warn "nothing on 127.0.0.1:8081"
-port_open 8765 && ok "bridge on 127.0.0.1:8765"   || warn "nothing on 127.0.0.1:8765"
-port_open 3030 && ok "frontend on 127.0.0.1:3030" || warn "nothing on 127.0.0.1:3030"
+MARKSERV_P="${MARKSERV_PORT:-8081}"
+BRIDGE_P="${JD_BRIDGE_PORT:-8765}"
+FRONTEND_P="${FRONTEND_PORT:-3030}"
+port_open "$MARKSERV_P" && ok "markserv on 127.0.0.1:$MARKSERV_P" || warn "nothing on 127.0.0.1:$MARKSERV_P"
+port_open "$BRIDGE_P"   && ok "bridge on 127.0.0.1:$BRIDGE_P"     || warn "nothing on 127.0.0.1:$BRIDGE_P"
+port_open "$FRONTEND_P" && ok "frontend on 127.0.0.1:$FRONTEND_P" || warn "nothing on 127.0.0.1:$FRONTEND_P"
 
 hdr "Host services needed by the pipeline"
 port_open 11436 && ok "MLX/oMLX :11436" || warn "MLX/oMLX not reachable on :11436 (scoring/tailoring)"
@@ -104,8 +126,8 @@ port_open 11434 && ok "Ollama :11434"   || warn "Ollama not reachable on :11434"
 port_open 9222  && ok "Chrome CDP :9222" || warn "Chrome CDP not reachable on :9222 (JD scraping)"
 # The processor container dials these via host.docker.internal (works on Docker Desktop 29.x —
 # its host-side proxy connects to loopback-bound ports). Probe the path from inside the container.
-if running jobfit-processor; then
-  if docker exec jobfit-processor curl -sf -m 5 http://host.docker.internal:11434/api/version >/dev/null 2>&1; then
+if running "$P-processor"; then
+  if docker exec "$P-processor" curl -sf -m 5 http://host.docker.internal:11434/api/version >/dev/null 2>&1; then
     ok "container → host.docker.internal reaches host services"
   else warn "container cannot reach host.docker.internal:11434 — processor's local LLM/CDP calls will fail"; fi
 fi
@@ -139,19 +161,23 @@ if [ -d "$PIPELINE_STATE" ] && [ "$(stat -f '%Lp' "$PIPELINE_STATE" 2>/dev/null 
 fi
 
 hdr "Gmail (containerized Poller owns all Gmail)"
-if [ -n "${JD_POLLER_SECRETS_HOST:-}" ]; then
-  POLLER_SECRETS="$JD_POLLER_SECRETS_HOST"
-elif [ -n "${JFAA_DATA_ROOT:-}" ]; then
-  POLLER_SECRETS="$JFAA_DATA_ROOT/poller-secrets"
+if [ "$INTAKE" != "1" ]; then
+  ok "skipped — this instance runs no Poller (COMPOSE_PROFILES has no 'intake'), so it never touches Gmail"
 else
-  POLLER_SECRETS="$HOME/.local/share/jfaa/poller-secrets"
+  if [ -n "${JD_POLLER_SECRETS_HOST:-}" ]; then
+    POLLER_SECRETS="$JD_POLLER_SECRETS_HOST"
+  elif [ -n "${JFAA_DATA_ROOT:-}" ]; then
+    POLLER_SECRETS="$JFAA_DATA_ROOT/poller-secrets"
+  else
+    POLLER_SECRETS="$HOME/.local/share/jfaa/poller-secrets"
+  fi
+  if [ -f "$POLLER_SECRETS/tokens/gmail_token.json" ]; then
+    # Warn if the token is stale (Testing-mode refresh token expires ~weekly).
+    if [ -n "$(find "$POLLER_SECRETS/tokens/gmail_token.json" -mtime +6 2>/dev/null)" ]; then
+      warn "Gmail token >6 days old — refresh soon: docker compose run --rm poller --reauth"
+    else ok "Gmail token present in poller secrets  ($POLLER_SECRETS)"; fi
+  else bad "Gmail token missing in $POLLER_SECRETS/tokens  →  docker compose run --rm poller --reauth"; fi
 fi
-if [ -f "$POLLER_SECRETS/tokens/gmail_token.json" ]; then
-  # Warn if the token is stale (Testing-mode refresh token expires ~weekly).
-  if [ -n "$(find "$POLLER_SECRETS/tokens/gmail_token.json" -mtime +6 2>/dev/null)" ]; then
-    warn "Gmail token >6 days old — refresh soon: docker compose run --rm poller --reauth"
-  else ok "Gmail token present in poller secrets  ($POLLER_SECRETS)"; fi
-else bad "Gmail token missing in $POLLER_SECRETS/tokens  →  docker compose run --rm poller --reauth"; fi
 
 hdr "PM2 (fully retired — everything is Compose now)"
 if command -v pm2 >/dev/null 2>&1; then

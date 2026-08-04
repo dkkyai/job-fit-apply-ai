@@ -18,10 +18,11 @@
 # Worktree-friendly: derive the repo root from this script's own location.
 JFAA_REPO_ROOT="${JFAA_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 
-# Read one KEY from the repo-root .env without executing it. Values may contain spaces and are
-# often quoted (a macOS "Application Support" root), so strip one layer of surrounding quotes.
+# Read one KEY from the instance env file without executing it (JFAA_ENV_FILE overrides the
+# repo-root .env — that is how instance-aware consumers point at .env.test). Values may contain
+# spaces and are often quoted (a macOS "Application Support" root), so strip one layer of quotes.
 _jfaa_dotenv() {
-    local key="$1" file="$JFAA_REPO_ROOT/.env" value
+    local key="$1" file="${JFAA_ENV_FILE:-$JFAA_REPO_ROOT/.env}" value
     [ -f "$file" ] || return 0
     value="$(grep -E "^[[:space:]]*${key}=" "$file" | tail -1 | cut -d= -f2- || true)"
     value="${value%\"}"; value="${value#\"}"
@@ -42,6 +43,14 @@ jfaa_pipeline_output() {
 jfaa_pipeline_state() {
     local override="${JD_PIPELINE_STATE_HOST:-$(_jfaa_dotenv JD_PIPELINE_STATE_HOST)}"
     printf '%s' "${override:-$(jfaa_data_root)/pipeline-state}"
+}
+
+# The bridge's durable store (SQLite queue at <dir>/jobs.db) — same precedence compose
+# uses for the bridge's /data mount. Host-side readers (replay-jobs.sh) resolve it here
+# rather than hardcoding a path.
+jfaa_bridge_store() {
+    local override="${JD_BRIDGE_STORE_HOST:-$(_jfaa_dotenv JD_BRIDGE_STORE_HOST)}"
+    printf '%s' "${override:-$(jfaa_data_root)/bridge}"
 }
 
 # Legacy (pre-#67) repo-local Pipeline trees: the migration source, and the rollback copy after.

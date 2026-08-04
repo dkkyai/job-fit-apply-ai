@@ -24,7 +24,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-E2E_DIR=".e2e"
+# E2E_STATE_DIR must match what docker-compose.e2e.yml interpolates (default ./.e2e).
+# The multi-instance scenarios prepare a second slice from .e2e-src with this.
+E2E_DIR="${E2E_STATE_DIR:-.e2e}"
+E2E_DIR="${E2E_DIR#./}"
 
 # Read the repo-root .env the same way `docker compose` does, so the port this script
 # bakes into ARTIFACT_BASE_URL is the port compose actually publishes markserv on.

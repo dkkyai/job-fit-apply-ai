@@ -354,7 +354,8 @@ class E2eScenarioHarness {
         }
     }
 
-    private fun postJson(url: String, body: String): JsonNode {
+    /** Public: the multi-instance scenarios also POST to the *source* slice's bridge. */
+    fun postJson(url: String, body: String): JsonNode {
         val response = request(url, HttpResponse.BodyHandlers.ofString(), body)
         check(response.statusCode() in 200..299) {
             "POST $url → ${response.statusCode()}: ${response.body().take(300)}"
