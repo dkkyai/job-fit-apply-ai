@@ -108,6 +108,9 @@ object ProcessorCommandHandler {
                     company        = jdRecord.company,
                     roleTitle      = jdRecord.roleTitle,
                     jobUrl         = jdRecord.jobUrl,
+                    // …and how its JD was fetched, so a pipeline crash still tells the analyzer
+                    // whether the browser backend was involved.
+                    scrapePath     = jdRecord.scrapePath,
                 )
             }
 
@@ -310,7 +313,7 @@ object ProcessorCommandHandler {
                 System.err.println("[processor] ingestion error for ${claimed.jobId}: ${disposition.message}")
                 postTerminal(
                     bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
-                    skipResult(disposition.message, TerminalLabel.JD_ERROR),
+                    skipResult(disposition.message, TerminalLabel.JD_ERROR, ingState.scrapePath),
                 )
             }
             is EmailDisposition.ReEnqueueChildren -> {
@@ -320,7 +323,7 @@ object ProcessorCommandHandler {
                     // parent digest complete → archive
                     postTerminal(
                         bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
-                        skipResult(null, TerminalLabel.JD_PROCESSED_DIGEST),
+                        skipResult(null, TerminalLabel.JD_PROCESSED_DIGEST, ingState.scrapePath),
                     )
                 } else {
                     // A digest whose children did not all land is NOT "processed". Reporting
@@ -334,6 +337,7 @@ object ProcessorCommandHandler {
                             "digest fan-out incomplete: ${fanOut.failed.size} of ${fanOut.total} children " +
                                 "failed to enqueue (${fanOut.failed.joinToString("; ")})",
                             TerminalLabel.JD_ERROR,
+                            ingState.scrapePath,
                         ),
                     )
                 }
@@ -342,7 +346,7 @@ object ProcessorCommandHandler {
                 // not a job posting
                 postTerminal(
                     bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
-                    skipResult(null, TerminalLabel.JD_NOT_FOUND),
+                    skipResult(null, TerminalLabel.JD_NOT_FOUND, ingState.scrapePath),
                 )
             EmailDisposition.Process ->
                 Resolution.Proceed(ingestion.toJdRecord(ingState, idempotencyKey = email.messageId))
@@ -384,7 +388,10 @@ object ProcessorCommandHandler {
         if (extracted.error.isNotBlank() || extracted.jdText.length < 150) {
             return postTerminal(
                 bridge, claimed, logRecordOf(extracted, IngestionSource.EXTENSION),
-                skipResult("This page doesn't look like a job posting (no JD could be extracted)"),
+                skipResult(
+                    "This page doesn't look like a job posting (no JD could be extracted)",
+                    scrapePath = extracted.scrapePath,
+                ),
             )
         }
 
@@ -398,6 +405,9 @@ object ProcessorCommandHandler {
                 source         = IngestionSource.EXTENSION,
                 idempotencyKey = cap.url,
                 intakeMeta     = extracted.intake,
+                // Rendered in the user's own browser, so this is the "captured" path — recording it
+                // keeps extension traffic distinguishable from a backend scrape in the run_log.
+                scrapePath     = extracted.scrapePath,
             ),
         )
     }
@@ -410,7 +420,11 @@ object ProcessorCommandHandler {
      * written-back job) and re-labeled JD_Processing forever. The Poller reads message_id from the
      * bridge row, which preserves the enqueue-time value, so this result need not repeat it.
      */
-    private fun skipResult(error: String?, terminalLabel: String? = null): ProcessingResult = ProcessingResult(
+    private fun skipResult(
+        error: String?,
+        terminalLabel: String? = null,
+        scrapePath: String = "",
+    ): ProcessingResult = ProcessingResult(
         pipelineAction = PipelineAction.SKIP.name,
         fitScore       = 0,
         strengths      = emptyList(),
@@ -419,5 +433,9 @@ object ProcessorCommandHandler {
         hasCoverLetter = false,
         error          = error,
         terminalLabel  = terminalLabel,
+        // These items never reach ProcessingPipeline, so nothing else can record how their JD text
+        // was fetched. A scrape that FAILED terminates right here — exactly the case the analyzer
+        // most needs — so an empty scrapePath would hide browser-backend problems entirely.
+        scrapePath     = scrapePath,
     )
 }
