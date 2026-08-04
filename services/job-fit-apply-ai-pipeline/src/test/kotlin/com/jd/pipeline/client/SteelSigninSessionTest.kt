@@ -18,6 +18,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -139,6 +140,28 @@ class SteelSigninSessionTest {
         assertEquals("sess-1", opened.sessionId)
         assertNull(opened.startUrl)          // parking failed…
         assertTrue(opened.debugUrl != null)  // …but there is still a live view to sign in on
+    }
+
+    @Test
+    @DisplayName("a failed CDP connect still releases the session it created")
+    fun connectFailureReleasesTheSession() {
+        // Regression: the session field was assigned *after* connect(), so a connect failure left a
+        // live session on the backend with no handle to release it — holding Steel's single Chrome
+        // for the whole 30-minute window while every scrape fell back to email-only JD text.
+        val client = mock<SteelClient>()
+        whenever(client.createSession(anyOrNull(), any()))
+            .thenReturn(SteelClient.SteelSession(id = "sess-1", websocketUrl = "ws://localhost:3000/"))
+        val session = SteelSigninSession(
+            baseUrl = "http://steel:3000",
+            client = client,
+            store = mock(),
+            connect = { throw RuntimeException("ECONNRESET") },
+        )
+
+        assertFailsWith<RuntimeException> { session.open("https://www.linkedin.com/login") }
+        session.close()
+
+        verify(client).releaseSession("sess-1")
     }
 
     @Test

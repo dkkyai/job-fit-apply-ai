@@ -92,8 +92,11 @@ class SteelSigninSession(
         require(baseUrl.isNotBlank()) { "Steel is disabled — set STEEL_BASE_URL first." }
 
         val s = client.createSession(store.load(), windowMs)
-        val (pw, b) = connect(s)
+        // Record the session BEFORE connecting. A CDP connect failure still leaves a live session on
+        // the backend, and Steel holds it against its single Chrome until the (30-minute) window
+        // expires — so [close] has to be able to release it even when open() throws.
         session = s
+        val (pw, b) = connect(s)
         playwright = pw
         browser = b
 

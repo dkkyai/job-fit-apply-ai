@@ -88,7 +88,14 @@ class SigninServer(
      * A second tap while one is in flight redirects to the *existing* session rather than creating
      * another: alert links get double-tapped, and Steel's single Chrome would make the second session
      * close the first one's login page.
+     *
+     * `@Synchronized` because the check and the open must be atomic together. `open()` takes seconds
+     * (createSession + CDP connect), which is well inside human double-tap range — so a plain
+     * check-then-act would let the second request see an empty [active] and build a rival session
+     * that closes the first one's login page. The second request instead waits out the first open()
+     * and then takes the reuse path.
      */
+    @Synchronized
     private fun handleSignin(ex: HttpExchange) {
         val site = ex.query("site")?.takeIf { it.isNotBlank() } ?: "the site"
 
@@ -123,26 +130,32 @@ class SigninServer(
     private fun capture(site: String, session: SteelSigninSession, opened: SteelSigninSession.Opened) {
         Thread {
             try {
+                // close() is inside the gate on purpose: it exports and releases, and until the
+                // release lands the session still holds Steel's Chrome. Opening the gate first would
+                // let a scrape start against a session that is being torn down.
                 SigninGate.holding {
-                    val result = session.awaitCapture()
-                    when {
-                        result.merges == 0 ->
-                            log.warn("Sign-in for {} captured nothing — could not export the session context", site)
-                        result.signedIn -> {
-                            log.info("Sign-in for {} captured {} cookies", site, result.cookies)
-                            alerts.reauthCaptured(site, result.cookies)
+                    try {
+                        val result = session.awaitCapture()
+                        when {
+                            result.merges == 0 ->
+                                log.warn("Sign-in for {} captured nothing — could not export the session context", site)
+                            result.signedIn -> {
+                                log.info("Sign-in for {} captured {} cookies", site, result.cookies)
+                                alerts.reauthCaptured(site, result.cookies)
+                            }
+                            result.timedOut ->
+                                log.warn("Sign-in window for {} elapsed still on a login page ({} cookies merged anyway)",
+                                    site, result.cookies)
                         }
-                        result.timedOut ->
-                            log.warn("Sign-in window for {} elapsed still on a login page ({} cookies merged anyway)",
-                                site, result.cookies)
+                    } finally {
+                        runCatching { session.close() }
+                        log.info("Sign-in session {} released", opened.sessionId)
                     }
                 }
             } catch (e: Exception) {
                 log.warn("Sign-in capture for {} failed: {}", site, e.message)
             } finally {
-                runCatching { session.close() }
                 active.set(null)
-                log.info("Sign-in session {} released", opened.sessionId)
             }
         }.apply {
             name = "signin-capture"

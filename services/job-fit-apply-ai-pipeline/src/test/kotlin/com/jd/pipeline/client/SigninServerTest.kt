@@ -121,6 +121,47 @@ class SigninServerTest {
     }
 
     @Test
+    @DisplayName("two taps racing during a slow open() still produce only one session")
+    fun concurrentTapsOpenOneSession() {
+        // Regression: the in-flight check and the open() were not atomic. open() takes seconds
+        // (createSession + CDP connect) — well inside human double-tap range — so a second tap
+        // arriving mid-open saw an empty slot and built a rival session, which on Steel's single
+        // Chrome closes the first one's login page. The sequential reuse test could not catch this.
+        val opening = java.util.concurrent.CountDownLatch(1)
+        val built = java.util.concurrent.atomic.AtomicInteger(0)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val session = sessionMock(capture = {
+            release.await()
+            SteelSigninSession.Captured(cookies = 1, signedIn = true, timedOut = false, merges = 1)
+        })
+        // A slow open(), so both requests are in flight at the same time.
+        whenever(session.open(any())).thenAnswer {
+            opening.countDown()
+            Thread.sleep(300)
+            SteelSigninSession.Opened("sess-1", "http://tailnet:3000/live", "https://www.linkedin.com/login", 1_800_000)
+        }
+
+        val port = freePort()
+        server = SigninServer(port = port, bindAddr = "127.0.0.1", token = "", alerts = mock()) {
+            built.incrementAndGet(); session
+        }.also { it.start() }
+
+        val url = "http://127.0.0.1:$port/signin?site=LinkedIn"
+        val results = java.util.Collections.synchronizedList(mutableListOf<Pair<Int, String?>>())
+        val t1 = Thread { results.add(get(url)) }
+        val t2 = Thread {
+            opening.await()          // only tap once the first request is inside open()
+            results.add(get(url))
+        }
+        t1.start(); t2.start(); t1.join(10_000); t2.join(10_000)
+
+        assertEquals(1, built.get(), "a racing second tap must not build a rival session")
+        verify(session, times(1)).open(any())
+        assertEquals(listOf(302, 302), results.map { it.first }, "both taps should still reach a live view")
+        release.countDown()
+    }
+
+    @Test
     @DisplayName("a completed sign-in pings the user and always releases the session")
     fun capturePingsAndReleases() {
         val session = sessionMock()
