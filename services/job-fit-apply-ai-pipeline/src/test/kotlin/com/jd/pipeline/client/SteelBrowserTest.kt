@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -83,6 +84,32 @@ class SteelBrowserTest {
     @DisplayName("isAvailable is false when no base URL is configured, without touching the network")
     fun unavailableWhenBaseBlank() {
         assertFalse(SteelBrowser(baseUrl = "").isAvailable())
+    }
+
+    @Test
+    @DisplayName("isAvailable stands down while an interactive sign-in holds the browser")
+    fun defersToInteractiveSignin() {
+        // Steel keeps one Chrome and a session reusing it refreshes the primary page, so scraping
+        // through a live sign-in would keep closing the login page the user is working in. The
+        // backend must not even be probed while the gate is held.
+        val client = mock<SteelClient>()
+        val browser = SteelBrowser(
+            baseUrl = "http://steel:3000",
+            client = client,
+            store = mock(),
+            nanoTime = { 0L },
+            sleep = {},
+        )
+
+        SigninGate.holding {
+            assertFalse(browser.isAvailable(), "scraping must defer to a human signing in")
+        }
+        verify(client, never()).createSession(anyOrNull(), any())
+
+        // Gate released → normal behaviour resumes (this connect fails; the point is that it tried).
+        whenever(client.createSession(anyOrNull(), any())).thenThrow(RuntimeException("Steel down"))
+        assertFalse(browser.isAvailable())
+        verify(client, times(1)).createSession(anyOrNull(), any())
     }
 
     @Test

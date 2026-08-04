@@ -235,9 +235,42 @@ All node-level model variables default to `qwen3.5:9b-q4_K_M`. Override per node
 | `CDP_FORCE_DOMAINS` | _(empty)_ — comma-separated domains that always scrape via the CDP browser (e.g. `glassdoor.com`) |
 | `STEEL_BASE_URL` | _(empty)_ — set to `http://steel:3000` to drive a self-hosted [Steel Browser](https://github.com/steel-dev/steel-browser) instead of host Chrome (sessions + persisted auth + phone re-auth). Blank falls back to `CHROME_CDP_ENDPOINT`. |
 | `STEEL_UI_URL` | _(empty)_ — tailnet base for the interactive debug link in re-auth alerts (open on a phone to sign in) |
+| `STEEL_SIGNIN_PUBLIC_URL` | _(empty)_ — tailnet base for the **tap-to-sign-in** endpoint, e.g. `http://<tailscale-name>:3100`. Setting it is the on/off switch: blank means the endpoint isn't started and re-auth alerts fall back to the short-lived debug link. |
+| `STEEL_SIGNIN_BIND_ADDR` / `STEEL_SIGNIN_PORT` | `127.0.0.1` / `3100` — host interface the endpoint is published on. Set the address to the host's Tailscale IP; never `0.0.0.0`. |
+| `STEEL_SIGNIN_TOKEN` | _(empty)_ — when set, required as `?token=` and included in the alert link. Recommended. |
+| `STEEL_SIGNIN_WINDOW_MS` | `1800000` (30 min) — how long a sign-in session stays open. A ceiling: it closes as soon as the sign-in lands. |
 | `PLAYWRIGHT_TIMEOUT_MS` | `45000` |
 | `PLAYWRIGHT_HEADLESS` | `false` |
 | `PLAYWRIGHT_FALLBACK_ON_CAPTCHA` | `true` |
+
+#### Re-authenticating a job board (Steel)
+
+When a board drops its session, the pipeline sends one Telegram/Discord alert per site. The link in
+that alert goes to the **tap-to-sign-in endpoint**, which creates the browser session *at the moment
+you tap it*:
+
+1. opens a Steel session (30 min) with your persisted cookies injected,
+2. parks it on that board's login page,
+3. redirects you into the interactive live view,
+4. merges cookies into the `storageState` store every 10s until the login wall clears, then pings you.
+
+There is nothing to confirm — capture is continuous, so a sign-in is saved even if you close the tab
+or the window expires. While a sign-in is open the scraper stands down (Steel has one Chrome), so
+browser scrapes fall back to plain HTTP until it finishes.
+
+> **Why not link to the live scrape session?** That session is released when the batch ends (and
+> self-expires after `STEEL_SESSION_TIMEOUT_MS`, 10 min), so by the time you read the alert and tap,
+> there is no page left to sign into. Human latency can't be covered by a pre-created session.
+
+The same flow is available from the CLI, e.g. after a cold start:
+
+```bash
+docker exec jobfit-processor /app/bin/job-fit-apply-ai-pipeline --steel-signin linkedin
+```
+
+It accepts a site name, a host, or a full URL, prints the phone link, and captures automatically —
+no TTY required (press ENTER to finish early if you are at a terminal). Because the boards share
+Google SSO, one sign-in usually refreshes them all.
 
 #### Persistent Chrome over CDP (required for browser scraping)
 

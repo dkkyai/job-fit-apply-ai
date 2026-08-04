@@ -6,6 +6,7 @@ import com.jd.pipeline.client.BrowserFactory
 import com.jd.pipeline.client.CdpBrowser
 import com.jd.pipeline.client.LlmCaller
 import com.jd.pipeline.client.LlmClient
+import com.jd.pipeline.client.SigninServer
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.state.JDState
 import com.microsoft.playwright.Page
@@ -174,7 +175,7 @@ class ScrapeJdNode(
                     // Any authenticated CDP site (LinkedIn, Glassdoor, Jobright, …) that hit a login
                     // or challenge wall: skip it for the batch and send ONE phone re-auth alert.
                     batchAuthExpiredDomains.add(host)
-                    alerts.reauthRequired(e.site, detail = e.message, linkUrl = reauthLink())
+                    alerts.reauthRequired(e.site, detail = e.message, linkUrl = reauthLink(e.site))
                     input.copy(
                         isChromeSessionExpired = true,
                         error = "scrape_jd: ${e.message}"
@@ -415,12 +416,19 @@ class ScrapeJdNode(
         Config.STEEL_BASE_URL.ifBlank { Config.CHROME_CDP_ENDPOINT }
 
     /**
-     * Interactive re-auth link for the sign-in alert: the live Steel session's debug URL when
-     * available (open on a phone over Tailscale), else the configured Steel UI / base URL, else null
-     * (host-Chrome path has no remote link — sign in at the machine).
+     * Interactive re-auth link for the sign-in alert, best first:
+     *
+     *  1. The tap-to-sign-in endpoint ([SigninServer]), which creates a session *when tapped* and
+     *     parks it on [site]'s login page. Preferred because it is the only option that still works
+     *     after this batch ends — which is the normal case, since a human reads the alert minutes to
+     *     hours later.
+     *  2. The live Steel session's debug URL — valid only until this batch closes the session
+     *     (~10 min), so it is a fallback for when the endpoint isn't advertised.
+     *  3. The bare Steel UI / base URL, which has no session behind it at all.
      */
-    private fun reauthLink(): String? =
-        cdpBrowser.debugUrl()
+    private fun reauthLink(site: String): String? =
+        SigninServer.signinUrl(site)
+            ?: cdpBrowser.debugUrl()
             ?: Config.STEEL_UI_URL.ifBlank { Config.STEEL_BASE_URL }.takeIf { it.isNotBlank() }
 
     /** Fire the "browser backend unreachable" alert once per batch, only when a backend is configured. */

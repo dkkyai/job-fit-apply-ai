@@ -256,6 +256,31 @@ object Config {
     // Widened cooldown (ms) while the circuit breaker is open. Default 120s — one full watchdog cycle,
     // long enough for the host watchdog to `docker restart` the wedged Steel container before we re-probe.
     val STEEL_CIRCUIT_OPEN_COOLDOWN_MS: Long = get("STEEL_CIRCUIT_OPEN_COOLDOWN_MS", "120000").toLong()
+    // How long an interactive sign-in session ([SteelSigninSession]) stays open. Sized for human
+    // latency, not scrape latency: the user has to notice the alert, pick up a phone, and get through
+    // an SSO round-trip. Much longer than STEEL_SESSION_TIMEOUT_MS on purpose — that 10-min scrape
+    // window is why a re-auth link is usually dead by the time it's tapped. Default 30 min.
+    val STEEL_SIGNIN_WINDOW_MS: Long = get("STEEL_SIGNIN_WINDOW_MS", "1800000").toLong()
+    // How often a sign-in session exports and merges its cookies. Every poll persists, so the sign-in
+    // survives a closed tab or an expired window; this is just how much of the tail can be lost.
+    // Default 10s — cheap next to a 30-min window.
+    val STEEL_SIGNIN_POLL_MS: Long = get("STEEL_SIGNIN_POLL_MS", "10000").toLong()
+    // Tap-to-sign-in endpoint (SigninServer), hosted in the Processor loop. The re-auth alert links
+    // here instead of at a live scrape session, because that session is released at batch close and
+    // is almost always gone by the time a human taps the link.
+    // Port and bind address. Loopback by default — the endpoint creates browser sessions and hands
+    // out an UNAUTHENTICATED live view, so treat it exactly like the steel service's own port: set
+    // this to the host's tailnet IP to reach it from a phone, never 0.0.0.0.
+    val STEEL_SIGNIN_PORT: Int = get("STEEL_SIGNIN_PORT", "3100").toInt()
+    val STEEL_SIGNIN_BIND_ADDR: String = get("STEEL_SIGNIN_BIND_ADDR", "127.0.0.1")
+    // Tailnet-reachable base for the link put in alerts, e.g. http://<tailscale-host>:3100. Blank
+    // (default) means the endpoint is neither started nor advertised, and re-auth alerts fall back to
+    // the old short-lived debug link — so this single value is the on/off switch.
+    val STEEL_SIGNIN_PUBLIC_URL: String = get("STEEL_SIGNIN_PUBLIC_URL", "")
+    // Optional shared secret. When set, `?token=` is required on every request and is included in the
+    // alert link. Worth setting even on a tailnet: unlike the Steel UI, this endpoint *creates*
+    // sessions, so an accidental fetch of a bare URL is enough to take the browser for 30 minutes.
+    val STEEL_SIGNIN_TOKEN: String = get("STEEL_SIGNIN_TOKEN", "")
 
     // ── Candidate profile / résumé onboarding (--init-profile) ──────────────────
     // Résumé HTML is now rendered deterministically from resume.yaml (no LLM), and the
