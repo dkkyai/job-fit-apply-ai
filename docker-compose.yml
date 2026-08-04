@@ -248,6 +248,15 @@ services:
       # so the empty-override caveat below does not apply.
       STEEL_BASE_URL: "${STEEL_BASE_URL:-}"
       STEEL_UI_URL: "${STEEL_UI_URL:-}"
+      # Tap-to-sign-in endpoint. STEEL_SIGNIN_PUBLIC_URL is the on/off switch: blank (default) and the
+      # endpoint is neither started nor advertised in re-auth alerts. Binds inside the container on
+      # 0.0.0.0 so the published port below can reach it; host-side exposure is what STEEL_SIGNIN_BIND_ADDR
+      # controls, and that defaults to loopback.
+      STEEL_SIGNIN_PUBLIC_URL: "${STEEL_SIGNIN_PUBLIC_URL:-}"
+      STEEL_SIGNIN_TOKEN: "${STEEL_SIGNIN_TOKEN:-}"
+      STEEL_SIGNIN_BIND_ADDR: "0.0.0.0"
+      STEEL_SIGNIN_PORT: "${STEEL_SIGNIN_PORT:-3100}"
+      STEEL_SIGNIN_WINDOW_MS: "${STEEL_SIGNIN_WINDOW_MS:-1800000}"
       # ARTIFACT_BASE_URL is intentionally NOT set here: an empty `${ARTIFACT_BASE_URL:-}` override
       # would win over the mounted /app/.env (real env beats dotenv in Config.get), blanking the
       # report/notification links. The value lives in services/.../pipeline/.env (markserv tailnet URL).
@@ -264,7 +273,13 @@ services:
       # Personal, gitignored inputs at their default PROJECT_DIR-relative locations.
       - ./services/job-fit-apply-ai-pipeline/src/main/resources/resume/resume.yaml:/app/src/main/resources/resume/resume.yaml:ro
       - ./services/job-fit-apply-ai-pipeline/config/candidate_profile.yaml:/app/config/candidate_profile.yaml:ro
-    # No ports — outbound only (bridge, db, host LLMs/CDP, cloud APIs). Healthcheck (exec
+    ports:
+      # Tap-to-sign-in endpoint only. Same rule as the steel service's port: published on the
+      # Tailscale interface so a phone can reach it, loopback by default — it creates browser
+      # sessions and redirects into an unauthenticated live view, so never bind it to 0.0.0.0.
+      # Inert unless STEEL_SIGNIN_PUBLIC_URL is set (the server isn't started otherwise).
+      - "${STEEL_SIGNIN_BIND_ADDR:-127.0.0.1}:${STEEL_SIGNIN_PORT:-3100}:${STEEL_SIGNIN_PORT:-3100}"
+    # Otherwise outbound only (bridge, db, host LLMs/CDP, cloud APIs). Healthcheck (exec
     # --health, heartbeat freshness) is baked into the image.
 
   notifier:

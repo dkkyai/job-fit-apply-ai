@@ -2,6 +2,7 @@ package com.jd.pipeline.cli.commands
 
 import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.ClaimDto
+import com.jd.pipeline.client.SigninServer
 import com.jd.pipeline.client.WorkItemType
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.utils.Heartbeat
@@ -34,6 +35,7 @@ object ProcessorCommandHandler {
         // Messaging (Discord/Telegram) is now a separate Notifier service that consumes the bridge's
         // completed-event stream. The Processor just posts results.
         println("[processor] Starting — polling ${System.getenv("JD_BRIDGE_URL") ?: "http://127.0.0.1:8765"}")
+        startSigninServer()
 
         while (true) {
             // Liveness for the container healthcheck (`--health`). Beats only between jobs, so
@@ -134,6 +136,25 @@ object ProcessorCommandHandler {
                 claimed.jobId, jdRecord, result, System.currentTimeMillis() - jobStartedAt,
             )
         }
+    }
+
+    /**
+     * Bring up the tap-to-sign-in endpoint ([SigninServer]) alongside the loop, so a re-auth alert
+     * can link to something that still works when the user taps it minutes or hours later.
+     *
+     * Gated on STEEL_SIGNIN_PUBLIC_URL: unset (the default) means the endpoint is neither advertised
+     * in alerts nor started, so this is a no-op unless it has been deliberately configured. Failure
+     * to bind is logged, not fatal — job processing is the Processor's actual job, and it must not
+     * fail to start because a convenience port is taken.
+     */
+    private fun startSigninServer() {
+        if (Config.STEEL_SIGNIN_PUBLIC_URL.isBlank()) return
+        if (Config.STEEL_BASE_URL.isBlank()) {
+            println("[processor] Sign-in endpoint not started — STEEL_BASE_URL is unset (Steel disabled).")
+            return
+        }
+        runCatching { SigninServer().start() }
+            .onFailure { System.err.println("[processor] Sign-in endpoint failed to start: ${it.message}") }
     }
 
     /**

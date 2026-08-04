@@ -75,6 +75,13 @@ class SteelBrowser(
     @Synchronized
     override fun isAvailable(): Boolean {
         if (baseUrl.isBlank()) return false
+        // Stand down while a human is signing in: Steel has one Chrome, and a session reusing it
+        // refreshes the primary page, so scraping through a live sign-in would keep closing the very
+        // login page the user is working in. The caller already handles an unavailable backend.
+        if (SigninGate.isActive()) {
+            log.info("Interactive sign-in in progress — deferring browser scraping to it")
+            return false
+        }
         ensureLive()
         return browser?.isConnected == true
     }
