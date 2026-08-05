@@ -25,6 +25,8 @@ dependencies {
     testImplementation("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVersion")
     // Direct `tracks` assertions
     testImplementation("org.postgresql:postgresql:42.7.4")
+    // Read-only bridge-store (SQLite) assertions for the multi-instance scenarios (#56 sc. 9/10)
+    testImplementation("org.xerial:sqlite-jdbc:3.46.1.3")
     testImplementation("ch.qos.logback:logback-classic:1.4.14")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5:1.9.25")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")

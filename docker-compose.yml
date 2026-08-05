@@ -11,7 +11,11 @@ services:
     # Swap to pgvector/pgvector:pg16 when you want embeddings/similarity search
     # (semantic job<->resume matching) in the same database — drop-in, no data change.
     image: postgres:16-alpine
-    container_name: jobfit-db
+    # CONTAINER_PREFIX names every container of an instance (kept explicit — doctor.sh,
+    # e2e-smoke.sh and host watchdog tooling reference the names). The default keeps prod
+    # byte-identical; a second instance sets CONTAINER_PREFIX=jobfit-test in its env file.
+    # See docs/multi-instance.md.
+    container_name: ${CONTAINER_PREFIX:-jobfit}-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-jobfit}
@@ -33,7 +37,7 @@ services:
 
   bridge:
     build: ./services/job-fit-apply-ai-bridge
-    container_name: jobfit-bridge
+    container_name: ${CONTAINER_PREFIX:-jobfit}-bridge
     restart: unless-stopped
     depends_on:
       db:
@@ -69,7 +73,7 @@ services:
       args:
         # Baked into the bundle: the bridge URL the browser calls over the tailnet.
         VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://richards-macbook-m1-max.tail02d0e.ts.net:8765}"
-    container_name: jobfit-frontend
+    container_name: ${CONTAINER_PREFIX:-jobfit}-frontend
     restart: unless-stopped
     ports:
       # Loopback only; reached over the tailnet via `tailscale serve` (docs/tailscale-serve.md).
@@ -83,7 +87,7 @@ services:
 
   markserv:
     build: ./docker/markserv
-    container_name: jobfit-markserv
+    container_name: ${CONTAINER_PREFIX:-jobfit}-markserv
     restart: unless-stopped
     ports:
       # Loopback ONLY — no LAN / 0.0.0.0 exposure. Reached over the tailnet via
@@ -104,8 +108,13 @@ services:
 
   poller:
     build: ./services/job-fit-apply-ai-poller
-    container_name: jobfit-poller
+    container_name: ${CONTAINER_PREFIX:-jobfit}-poller
     restart: unless-stopped
+    # Gmail labels are account-global: two pollers on one account race and double-process.
+    # The intake services are therefore profile-gated so a test instance can exclude them
+    # entirely (COMPOSE_PROFILES empty in its env file). Prod must set COMPOSE_PROFILES=intake
+    # in the repo-root .env — a bare `docker compose up` without it silently drops them.
+    profiles: ["intake"]
     depends_on:
       bridge:
         condition: service_healthy
@@ -126,8 +135,11 @@ services:
 
   jsearch:
     build: ./services/job-fit-apply-ai-jsearch
-    container_name: jobfit-jsearch
+    container_name: ${CONTAINER_PREFIX:-jobfit}-jsearch
     restart: unless-stopped
+    # Profile-gated with the poller (see its note): intake runs only where COMPOSE_PROFILES
+    # activates it — prod yes, test instances no (jobs enter test via scripts/replay-jobs.sh).
+    profiles: ["intake"]
     depends_on:
       bridge:
         condition: service_healthy
@@ -155,7 +167,7 @@ services:
       dockerfile: api/Dockerfile
       args:
         NODE_VERSION: "22.13.0"
-    container_name: jobfit-steel
+    container_name: ${CONTAINER_PREFIX:-jobfit}-steel
     restart: unless-stopped
     # Reap zombies. Steel's own entrypoint runs as PID 1 (a shell), and Chrome — launched with
     # --no-zygote/--no-sandbox — spawns helper + crashpad processes that PID 1 never wait()s on.
@@ -193,7 +205,10 @@ services:
       # Publish the API/UI (and thus the interactive debug URL) on the Tailscale interface only —
       # set STEEL_BIND_ADDR to the host's tailnet IP in the repo-root .env so a phone can reach it.
       # Defaults to loopback (safe): the Steel UI has NO auth, so never bind it to 0.0.0.0.
-      - "${STEEL_BIND_ADDR:-127.0.0.1}:3000:3000"
+      # STEEL_PORT moves only the HOST side (a second instance publishes 23000); the container
+      # side stays 3000 — in-network consumers (STEEL_BASE_URL=http://steel:3000, the healthcheck,
+      # DOMAIN) are per-project-network and never change.
+      - "${STEEL_BIND_ADDR:-127.0.0.1}:${STEEL_PORT:-3000}:3000"
     healthcheck:
       # Probe REAL session creation (POST /v1/sessions), not just GET /v1/sessions. When Steel is
       # wedged (Chrome can't launch — see the SingletonLock/zombie note above — or a reused primary
@@ -214,7 +229,7 @@ services:
 
   processor:
     build: ./services/job-fit-apply-ai-pipeline
-    container_name: jobfit-processor
+    container_name: ${CONTAINER_PREFIX:-jobfit}-processor
     restart: unless-stopped
     depends_on:
       bridge:
@@ -268,8 +283,11 @@ services:
       - "${JD_PIPELINE_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/pipeline-state}:/app/state"
       # Pipeline secrets + per-node model config (gitignored). dotenv reads /app/.env; real env
       # vars above win over it (Config.get precedence), so host-specific endpoints inside are
-      # safely overridden.
-      - ./services/job-fit-apply-ai-pipeline/.env:/app/.env:ro
+      # safely overridden. PIPELINE_ENV_FILE lets a second instance mount its own copy
+      # (ARTIFACT_BASE_URL must differ per instance and cannot come from compose `environment:`
+      # — see the blank-override note above). This is also the A/B lever: change models/config
+      # for a test instance in its file only.
+      - ${PIPELINE_ENV_FILE:-./services/job-fit-apply-ai-pipeline/.env}:/app/.env:ro
       # Personal, gitignored inputs at their default PROJECT_DIR-relative locations.
       - ./services/job-fit-apply-ai-pipeline/src/main/resources/resume/resume.yaml:/app/src/main/resources/resume/resume.yaml:ro
       - ./services/job-fit-apply-ai-pipeline/config/candidate_profile.yaml:/app/config/candidate_profile.yaml:ro
@@ -284,7 +302,7 @@ services:
 
   notifier:
     build: ./services/job-fit-apply-ai-notifier
-    container_name: jobfit-notifier
+    container_name: ${CONTAINER_PREFIX:-jobfit}-notifier
     restart: unless-stopped
     depends_on:
       bridge:

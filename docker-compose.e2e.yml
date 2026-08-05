@@ -13,9 +13,14 @@
 # Frontend/Steel are not started by the e2e targets; `depends_on: !override` on the
 # processor drops the Steel health dependency, and a JD_SCRAPED job never scrapes.
 #
-# Run `scripts/e2e-ci-prepare.sh` first — it creates ./.e2e/* including the
+# Run `scripts/e2e-ci-prepare.sh` first — it creates ${E2E_STATE_DIR:-./.e2e}/* including the
 # pipeline dotenv file (a *file* bind-mount source: if it does not exist Docker
 # silently creates a directory in its place and the app breaks at runtime).
+#
+# E2E_STATE_DIR moves ALL of the slice's bind-mount sources at once (default ./.e2e).
+# The multi-instance acceptance scenarios (#56 sc. 9/10) use it to run a second,
+# "source"-shaped slice from ./.e2e-src under its own COMPOSE_PROJECT_NAME and ports —
+# see `make e2e-multi` and E2eConfig's E2E_SOURCE_* variables.
 #
 # Requires Docker Compose >= 2.24 for the `!override` YAML tag.
 #
@@ -47,7 +52,7 @@ services:
       - "127.0.0.1:${E2E_BRIDGE_PORT:-18765}:8765"
     volumes:
       # Fresh, repo-local queue store — never the production ~/.openclaw/jd-bridge.
-      - ./.e2e/bridge-store:/data
+      - ${E2E_STATE_DIR:-./.e2e}/bridge-store:/data
 
   markserv:
     container_name: "${COMPOSE_PROJECT_NAME:-jobfit-e2e}-markserv"
@@ -56,7 +61,7 @@ services:
     ports: !override
       - "127.0.0.1:${E2E_MARKSERV_PORT:-18082}:8081"
     volumes:
-      - ./.e2e/output:/data:ro
+      - ${E2E_STATE_DIR:-./.e2e}/output:/data:ro
 
   # Keep these production-only ingestion services out of a direct merged-compose `up`.
   # Their mounts remain explicitly redirected so an intentional profile activation is
@@ -64,7 +69,7 @@ services:
   poller:
     profiles: ["e2e-disabled"]
     volumes:
-      - ./.e2e/poller-secrets:/secrets
+      - ${E2E_STATE_DIR:-./.e2e}/poller-secrets:/secrets
 
   jsearch:
     profiles: ["e2e-disabled"]
@@ -72,7 +77,7 @@ services:
       # Never inherit a developer's production quota credential in an explicitly enabled profile.
       JSEARCH_API_KEY: ""
     volumes:
-      - ./.e2e/jsearch-state:/state
+      - ${E2E_STATE_DIR:-./.e2e}/jsearch-state:/state
 
   processor:
     container_name: "${COMPOSE_PROJECT_NAME:-jobfit-e2e}-processor"
@@ -96,11 +101,11 @@ services:
       # Never reach for Steel or a host Chrome in e2e — JD_SCRAPED jobs skip scraping.
       STEEL_BASE_URL: ""
     volumes:
-      - ./.e2e/output:/app/output
-      - ./.e2e/state:/app/state
+      - ${E2E_STATE_DIR:-./.e2e}/output:/app/output
+      - ${E2E_STATE_DIR:-./.e2e}/state:/app/state
       # Written by scripts/e2e-ci-prepare.sh (carries ARTIFACT_BASE_URL — dotenv, not
       # compose env, because an empty compose var would win over the mounted file).
-      - ./.e2e/pipeline.env:/app/.env:ro
+      - ${E2E_STATE_DIR:-./.e2e}/pipeline.env:/app/.env:ro
       # Committed synthetic fixtures mounted straight in — the real files are never copied over.
       - ./services/job-fit-apply-ai-e2e/fixtures/resume.yaml:/app/src/main/resources/resume/resume.yaml:ro
       - ./services/job-fit-apply-ai-e2e/fixtures/candidate_profile.yaml:/app/config/candidate_profile.yaml:ro
@@ -131,4 +136,4 @@ services:
       # assertions fail with no hint that their private .env is the cause.
       NOTIFICATION_FIT_THRESHOLD: "50"
     volumes:
-      - ./.e2e/notifier-state:/state
+      - ${E2E_STATE_DIR:-./.e2e}/notifier-state:/state

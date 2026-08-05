@@ -240,8 +240,13 @@ The containers and worker must be up before the cron jobs fire — run `make doc
 | `make logs` | Tail container logs |
 | `make e2e` | Full black-box E2E cycle on an isolated compose slice (up + run + down) |
 | `make e2e-up` / `e2e-run` / `e2e-down` | Same, split — `e2e-run` is the fast ad-hoc loop |
+| `make e2e-multi` | Dual-slice E2E: adds a prod-shaped "source" slice + the multi-instance scenarios |
 | `make e2e-logs` | Tail the e2e slice's container logs |
 | `make e2e-smoke` | Legacy full-fat smoke against the REAL stack + real local models |
+| `make replay ARGS="--last 1"` | Replay prod bridge jobs into the test instance (`scripts/replay-jobs.sh`) |
+
+Every stack-facing target takes `INSTANCE=<name>` (default `prod`) — e.g. `make up INSTANCE=test`
+drives a second, fully isolated stack from `.env.test`. See [docs/multi-instance.md](docs/multi-instance.md).
 
 ---
 

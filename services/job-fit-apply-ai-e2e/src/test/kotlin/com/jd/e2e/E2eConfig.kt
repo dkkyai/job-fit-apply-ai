@@ -72,13 +72,50 @@ object E2eConfig {
     /** Host-side view of the processor's /app/output mount. Relative to this module dir. */
     val outputDir: Path = Paths.get(get("E2E_OUTPUT_DIR", "../../.e2e/output")).toAbsolutePath().normalize()
 
+    /** Host-side view of the whole test slice's state dir (bridge store, notifier cursor…). */
+    val stateDir: Path = Paths.get(get("E2E_STATE_DIR", "../../.e2e")).toAbsolutePath().normalize()
+
     val fixturesDir: Path = Paths.get(get("E2E_FIXTURES_DIR", "fixtures")).toAbsolutePath().normalize()
 
-    fun pgConnection(): Connection {
-        val uri = URI(databaseUrl.removePrefix("jdbc:"))
+    // ── Second, "source"-shaped slice (multi-instance scenarios 9/10, issue #56) ──
+    // Present only when `make e2e-multi` / the CI e2e job started the source slice; the
+    // multi-instance test classes assume-skip when E2E_SOURCE_BRIDGE_URL is unset, so a
+    // plain `make e2e` stays green with no extra containers.
+
+    /** Null when no source slice is running — the multi-instance scenarios skip then. */
+    val sourceBridgeUrl: String? =
+        System.getenv("E2E_SOURCE_BRIDGE_URL")?.takeIf { it.isNotBlank() }?.trimEnd('/')
+
+    val sourceConfigured: Boolean get() = sourceBridgeUrl != null
+
+    val sourceDatabaseUrl: String =
+        get("E2E_SOURCE_DATABASE_URL", "postgresql://jobfit:jobfit@127.0.0.1:15434/jobfit")
+
+    /** Host-side view of the source slice's state dir (its bridge store, notifier cursor…). */
+    val sourceStateDir: Path =
+        Paths.get(get("E2E_SOURCE_STATE_DIR", "../../.e2e-src")).toAbsolutePath().normalize()
+
+    /** Compose project names, for container-level isolation assertions (docker ps/inspect). */
+    val sourceProject: String = get("E2E_SOURCE_PROJECT", "jobfit-e2e-src")
+    val testProject: String = get("E2E_PROJECT", "jobfit-e2e")
+
+    fun pgConnection(): Connection = pgConnection(databaseUrl)
+
+    fun sourcePgConnection(): Connection = pgConnection(sourceDatabaseUrl)
+
+    private fun pgConnection(url: String): Connection {
+        val uri = URI(url.removePrefix("jdbc:"))
         val userInfo = (uri.userInfo ?: "jobfit:jobfit").split(":", limit = 2)
         val port = if (uri.port > 0) uri.port else 5432
         val jdbc = "jdbc:postgresql://${uri.host}:$port${uri.path}"
         return DriverManager.getConnection(jdbc, userInfo[0], userInfo.getOrElse(1) { "" })
+    }
+
+    /** Read-only JDBC connection to a bridge instance's SQLite store on the host. */
+    fun bridgeStoreConnection(storeDir: Path): Connection {
+        val db = storeDir.resolve("bridge-store/jobs.db")
+        check(java.nio.file.Files.exists(db)) { "no bridge store at $db — is the slice up?" }
+        val props = java.util.Properties().apply { setProperty("open_mode", "1") } // SQLITE_OPEN_READONLY
+        return DriverManager.getConnection("jdbc:sqlite:$db", props)
     }
 }

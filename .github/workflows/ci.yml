@@ -509,6 +509,23 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml \
             up -d --wait --wait-timeout 300 db bridge markserv processor notifier
 
+      # Second, prod-shaped "source" slice for the multi-instance acceptance scenarios
+      # (#56 sc. 9/10): own project name, ports, and ./.e2e-src state; db/bridge/markserv/
+      # notifier only — no processor, no intake. Reuses the images baked above, so this
+      # adds container start time, not build time. CI never mounts real production data:
+      # both slices are repo-local synthetic state.
+      - name: Start the source slice (multi-instance scenarios)
+        env:
+          COMPOSE_PROJECT_NAME: jobfit-e2e-src
+          E2E_STATE_DIR: ./.e2e-src
+          E2E_POSTGRES_PORT: '15434'
+          E2E_BRIDGE_PORT: '19765'
+          E2E_MARKSERV_PORT: '19082'
+        run: |
+          E2E_STATE_DIR=.e2e-src ./scripts/e2e-ci-prepare.sh --fresh
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml \
+            up -d --wait --wait-timeout 240 db bridge markserv notifier
+
       - name: Dump container logs if the slice never came up
         if: failure()
         run: |
@@ -522,7 +539,23 @@ jobs:
 
       - name: Run e2e suite
         working-directory: services/job-fit-apply-ai-e2e
+        env:
+          # Presence of E2E_SOURCE_BRIDGE_URL is what activates MultiInstanceE2ETest.
+          E2E_SOURCE_BRIDGE_URL: http://127.0.0.1:19765
+          E2E_SOURCE_DATABASE_URL: postgresql://jobfit:jobfit@127.0.0.1:15434/jobfit
+          E2E_SOURCE_STATE_DIR: ../../.e2e-src
+          E2E_SOURCE_PROJECT: jobfit-e2e-src
+          E2E_PROJECT: jobfit-e2e
         run: chmod +x ./gradlew && ./gradlew test
+
+      # Scenario 9's teardown clause: stopping/resetting the test instance must leave the
+      # source instance healthy. The job-level COMPOSE_PROJECT_NAME targets the test slice.
+      - name: Stop the test slice and verify the source slice survives
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.e2e.yml down --remove-orphans
+          curl -sf http://127.0.0.1:19765/health
+          [ "$(docker inspect -f '{{.State.Health.Status}}' jobfit-e2e-src-bridge)" = healthy ]
+          echo "source slice healthy after test-slice teardown"
 
       - name: Dump compose logs
         if: failure()
@@ -557,6 +590,9 @@ jobs:
         if: always()
         run: |
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml \
+            down -v --remove-orphans || true
+          COMPOSE_PROJECT_NAME=jobfit-e2e-src E2E_STATE_DIR=./.e2e-src \
+            docker compose -f docker-compose.yml -f docker-compose.e2e.yml \
             down -v --remove-orphans || true
 
   # ── 6. Allure Report — collect, generate, publish ───────────────────────────

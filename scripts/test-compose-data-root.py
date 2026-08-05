@@ -21,9 +21,13 @@ def compose_config(*files: Path, environment: dict[str, str]) -> dict:
     env = os.environ.copy()
     for name in (
         "COMPOSE_ENV_FILES",
+        "COMPOSE_PROFILES",
         "JFAA_DATA_ROOT",
         "JD_PIPELINE_OUTPUT_HOST",
         "JD_PIPELINE_STATE_HOST",
+        "PIPELINE_ENV_FILE",
+        "CONTAINER_PREFIX",
+        "E2E_STATE_DIR",
     ):
         env.pop(name, None)
     env.update(environment)
@@ -238,6 +242,74 @@ def test_e2e_overlay_replaces_production_sources() -> None:
         assert str(sentinel) not in rendered, f"production path leaked into E2E config: {sentinel}"
 
 
+def test_pipeline_env_file_override() -> None:
+    """PIPELINE_ENV_FILE moves the processor's /app/.env mount; the default is the repo copy.
+
+    This is the per-instance A/B lever from #51 — ARTIFACT_BASE_URL must differ per
+    instance and cannot come from compose `environment:` (blank-override hazard), so the
+    dotenv mount source itself is what a second instance repoints.
+    """
+    default = compose_config(BASE, environment={})
+    assert_mount(
+        default,
+        "processor",
+        "/app/.env",
+        ROOT / "services/job-fit-apply-ai-pipeline/.env",
+        read_only=True,
+    )
+
+    override = Path("/tmp/instance pipeline.env")
+    config = compose_config(BASE, environment={"PIPELINE_ENV_FILE": str(override)})
+    assert_mount(config, "processor", "/app/.env", override, read_only=True)
+
+
+def test_instance_identity_parameterization() -> None:
+    """CONTAINER_PREFIX/STEEL_PORT default to prod values; profiles gate the intake pair.
+
+    Prod byte-compatibility: with no variables set, every container_name is jobfit-* and
+    steel publishes host port 3000 — and poller/jsearch exist only when COMPOSE_PROFILES
+    activates `intake` (prod's .env sets it; a test instance leaves it empty).
+    """
+    prod = compose_config(BASE, environment={"COMPOSE_PROFILES": "intake"})
+    services = prod["services"]
+    for name in ("db", "bridge", "frontend", "markserv", "poller", "jsearch", "steel", "processor", "notifier"):
+        actual = services[name]["container_name"]
+        assert actual == f"jobfit-{name}", f"{name} container_name was {actual}"
+    steel_ports = {p["published"] for p in services["steel"]["ports"]}
+    assert "3000" in steel_ports, f"steel must publish 3000 by default, got {steel_ports}"
+
+    test_instance = compose_config(
+        BASE,
+        environment={"CONTAINER_PREFIX": "jobfit-test", "STEEL_PORT": "23000"},
+    )
+    services = test_instance["services"]
+    assert "poller" not in services, "poller must not exist without the intake profile"
+    assert "jsearch" not in services, "jsearch must not exist without the intake profile"
+    assert services["bridge"]["container_name"] == "jobfit-test-bridge"
+    steel_ports = {p["published"] for p in services["steel"]["ports"]}
+    assert "23000" in steel_ports, f"STEEL_PORT must move the host port, got {steel_ports}"
+
+
+def test_e2e_state_dir_moves_all_slice_state() -> None:
+    """E2E_STATE_DIR relocates every slice bind-mount at once (the source-slice mechanism).
+
+    The multi-instance scenarios (#56 sc. 9/10) run a second slice from ./.e2e-src; a
+    mount that ignores the variable would silently share state between the two slices.
+    """
+    config = compose_config(BASE, E2E, environment={"E2E_STATE_DIR": "./.e2e-src"})
+    src = ROOT / ".e2e-src"
+    assert_mount(config, "bridge", "/data", src / "bridge-store", read_only=False)
+    assert_mount(config, "markserv", "/data", src / "output", read_only=True)
+    assert_mount(config, "processor", "/app/output", src / "output", read_only=False)
+    assert_mount(config, "processor", "/app/state", src / "state", read_only=False)
+    assert_mount(config, "processor", "/app/.env", src / "pipeline.env", read_only=True)
+    assert_mount(config, "notifier", "/state", src / "notifier-state", read_only=False)
+
+    rendered = json.dumps(config)
+    # Trailing separator on purpose: ".e2e-src/…" must not match the ".e2e/…" needle.
+    assert f"{ROOT / '.e2e'}/" not in rendered, "a default-.e2e path leaked past E2E_STATE_DIR"
+
+
 def main() -> None:
     tests = (
         test_portable_fallback,
@@ -246,6 +318,9 @@ def main() -> None:
         test_harness_is_isolated_from_repository_dotenv,
         test_documented_exact_mirror_helper,
         test_e2e_overlay_replaces_production_sources,
+        test_pipeline_env_file_override,
+        test_instance_identity_parameterization,
+        test_e2e_state_dir_moves_all_slice_state,
     )
     for test in tests:
         test()
