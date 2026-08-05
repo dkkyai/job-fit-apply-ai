@@ -150,7 +150,14 @@ PIPELINE_STATE="$(jfaa_pipeline_state)"
 for pair in "output:$PIPELINE_OUTPUT:$(jfaa_legacy_pipeline_output)" \
             "state:$PIPELINE_STATE:$(jfaa_legacy_pipeline_state)"; do
   what="${pair%%:*}"; rest="${pair#*:}"; cur="${rest%%:*}"; legacy="${rest#*:}"
-  if jfaa_unmigrated "$legacy" "$cur"; then
+  # The legacy tree is prod's pre-#67 repo-local directory — comparing it against a named
+  # instance's root is meaningless (a fresh instance root is empty by design, and would
+  # always misfire "unmigrated" against prod's old data). Only prod's default .env runs
+  # this check; see the matching skip in the Makefile's data-root-check target.
+  if [ "$ENV_FILE" != ".env" ]; then
+    if [ -d "$cur" ]; then ok "pipeline $what: $cur"
+    else warn "pipeline $what dir does not exist yet: $cur (docker will create it on first start)"; fi
+  elif jfaa_unmigrated "$legacy" "$cur"; then
     bad "pipeline $what NOT migrated — $legacy has data, $cur is empty (see docs/data-root-migration.md)"
   elif [ -d "$cur" ]; then ok "pipeline $what: $cur"
   else warn "pipeline $what dir does not exist yet: $cur (docker will create it on first start)"; fi
