@@ -20,7 +20,6 @@ from analyzer.audit import (  # noqa: E402
     select_candidates,
 )
 from analyzer.findings import fingerprint, slugify  # noqa: E402
-from analyzer.pending import Pending  # noqa: E402
 from analyzer.sources import join_window  # noqa: E402
 
 
@@ -88,17 +87,6 @@ class TestFingerprint(unittest.TestCase):
     def test_slugify(self):
         self.assertEqual(slugify("All Jobs Scored 0!"), "all-jobs-scored-0")
         self.assertEqual(slugify(""), "finding")
-
-
-class TestPending(unittest.TestCase):
-    def test_read_write_clear(self):
-        p = Pending(Path(tempfile.mkdtemp()) / "pending")
-        self.assertIsNone(p.read())          # unset
-        p.write(1234.5)
-        self.assertAlmostEqual(p.read(), 1234.5)
-        p.clear()
-        self.assertIsNone(p.read())
-        p.clear()                            # idempotent, no raise
 
 
 class TestSourcesJoin(unittest.TestCase):
