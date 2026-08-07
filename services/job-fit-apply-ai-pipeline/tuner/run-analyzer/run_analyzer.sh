@@ -22,6 +22,7 @@
 #   Analysis context:
 #     RUN_ANALYZER_CONTEXT_N       rolling context-window size          (default 40)
 #     RUN_ANALYZER_RESOLVE_RUNS    runs each side of a merge to judge outcome (default 3)
+#     RUN_ANALYZER_RESOLVE_MIN_JOBS jobs each side of a merge to judge outcome (default 30)
 #
 set -uo pipefail
 

@@ -39,6 +39,7 @@ FINDINGS_LEDGER_FILE = Path(ENV.get("FINDINGS_LEDGER_FILE", "state/findings_ledg
 AUTOFIX_LEDGER_FILE = Path(ENV.get("LEDGER_FILE", "state/autofix_ledger.jsonl"))
 BASELINE_WINDOW = int(ENV.get("RUN_ANALYZER_BASELINE_WINDOW", "10"))
 RESOLVE_RUNS = int(ENV.get("RUN_ANALYZER_RESOLVE_RUNS", "3"))
+RESOLVE_MIN_JOBS = int(ENV.get("RUN_ANALYZER_RESOLVE_MIN_JOBS", str(outcomes.MIN_RESOLVE_JOBS)))
 SKILL = Path(ENV["SKILL_FILE"]).read_text()
 PROMPT = Path(ENV["PROMPT_FILE"]).read_text()
 MODEL = ENV.get("MODEL", "Qwen3.5-9B-OptiQ-4bit")
@@ -93,8 +94,9 @@ def build_user_prompt(metrics, ctx_metrics, prior, base, recs, context, det_find
         f"RECENT_CONTEXT_METRICS (over the last {len(context)} completed jobs — use these for "
         f"rates, per-board patterns, and regression judgement; the batch may be small):\n{json.dumps(ctx_metrics)}\n\n"
         f"PRIOR_METRICS (immediately previous run):\n{json.dumps(prior)}\n\n"
-        f"ROLLING_BASELINE (median over the last {BASELINE_WINDOW} runs — a metric moving off "
-        f"this median is a regression even if absolute counts look fine):\n{json.dumps(base)}\n\n"
+        f"ROLLING_BASELINE (job-weighted median over the last {BASELINE_WINDOW} runs, so small "
+        f"windows count less — a metric moving off this median is a regression even if absolute "
+        f"counts look fine):\n{json.dumps(base)}\n\n"
         f"RUN_REPORT ({len(recs)} NEW job record(s) this batch, one JSON per line — focus findings here):\n"
         + "\n".join(json.dumps(r) for r in recs)
         + f"\n\nCONTEXT_WINDOW ({len(context)} recent job record(s) for backdrop only, do not re-report old issues):\n"
@@ -178,7 +180,7 @@ def main():
         outcomes.reconcile_merges(AUTOFIX_LEDGER_FILE)
         oc = outcomes.check_outcomes(
             findings_ledger.load(FINDINGS_LEDGER_FILE), AUTOFIX_LEDGER_FILE,
-            HISTORY_FILE, k=RESOLVE_RUNS)
+            HISTORY_FILE, k=RESOLVE_RUNS, min_jobs=RESOLVE_MIN_JOBS)
         resolved, regressed = oc["resolved"], oc["regressed"]
         if resolved:
             findings_ledger.mark_resolved(FINDINGS_LEDGER_FILE, resolved, RUN_TS)

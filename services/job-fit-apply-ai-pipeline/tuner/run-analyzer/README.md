@@ -29,8 +29,13 @@ feed (`GET /api/jobs/completed`) with its own independent cursor.
 6. **Delta + notify** — classify each finding vs the findings ledger as NEW / WORSENING / UNCHANGED;
    Discord/Telegram is pinged **only for what changed** (steady state stays quiet).
 7. **Outcome loop** — reconcile merged autofix PRs (`gh`), then check whether each fixed finding's
-   target metric recovered over `RESOLVE_RUNS` runs before vs after the merge → **resolved**
-   (auto-retire) or **regressed** (fix didn't help).
+   target metric recovered before vs after the merge → **resolved** (auto-retire) or
+   **regressed** (fix didn't help). A verdict needs `RESOLVE_RUNS` runs *and*
+   `RESOLVE_MIN_JOBS` jobs on each side; thinner evidence defers to a later run.
+
+Trend metrics are **job-weighted**: a run's rate is an estimate whose precision scales with its
+window size (a 1-job window reports 0.0 or 1.0 and nothing between), so the rolling baseline and
+the outcome medians weight each run by `window_jobs` rather than counting runs equally.
 
 Empty windows exit before any model call, so frequent scheduling is cheap.
 
@@ -80,6 +85,7 @@ Config (env; `run_analyzer.sh` also reads these from
 | `RUN_ANALYZER_CONTEXT_N` | `40` | rolling context-window size |
 | `RUN_ANALYZER_AUDIT_MAX` | `8` | max jobs deep-audited per run (0 disables) |
 | `RUN_ANALYZER_RESOLVE_RUNS` | `3` | runs each side of a merge to judge outcome |
+| `RUN_ANALYZER_RESOLVE_MIN_JOBS` | `30` | jobs each side of a merge to judge outcome (runs alone are not evidence) |
 | `RUN_ANALYZER_AUTOFIX` | *(off)* | set `1` to arm the `--autofix` loop |
 | `RUN_ANALYZER_AUTOFIX_SEVERITY` | `high` | min severity to auto-fix (`high` \| `medium` \| `low`) |
 | `MLX_LOCAL_BASE_URL` / `MLX_API_KEY` | oMLX local | OpenAI-wire backend |
@@ -113,11 +119,12 @@ LLM, or live services). Run from this directory:
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-`tests/test_units.py` covers the pure logic (metrics, history/baseline, fingerprint, pending,
+`tests/test_units.py` covers the pure logic (metrics, history/job-weighted baseline, fingerprint,
 run_log join, audit grounding/triage); `tests/test_findings_ledger.py` the NEW/WORSENING/UNCHANGED
 classifier; `tests/test_detectors.py` the deterministic detectors (per-board grouping, share-gating);
 `tests/test_outcomes.py` the finding→fix→outcome loop (merge reconciliation, metric-recovery
-resolved/regressed); `tests/test_integration.py` cursor-window decisions and the full
+resolved/regressed, and the job-mass floor that stops tiny windows auto-retiring a finding);
+`tests/test_integration.py` cursor-window decisions and the full
 `analyze.py` flow (delta + ledger + history, cross-run dedup, deterministic-findings-survive-outage,
 malformed-model degradation). Also run in CI
 (`.github/workflows/ci.yml` → `run-analyzer`).
