@@ -2,7 +2,7 @@
 <!--
   launchd agent: run-analyzer AUTO-FIX pass (gated; twice daily).
 
-  Runs run_analyzer.sh in autofix mode at 07:00 and 19:00 local time. This pass is
+  Runs run_analyzer.sh in autofix mode at 07:00 and 19:00 local time.
   The code defaults OFF unless RUN_ANALYZER_AUTOFIX=1; this deployed plist explicitly arms it.
   When armed it maintains ONE living draft PR: it applies fixes for new high-severity findings
   on an isolated worktree branch, gates each with `./gradlew test`, opens/updates a DRAFT PR
