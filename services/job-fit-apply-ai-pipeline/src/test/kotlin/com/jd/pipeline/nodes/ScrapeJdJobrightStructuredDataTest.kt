@@ -104,4 +104,59 @@ class ScrapeJdJobrightStructuredDataTest {
         assertEquals("Senior Level", result.seniorityLevel)
         assertEquals("Bellevue, WA", result.location)
     }
+
+    @Test
+    @DisplayName("uses JSON-LD salary and multi-location fallbacks when client data is absent")
+    fun usesJsonLdMetadataFallbacks() {
+        val rawHtml = """
+            <script type="application/ld+json">{
+              "@type":"JobPosting",
+              "jobLocation":[
+                {"address":{"addressLocality":"Seattle","addressRegion":"WA"}},
+                {"address":{"addressLocality":"Portland","addressRegion":"OR"}}
+              ],
+              "baseSalary":{"value":{"minValue":165000}},
+              "employmentType":["CONTRACT"]
+            }</script>
+        """.trimIndent()
+
+        val result = node.applyJobrightRawPageMetadata(JDState(), rawHtml)
+
+        assertEquals("${'$'}165K+", result.salaryRange)
+        assertEquals("Contract", result.employmentType)
+        assertEquals("Seattle, WA", result.location)
+        assertEquals("unknown", result.remotePolicy)
+        assertTrue(result.seniorityLevel.isBlank())
+    }
+
+    @Test
+    @DisplayName("does not overwrite any authoritative metadata with raw Jobright values")
+    fun preservesAllExistingReportMetadata() {
+        val rawHtml = """
+            <script type="application/ld+json">{
+              "@type":"JobPosting",
+              "jobLocation":{"address":{"addressLocality":"Bellevue","addressRegion":"WA"}},
+              "baseSalary":{"value":{"minValue":148000,"maxValue":224000}},
+              "employmentType":"FULL_TIME"
+            }</script>
+            <script>
+              window.__JOBRIGHT_DATA__={"salaryDesc":"${'$'}148K/yr - ${'$'}224K/yr","workModel":"Hybrid","jobSeniority":"Senior Level","jobLocation":"Bellevue, WA"};
+            </script>
+        """.trimIndent()
+        val existing = JDState(
+            salaryRange = "${'$'}250K - ${'$'}300K",
+            remotePolicy = "Remote",
+            employmentType = "Part-time",
+            seniorityLevel = "Principal",
+            location = "Austin, TX",
+        )
+
+        val result = node.applyJobrightRawPageMetadata(existing, rawHtml)
+
+        assertEquals(existing.salaryRange, result.salaryRange)
+        assertEquals(existing.remotePolicy, result.remotePolicy)
+        assertEquals(existing.employmentType, result.employmentType)
+        assertEquals(existing.seniorityLevel, result.seniorityLevel)
+        assertEquals(existing.location, result.location)
+    }
 }
