@@ -75,4 +75,33 @@ class ScrapeJdJobrightStructuredDataTest {
         val result = node.applyJobrightStructuredData(input, empty)
         assertTrue(result === input, "unchanged state should be returned by reference for the log signal")
     }
+
+    @Test
+    @DisplayName("extracts report metadata from Jobright raw HTML when __NEXT_DATA__ omits it")
+    fun extractsMetadataFromRawHtml() {
+        // Salesforce's captured Jobright page has these values in an embedded client-data payload,
+        // outside __NEXT_DATA__. The report must retain every value rather than showing "—".
+        val rawHtml = """
+            <html><head>
+              <script type="application/ld+json">{
+                "@type":"JobPosting",
+                "description":"${"A".repeat(120)}",
+                "jobLocation":{"address":{"addressLocality":"Bellevue","addressRegion":"WA"}},
+                "baseSalary":{"value":{"minValue":148000,"maxValue":224000,"unitText":"YEAR"}},
+                "employmentType":"FULL_TIME"
+              }</script>
+              <script>
+                window.__JOBRIGHT_DATA__={"salaryDesc":"${'$'}148K/yr - ${'$'}224K/yr","workModel":"Hybrid","jobSeniority":"Senior Level"};
+              </script>
+            </head></html>
+        """.trimIndent()
+
+        val result = node.applyJobrightRawPageMetadata(JDState(), rawHtml)
+
+        assertEquals("${'$'}148K/yr - ${'$'}224K/yr", result.salaryRange)
+        assertEquals("Hybrid", result.remotePolicy)
+        assertEquals("Full-time", result.employmentType)
+        assertEquals("Senior Level", result.seniorityLevel)
+        assertEquals("Bellevue, WA", result.location)
+    }
 }
