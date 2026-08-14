@@ -725,6 +725,13 @@ class ScrapeJdNode(
             }
         }
 
+        // Jobright also exposes report metadata in client-data scripts and JSON-LD outside
+        // __NEXT_DATA__. Salesforce's page keeps salary, work model, and seniority there.
+        // Read it before the LLM so optional facts it omits cannot turn into report placeholders.
+        if (isJobrightUrl(url)) {
+            state = applyJobrightRawPageMetadata(state, content)
+        }
+
         try {
             val llmResponse = llm.call(prompt)
             // LLM overrides only blank Jobright fields — structured extraction takes precedence for jd_text
@@ -1008,6 +1015,71 @@ class ScrapeJdNode(
             log("[scrape_jd] Jobright __NEXT_DATA__ parse failed: ${e.message}")
             state
         }
+    }
+
+    /**
+     * Fills metadata Jobright keeps in raw client-data scripts or JSON-LD rather than its
+     * __NEXT_DATA__ job object. Existing values remain authoritative.
+     */
+    internal fun applyJobrightRawPageMetadata(state: JDState, rawHtml: String): JDState {
+        fun rawString(key: String): String {
+            val pattern = Regex("[\\\"']${Regex.escape(key)}[\\\"']\\s*:\\s*[\\\"']([^\\\"']+)[\\\"']")
+            return pattern.find(rawHtml)?.groupValues?.get(1)?.trim().orEmpty()
+        }
+
+        var s = state
+        val rawSalary = rawString("salaryDesc").ifBlank { rawString("salaryString") }
+        if (s.salaryRange.isBlank() && rawSalary.isNotBlank()) s = s.copy(salaryRange = rawSalary)
+        if (s.remotePolicy.isBlank() || s.remotePolicy == "unknown") {
+            rawString("workModel").takeIf { it.isNotBlank() }?.let { s = s.copy(remotePolicy = it) }
+        }
+        if (s.seniorityLevel.isBlank()) {
+            rawString("jobSeniority").takeIf { it.isNotBlank() }?.let { s = s.copy(seniorityLevel = it) }
+        }
+        if (s.employmentType.isBlank()) {
+            rawString("employmentType").takeIf { it.isNotBlank() }?.let {
+                s = s.copy(employmentType = normalizeEmploymentType(it))
+            }
+        }
+        if (s.location.isBlank() || s.location == "unknown") {
+            rawString("jobLocation").takeIf { it.isNotBlank() }?.let { s = s.copy(location = it) }
+        }
+
+        val posting = Jsoup.parse(rawHtml).select("script[type=application/ld+json]")
+            .asSequence()
+            .mapNotNull { script -> runCatching { mapper.readTree(script.data().trim()) }.getOrNull() }
+            .mapNotNull(::findJobPostingNode)
+            .firstOrNull()
+            ?: return s
+
+        if (s.location.isBlank() || s.location == "unknown") {
+            val address = posting.path("jobLocation").let { locations ->
+                (if (locations.isArray) locations.firstOrNull() else locations)?.path("address")
+            }
+            val location = listOfNotNull(
+                address?.path("addressLocality")?.asText()?.takeIf { it.isNotBlank() },
+                address?.path("addressRegion")?.asText()?.takeIf { it.isNotBlank() },
+            ).joinToString(", ")
+            if (location.isNotBlank()) s = s.copy(location = location)
+        }
+        if (s.employmentType.isBlank()) {
+            val employmentType = posting.path("employmentType").let {
+                if (it.isArray) it.firstOrNull()?.asText().orEmpty() else it.asText("")
+            }
+            if (employmentType.isNotBlank()) s = s.copy(employmentType = normalizeEmploymentType(employmentType))
+        }
+        if (s.salaryRange.isBlank()) {
+            val value = posting.path("baseSalary").path("value")
+            val min = value.path("minValue").asLong(0).takeIf { it > 0 }
+            val max = value.path("maxValue").asLong(0).takeIf { it > 0 }
+            val salary = when {
+                min != null && max != null -> "\$${min / 1000}K – \$${max / 1000}K"
+                min != null -> "\$${min / 1000}K+"
+                else -> ""
+            }
+            if (salary.isNotBlank()) s = s.copy(salaryRange = salary)
+        }
+        return s
     }
 
     /** First non-blank string value among [keys] on [node] (ignores literal "null"). */
