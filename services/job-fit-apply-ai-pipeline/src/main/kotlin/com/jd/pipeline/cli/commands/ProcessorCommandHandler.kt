@@ -104,6 +104,9 @@ object ProcessorCommandHandler {
                     outputPath     = null,
                     hasCoverLetter = false,
                     error          = e.message,
+                    // Never let an execution failure fall through to the Poller's JD_Not_Found
+                    // compatibility fallback: this is an error, not a classification outcome.
+                    terminalLabel  = TerminalLabel.JD_ERROR,
                     // Carry identity so the completed-event (JD_Error) still shows what failed.
                     company        = jdRecord.company,
                     roleTitle      = jdRecord.roleTitle,

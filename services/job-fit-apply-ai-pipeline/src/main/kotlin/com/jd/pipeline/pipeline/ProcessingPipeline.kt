@@ -49,6 +49,9 @@ class ProcessingPipeline(
                 outputPath     = null,
                 hasCoverLetter = false,
                 error          = e.message ?: "ProcessingPipeline failed",
+                // A processing failure is never evidence that the email is not a job. Without an
+                // explicit label the Poller's compatibility fallback converts this into JD_Not_Found.
+                terminalLabel  = TerminalLabel.JD_ERROR,
                 company        = record.company,
                 roleTitle      = record.roleTitle,
                 jobUrl         = record.jobUrl,

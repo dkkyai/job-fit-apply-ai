@@ -98,6 +98,7 @@ class ProcessingPipelineTest {
         assertEquals("SKIP", result.pipelineAction)
         assertNotNull(result.error)
         assertTrue(result.error!!.contains("simulated scoreFit failure"))
+        assertEquals(TerminalLabel.JD_ERROR, result.terminalLabel)
     }
 
     @Test

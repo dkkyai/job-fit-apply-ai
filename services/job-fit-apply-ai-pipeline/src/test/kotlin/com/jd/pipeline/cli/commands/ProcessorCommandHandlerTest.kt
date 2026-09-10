@@ -124,7 +124,10 @@ class ProcessorCommandHandlerTest {
 
         verify(bridge).postResult(
             org.mockito.kotlin.eq("job-err"),
-            org.mockito.kotlin.argThat { error != null && error!!.contains("pipeline exploded") },
+            org.mockito.kotlin.argThat {
+                error != null && error!!.contains("pipeline exploded") &&
+                    terminalLabel == TerminalLabel.JD_ERROR
+            },
             org.mockito.kotlin.anyOrNull(),
         )
     }
