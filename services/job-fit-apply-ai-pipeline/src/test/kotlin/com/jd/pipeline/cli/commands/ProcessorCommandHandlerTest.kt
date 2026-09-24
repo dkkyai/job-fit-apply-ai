@@ -132,6 +132,27 @@ class ProcessorCommandHandlerTest {
         )
     }
 
+    @Test
+    @DisplayName("processor marks an Ollama 429 as retryable and does not assign JD_Error")
+    fun processorRequeuesTransientProviderFailure() {
+        val record = fakeRecord()
+        val claim = ClaimDto(jobId = "job-retry", jdRecord = record, claimToken = "retry-token")
+        val bridge = mock<BridgeClient>()
+        val pipeline = mock<ProcessingPipeline>()
+        val posted = CountDownLatch(1)
+        val thread = Thread { ProcessorCommandHandler.run(bridge, pipeline) }
+        whenever(bridge.claim()).doReturn(claim).doAnswer { thread.interrupt(); null }
+        whenever(pipeline.invoke(record)).thenThrow(RuntimeException("LLM HTTP 429 too many concurrent requests"))
+        doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
+        thread.isDaemon = true
+        thread.start()
+
+        assertTrue(posted.await(5, TimeUnit.SECONDS))
+        verify(bridge).postResult(eq("job-retry"), argThat {
+            retryable && terminalLabel == null && error!!.contains("429")
+        }, eq("retry-token"))
+    }
+
     // (Per-job Discord/Telegram messaging moved to the Notifier service — see NotifierTest there.)
 
     // ── EMAIL_RAW claims (scan/scrape happen in the Processor) ──────────────────

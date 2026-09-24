@@ -44,6 +44,10 @@ private val DEDUP_WINDOW_HOURS =
 private val STALE_CLAIM_MILLIS =
     (System.getenv("JD_BRIDGE_STALE_CLAIM_SECONDS")?.toLongOrNull() ?: 1800L) * 1000L
 
+/** Retry at most this many transient failures before recording a terminal error. */
+private const val MAX_RETRYABLE_ATTEMPTS = 3
+private const val RETRY_BACKOFF_BASE_SECONDS = 30L
+
 private var _database: Database? = null
 
 // Monotonic write-back cursor. In-process AtomicLong (the bridge is single-process) →
@@ -68,6 +72,8 @@ internal object Jobs : Table("jobs") {
     val roleTitle       = text("role_title").nullable()
     val artifactUrl     = text("artifact_url").nullable()   // markserv report URL
     val error           = text("error").nullable()
+    val retryCount      = integer("retry_count").default(0)
+    val nextAttemptAt   = long("next_attempt_at").nullable()
     val claimedAt       = long("claimed_at").nullable()
     // Fencing token, rotated on every claim. A worker must present the token it was handed to
     // record a result, so a claim that was requeued underneath it cannot overwrite the attempt
@@ -191,7 +197,10 @@ suspend fun claimNext(): ClaimedJob? = dbQuery {
     }
 
     val row = Jobs.selectAll()
-        .where { Jobs.status eq JobStatus.PENDING.value }
+        .where {
+            (Jobs.status eq JobStatus.PENDING.value) and
+                (Jobs.nextAttemptAt.isNull() or (Jobs.nextAttemptAt lessEq (now / 1000L)))
+        }
         .orderBy(Jobs.createdAt, SortOrder.ASC)
         .firstOrNull()
         ?: return@dbQuery null
@@ -202,6 +211,7 @@ suspend fun claimNext(): ClaimedJob? = dbQuery {
         it[Jobs.status]     = JobStatus.CLAIMED.value
         it[Jobs.claimedAt]  = now
         it[Jobs.claimToken] = claimToken
+        it[Jobs.nextAttemptAt] = null
         it[Jobs.updatedAt]  = now / 1000L
     }
 
@@ -213,6 +223,9 @@ suspend fun claimNext(): ClaimedJob? = dbQuery {
 enum class ResultOutcome {
     /** First terminal result for this job: persisted, completed_seq assigned. */
     RECORDED,
+
+    /** A retry-eligible provider failure was durably deferred for a later claim. */
+    REQUEUED,
 
     /**
      * The job was already terminal. Ignored — completion is idempotent. Without this, a
@@ -239,7 +252,6 @@ enum class ResultOutcome {
  */
 suspend fun recordResult(jobId: String, req: ResultRequest): ResultOutcome {
     val now = System.currentTimeMillis() / 1000L
-    val newStatus = if (req.error != null) JobStatus.ERROR else JobStatus.DONE
 
     val guard = dbQuery {
         val row = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()
@@ -258,6 +270,39 @@ suspend fun recordResult(jobId: String, req: ResultRequest): ResultOutcome {
         return guard
     }
 
+    if (req.retryable && req.error != null) {
+        val requeued = dbQuery {
+            val row = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()
+                ?: return@dbQuery ResultOutcome.STALE_CLAIM
+            val retryCount = row[Jobs.retryCount]
+            if (retryCount < MAX_RETRYABLE_ATTEMPTS) {
+                val delaySeconds = RETRY_BACKOFF_BASE_SECONDS * (1L shl retryCount)
+                Jobs.update({ Jobs.id eq jobId }) {
+                    it[Jobs.status]        = JobStatus.PENDING.value
+                    it[Jobs.error]         = req.error
+                    it[Jobs.retryCount]    = retryCount + 1
+                    it[Jobs.nextAttemptAt] = now + delaySeconds
+                    it[Jobs.claimedAt]     = null
+                    it[Jobs.claimToken]    = null
+                    it[Jobs.terminalLabel] = null
+                    it[Jobs.updatedAt]     = now
+                }
+                ResultOutcome.REQUEUED
+            } else {
+                ResultOutcome.RECORDED
+            }
+        }
+        // The retry-budget boundary is terminal, but only after all earlier attempts were deferred.
+        // Keep the terminal write outside Exposed's synchronous transaction lambda.
+        return if (requeued == ResultOutcome.RECORDED) recordTerminalResult(jobId, req, now) else requeued
+    }
+
+    return recordTerminalResult(jobId, req, now)
+}
+
+/** Persist a terminal completion. Call only after claim/token guards have passed. */
+private suspend fun recordTerminalResult(jobId: String, req: ResultRequest, now: Long): ResultOutcome {
+    val newStatus = if (req.error != null) JobStatus.ERROR else JobStatus.DONE
     // Only now is a sequence number burned — an ignored result must not consume one.
     val nextSeq = completedSeqCounter.incrementAndGet()
     dbQuery {
@@ -274,6 +319,7 @@ suspend fun recordResult(jobId: String, req: ResultRequest): ResultOutcome {
             req.artifact_url?.let { row[Jobs.artifactUrl] = it }
             row[Jobs.claimedAt]       = null
             row[Jobs.claimToken]      = null
+            row[Jobs.nextAttemptAt]   = null
             row[Jobs.updatedAt]       = now
             // Gmail write-back payload
             row[Jobs.terminalLabel]   = req.terminal_label
@@ -382,6 +428,8 @@ private fun ResultRow.toJobRow(): JobRow {
         pipelineAction = this[Jobs.pipelineAction],
         artifacts      = artifacts,
         error          = this[Jobs.error],
+        retryCount     = this[Jobs.retryCount],
+        nextAttemptAt  = this[Jobs.nextAttemptAt],
         claimedAt      = this[Jobs.claimedAt],
         createdAt      = this[Jobs.createdAt],
         updatedAt      = this[Jobs.updatedAt],

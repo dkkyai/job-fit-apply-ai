@@ -43,6 +43,8 @@ data class ProcessingResult(
     val outputPath: String?,
     val hasCoverLetter: Boolean,
     val error: String? = null,
+    /** A transient provider failure; the bridge must defer it instead of completing the job. */
+    val retryable: Boolean = false,
     val artifactUrl: String? = null,
     // Processed-posting identity — persisted by the bridge for completed-feed consumers (Notifier).
     // (serialized snake_case → company / role_title / job_url / artifact_url)
