@@ -15,12 +15,15 @@ class IntakeLoop(
     private val gmail: GmailClient,
     private val bridge: PollerBridgeClient,
     private val heartbeat: Heartbeat? = null,
+    private val batchSize: Int = PollerConfig.INTAKE_BATCH_SIZE,
+    private val interSubmitDelayMs: Long = PollerConfig.INTAKE_INTER_SUBMIT_DELAY_MS,
+    private val sleep: (Long) -> Unit = { Thread.sleep(it) },
 ) {
     /** One intake pass. Returns the number of emails submitted to the bridge. */
     fun pollOnce(): Int {
-        val emails = gmail.fetchIntakeEmails()
+        val emails = gmail.fetchIntakeEmails(batchSize)
         var submitted = 0
-        for (email in emails) {
+        for ((index, email) in emails.withIndex()) {
             try {
                 val jobId = bridge.submitEmail(email)
                 // Apply the in-flight label AFTER a successful submit so a failed submit is
@@ -29,6 +32,7 @@ class IntakeLoop(
                     .onFailure { System.err.println("[intake] Processing label failed for ${email.messageId}: ${it.message}") }
                 submitted++
                 println("[intake] submitted ${email.messageId} → job $jobId")
+                if (index < emails.lastIndex) sleep(interSubmitDelayMs)
             } catch (e: Exception) {
                 System.err.println("[intake] submit failed for ${email.messageId}: ${e.message}")
             }

@@ -22,6 +22,7 @@ object PollerConfig {
     val GMAIL_CREDENTIALS_FILE: String = get("GMAIL_CREDENTIALS_FILE", "gmail_credentials.json")
     val GMAIL_TOKEN_FILE: String = get("GMAIL_TOKEN_FILE", "tokens/gmail_token.json")
     val GMAIL_MAX_EMAILS: Int = get("GMAIL_MAX_EMAILS", "10").toInt()
+    val INTAKE_BATCH_SIZE: Int = get("INTAKE_BATCH_SIZE", "3").toInt()
     val GMAIL_SEARCH_QUERY: String = get(
         "GMAIL_SEARCH_QUERY",
         "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:Processing -label:JD_Error",
@@ -31,6 +32,7 @@ object PollerConfig {
     // The write-back loop needs no cursor: the bridge's writeback_done flag drops finished jobs
     // from the feed, so it always drains from since=0 (which also retries transient Gmail failures).
     val INTAKE_POLL_INTERVAL_MS: Long = get("INTAKE_POLL_INTERVAL_MS", "60000").toLong()
+    val INTAKE_INTER_SUBMIT_DELAY_MS: Long = get("INTAKE_INTER_SUBMIT_DELAY_MS", "15000").toLong()
     val WRITEBACK_POLL_INTERVAL_MS: Long = get("WRITEBACK_POLL_INTERVAL_MS", "15000").toLong()
 
     // ── Liveness (container healthcheck) ────────────────────────────────────────
