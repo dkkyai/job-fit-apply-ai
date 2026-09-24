@@ -64,6 +64,19 @@ class LabelApplierTest {
     }
 
     @Test
+    @DisplayName("JD_Scrape_Failed → label + mark-unread; does not archive")
+    fun scrapeFailed() {
+        val g = gmail()
+        LabelApplier.apply(g, "m-scrape", TerminalLabels.JD_SCRAPE_FAILED)
+
+        verify(g).getOrCreateLabel(TerminalLabels.JD_SCRAPE_FAILED)
+        verify(g).markUnread("m-scrape")
+        verify(g, never()).archiveEmail(any())
+        verify(g).findLabelId(TerminalLabels.JD_ERROR)
+        verify(g).findLabelId(TerminalLabels.PROCESSING)
+    }
+
+    @Test
     @DisplayName("JD_Processed_Digest → label + archive")
     fun digest() {
         val g = gmail()

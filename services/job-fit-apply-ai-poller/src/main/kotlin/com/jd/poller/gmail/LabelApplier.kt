@@ -3,6 +3,7 @@ package com.jd.poller.gmail
 /** The terminal Gmail label names the Processor emits (mirrors pipeline TerminalLabel). */
 object TerminalLabels {
     const val JD_ERROR            = "JD_Error"
+    const val JD_SCRAPE_FAILED    = "JD_Scrape_Failed"
     const val RECRUITER           = "Recruiter_Response_Required"
     const val JD_PROCESSED_DIGEST = "JD_Processed_Digest"
     const val JD_NOT_FOUND        = "JD_Not_Found"
@@ -25,6 +26,11 @@ object LabelApplier {
                 label(client, messageId, TerminalLabels.JD_ERROR)
                 client.markUnread(messageId)
                 // Note: JD_Error intentionally does NOT clear a prior JD_Error.
+            }
+            TerminalLabels.JD_SCRAPE_FAILED -> {
+                label(client, messageId, TerminalLabels.JD_SCRAPE_FAILED)
+                client.markUnread(messageId)
+                clearErrorLabel(client, messageId)
             }
             TerminalLabels.RECRUITER -> {
                 label(client, messageId, TerminalLabels.RECRUITER)
