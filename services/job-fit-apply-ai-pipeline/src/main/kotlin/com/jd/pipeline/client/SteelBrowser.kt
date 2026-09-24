@@ -32,7 +32,7 @@ class SteelBrowser(
     private val connectBackoffBaseMs: Long = Config.STEEL_CONNECT_BACKOFF_BASE_MS,
     private val circuitBreakerThreshold: Int = Config.STEEL_CIRCUIT_BREAKER_THRESHOLD,
     private val circuitOpenCooldownMs: Long = Config.STEEL_CIRCUIT_OPEN_COOLDOWN_MS,
-    // How many times a scrape is retried on a TargetClosedError with a fresh Steel session before
+    // How many times a scrape is retried on a dead-session error with a fresh Steel session before
     // giving up (and letting the caller fall back to email-only JD text). Default 2 (3 tries total).
     private val targetClosedMaxRetries: Int = 2,
     private val client: SteelClient = SteelClient(baseUrl),
@@ -206,18 +206,18 @@ class SteelBrowser(
      * (which holds the injected/logged-in cookies), reused across jobs. Recreated if closed or
      * parked on a login/checkpoint/captcha page. Call only when [isAvailable] is true.
      *
-     * A [TargetClosedError][PlaywrightException] means the underlying Steel session died out from
-     * under a Browser handle that still reports connected — see [withPageForDomain], which recovers
-     * from it. This entry point only acquires the tab, so it only recovers from a session that was
-     * *already* dead; prefer [withPageForDomain] when you then drive the page.
+     * A dead-session [PlaywrightException] means the underlying Steel session died out from under a
+     * Browser handle that still reports connected — see [withPageForDomain], which recovers from it.
+     * This entry point only acquires the tab, so it only recovers from a session that was *already*
+     * dead; prefer [withPageForDomain] when you then drive the page.
      */
     @Synchronized
     override fun pageForDomain(host: String): Page =
-        retryingOnTargetClosed(host) { acquirePageForDomain(host) }
+        retryingOnDeadSession(host) { acquirePageForDomain(host) }
 
     /**
      * Acquire a tab for [host] and run [block] on it, retrying the **whole sequence** on a
-     * TargetClosedError with a brand-new Steel session, up to [targetClosedMaxRetries] times.
+     * dead-session error with a brand-new Steel session, up to [targetClosedMaxRetries] times.
      *
      * Wrapping the whole sequence is the point. Steel keeps one long-lived Chrome and refreshes its
      * primary page whenever a session reuses that browser, so an unrelated session probe (the compose
@@ -232,34 +232,53 @@ class SteelBrowser(
      */
     @Synchronized
     override fun <T> withPageForDomain(host: String, block: (Page) -> T): T =
-        retryingOnTargetClosed(host) { block(acquirePageForDomain(host)) }
+        retryingOnDeadSession(host) { block(acquirePageForDomain(host)) }
 
     /**
-     * Run [op], rebuilding the Steel session and retrying whenever it fails with a TargetClosedError.
-     * Any other [PlaywrightException] (a genuine navigation failure) propagates at once — retrying it
-     * would just burn sessions. On exhaustion the error propagates so the caller can fall back.
+     * Run [op], rebuilding the Steel session and retrying whenever it fails with a dead-session error.
+     * Retries wait a bounded exponential backoff and re-check availability before running [op] again,
+     * so a dead backend does not turn one scrape into immediate session churn. Any other
+     * [PlaywrightException] (a genuine navigation failure) propagates at once. If recovery cannot
+     * re-establish availability, preserve the original scrape error so the caller's fallback has the
+     * actual scrape failure rather than a secondary reconnect error.
      */
-    private fun <T> retryingOnTargetClosed(host: String, op: () -> T): T {
-        var lastError: PlaywrightException? = null
+    private fun <T> retryingOnDeadSession(host: String, op: () -> T): T {
+        var originalError: PlaywrightException? = null
         for (attempt in 0..targetClosedMaxRetries) {
+            if (attempt > 0) {
+                val backoffMs = deadSessionBackoffMs(attempt - 1)
+                log.warn("Steel session for {} died; retry {}/{} after {}ms", host, attempt, targetClosedMaxRetries, backoffMs)
+                runCatching { sleep(backoffMs) }
+                if (!isAvailable()) break
+            }
             try {
                 val result = op()
                 consecutiveDeadSessions = 0   // a scrape got through — the backend is healthy
                 return result
             } catch (e: PlaywrightException) {
-                if (!isTargetClosed(e)) throw e
-                lastError = e
-                log.warn("Steel page for {} hit TargetClosedError (attempt {}/{}) — reconnecting with a new session",
+                if (!isDeadSessionError(e)) throw e
+                if (originalError == null) originalError = e
+                log.warn("Steel page for {} hit a dead-session error (attempt {}/{}) — reconnecting with a new session",
                     host, attempt + 1, targetClosedMaxRetries + 1)
                 resetConnection()  // drop (and release) the dead session so the next attempt is fresh
             }
         }
-        onDeadSessionsExhausted(host, lastError)
-        throw lastError ?: error("Steel browser not available — call isAvailable() first")
+        onDeadSessionsExhausted(host, originalError)
+        throw originalError ?: error("Steel browser not available — call isAvailable() first")
+    }
+
+    /** Exponential retry delay capped at the normal reconnect cooldown, avoiding unbounded waits. */
+    private fun deadSessionBackoffMs(retry: Int): Long {
+        val cap = reconnectCooldownMs.coerceAtLeast(0)
+        var delay = connectBackoffBaseMs.coerceIn(0, cap)
+        repeat(retry.coerceAtMost(62)) {
+            delay = if (delay >= cap - delay) cap else delay * 2
+        }
+        return delay
     }
 
     /**
-     * Every attempt died with a TargetClosedError: the backend is handing out sessions that are dead
+     * Every attempt died with a dead-session error: the backend is handing out sessions that are dead
      * on arrival. The connect-failure breaker cannot see this — each `createSession` *succeeds*, so
      * [ensureConnected] resets its counter every time round the loop — hence the separate counter.
      * Past the threshold, arm the circuit-open cooldown so [isAvailable] goes quiet and the scraper
@@ -311,17 +330,21 @@ class SteelBrowser(
     }
 
     /**
-     * Whether [e] (or a cause) is Playwright's TargetClosedError — the page/context/browser target
-     * closed under us. Matched by class name (the class lives in the `impl` package, so we avoid a
-     * compile-time dependency on it) and by message, robust across Playwright versions.
+     * Whether [e] (or a cause) means a Steel session is no longer usable. Playwright's
+     * TargetClosedError is the usual shape, but a CDP socket reset can instead bubble through the JDK
+     * HTTP parser as "received no bytes" or as a connection-reset message. These all require a fresh
+     * session; genuine navigation errors must still propagate immediately.
      */
-    private fun isTargetClosed(e: Throwable): Boolean {
+    private fun isDeadSessionError(e: Throwable): Boolean {
         var cur: Throwable? = e
         while (cur != null) {
             if (cur::class.java.simpleName == "TargetClosedError") return true
             val msg = cur.message?.lowercase().orEmpty()
             if (msg.contains("target closed") ||
-                msg.contains("target page, context or browser has been closed")) return true
+                msg.contains("target page, context or browser has been closed") ||
+                msg.contains("header parser received no bytes") ||
+                msg.contains("connection reset") ||
+                msg.contains("econnreset")) return true
             cur = cur.cause
         }
         return false

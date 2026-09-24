@@ -17,6 +17,7 @@ import org.mockito.kotlin.whenever
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -285,7 +286,13 @@ class SteelBrowserTest {
      * [failFirst] attempts (a Steel session that died under a still-"connected" Browser handle),
      * then succeeds. Returns the browser, the page it eventually hands out, and a call counter.
      */
-    private class TargetClosedFixture(failFirst: Int, error: PlaywrightException) {
+    private class TargetClosedFixture(
+        failFirst: Int,
+        error: PlaywrightException,
+        targetClosedMaxRetries: Int = 2,
+        connectBackoffBaseMs: Long = 500,
+        sleep: (Long) -> Unit = {},
+    ) {
         val client = mock<SteelClient>()
         val page = mock<Page>()
         var newPageCalls = 0
@@ -307,7 +314,9 @@ class SteelBrowserTest {
                 client = client,
                 store = mock(),
                 nanoTime = { 0L },
-                sleep = {},
+                targetClosedMaxRetries = targetClosedMaxRetries,
+                connectBackoffBaseMs = connectBackoffBaseMs,
+                sleep = sleep,
                 connect = { mock<Playwright>() to handle },
             )
         }
@@ -337,6 +346,68 @@ class SteelBrowserTest {
         assertTrue(thrown.message!!.contains("Target closed"))
         assertEquals(3, fx.newPageCalls)                             // 1 + 2 retries, then give up
         verify(fx.client, times(3)).createSession(anyOrNull(), any())
+    }
+
+    @Test
+    @DisplayName("pageForDomain retries a session transport reset with a fresh session")
+    fun transportResetRetriesWithNewSession() {
+        // A dead CDP socket can surface as the JDK HTTP parser's "received no bytes" message rather
+        // than Playwright's TargetClosedError. It is the same stale-session condition, so recover it.
+        val fx = TargetClosedFixture(
+            failFirst = 1,
+            error = PlaywrightException("HTTP/1.1 header parser received no bytes"),
+        )
+
+        assertEquals(fx.page, fx.browser.pageForDomain("jobleads.com"))
+        assertEquals(2, fx.newPageCalls)
+        verify(fx.client, times(2)).createSession(anyOrNull(), any())
+    }
+
+    @Test
+    @DisplayName("dead-session retries use bounded exponential backoff")
+    fun deadSessionRetriesUseBoundedBackoff() {
+        val backoffs = mutableListOf<Long>()
+        val fx = TargetClosedFixture(
+            failFirst = 2,
+            error = PlaywrightException("HTTP/1.1 header parser received no bytes"),
+            connectBackoffBaseMs = 100,
+            sleep = { backoffs.add(it) },
+        )
+
+        assertEquals(fx.page, fx.browser.pageForDomain("jobleads.com"))
+        assertEquals(listOf(100L, 200L), backoffs)
+    }
+
+    @Test
+    @DisplayName("dead-session retry verifies availability before navigating and preserves the scrape error")
+    fun deadSessionRetryChecksAvailabilityAndPreservesOriginalError() {
+        val client = mock<SteelClient>()
+        val session = SteelClient.SteelSession(id = "s1", websocketUrl = "ws://localhost:3000/")
+        whenever(client.createSession(anyOrNull(), any()))
+            .thenReturn(session)
+            .thenThrow(RuntimeException("Steel unavailable during retry"))
+        val original = PlaywrightException("HTTP/1.1 header parser received no bytes")
+        val handle = mock<Browser>()
+        whenever(handle.isConnected).thenReturn(true)
+        val context = mock<BrowserContext>()
+        whenever(handle.contexts()).thenReturn(listOf(context))
+        whenever(context.newPage()).thenThrow(original)
+        val backoffs = mutableListOf<Long>()
+        val browser = SteelBrowser(
+            baseUrl = "http://steel:3000",
+            connectBackoffBaseMs = 100,
+            client = client,
+            store = mock(),
+            nanoTime = { 0L },
+            sleep = { backoffs.add(it) },
+            connect = { mock<Playwright>() to handle },
+        )
+
+        val thrown = assertFailsWith<PlaywrightException> { browser.pageForDomain("jobleads.com") }
+        assertSame(original, thrown)
+        verify(client, times(2)).createSession(anyOrNull(), any())
+        verify(context, times(1)).newPage() // unavailable retry never starts a second navigation
+        assertEquals(listOf(100L), backoffs)
     }
 
     @Test
