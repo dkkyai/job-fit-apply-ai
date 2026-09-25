@@ -27,12 +27,10 @@ object ScrapeOutcome {
         val scrapeError = error.startsWith(SCRAPE_PREFIX, ignoreCase = true)
         val normalizedError = error.lowercase()
 
-        // `blocked` is written only after HTTP/CDP fallback has been exhausted.
-        if (scrapeError && (state.scrapePath == "blocked" ||
-                normalizedError.contains("http 403") ||
-                normalizedError.contains("http 429") ||
-                normalizedError.contains("captcha") ||
-                normalizedError.contains("bot-block"))) {
+        // `blocked` describes the scrape transport's final path, not the cause. It is also used
+        // when a fallback sees a transient HTTP/service failure, so only an explicit durable
+        // access denial can become a terminal verdict. All other scrape errors stay JD_Error.
+        if (scrapeError && isDurableAccessBlock(normalizedError)) {
             return ScrapeTerminalReason.BLOCKED
         }
 
@@ -54,6 +52,16 @@ object ScrapeOutcome {
 
         return null
     }
+
+    /** Durable board-side access denials; never infer one from the generic scrape path.
+     *  Transient HTTP failures (429, 5xx) remain retryable and should NOT be classified
+     *  as terminal scrape failures — they surface as JD_Error and get retried. */
+    private fun isDurableAccessBlock(error: String): Boolean =
+        error.contains("http 403") ||
+            error.contains("forbidden") ||
+            error.contains("captcha") ||
+            error.contains("bot-block") ||
+            error.contains("cloudflare browser challenge")
 
     private fun isHttpUrl(url: String): Boolean = runCatching {
         if (url.any(Char::isWhitespace)) return false

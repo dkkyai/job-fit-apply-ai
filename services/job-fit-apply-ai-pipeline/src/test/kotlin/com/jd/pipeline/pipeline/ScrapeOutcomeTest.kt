@@ -50,6 +50,36 @@ class ScrapeOutcomeTest {
     }
 
     @Test
+    @DisplayName("does not make an HTTP 429 rate limit terminal when the scrape path is blocked")
+    fun http429IsNotTerminalScrapeFailure() {
+        val outcome = ScrapeOutcome.classify(
+            JDState(error = "scrape_jd: HTTP 429 — rate-limited", scrapePath = "blocked"),
+        )
+
+        assertNull(outcome)
+    }
+
+    @Test
+    @DisplayName("does not make an HTTP 500 service error terminal when the scrape path is blocked")
+    fun http500IsNotTerminalScrapeFailure() {
+        val outcome = ScrapeOutcome.classify(
+            JDState(error = "scrape_jd: HTTP 500 — internal server error", scrapePath = "blocked"),
+        )
+
+        assertNull(outcome)
+    }
+
+    @Test
+    @DisplayName("does not make an HTTP 502 gateway error terminal when the scrape path is blocked")
+    fun http502IsNotTerminalScrapeFailure() {
+        val outcome = ScrapeOutcome.classify(
+            JDState(error = "scrape_jd: HTTP 502 — bad gateway", scrapePath = "blocked"),
+        )
+
+        assertNull(outcome)
+    }
+
+    @Test
     @DisplayName("maps a terminal scrape failure to the dedicated Gmail label")
     fun terminalScrapeFailureUsesDedicatedGmailLabel() {
         assertEquals(TerminalLabel.JD_SCRAPE_FAILED, ScrapeTerminalReason.BLOCKED.terminalLabel)
