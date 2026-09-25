@@ -311,11 +311,33 @@ or local-oMLX candidates are valid (no `:cloud`). Reject any model that can't re
 object for the audit prompt (small dense/MoE locals tend to emit a bare array/scalar).
 
 **For RESUME_REASONING specifically, leaderboard rank is NOT sufficient — screen the
-max-output-token behaviour on the bullet_rewrite array (see Section B's cloud-cap table).**
-A candidate must complete the ~25k–34k-token 8-role array with `done_reason=stop`, not
-`length`. A quick screen: POST an 8-role/5-bullet `format:json` array request to the model
-and check `done_reason` + that the content parses. Reject any that truncate (kimi-k2.6) or
-over-think to empty (glm-5.1), regardless of Elo.
+max-output-token behaviour on the bullet_rewrite array (see `references/hardware.md`'s cap
+table).** A candidate must complete the ~25k–34k-token 8-role array with `done_reason=stop`,
+not `length`. Reject any that truncate or over-think to empty, regardless of Elo.
+
+**For EVERY JSON node, screen time-to-valid-JSON and VARIANCE — not just rank or a single
+run.** A node can fail *upstream* of the one you are testing and silently disable the whole
+subgraph: `gapAnalysis` is a hard dependency for SummaryRewrite, BulletRewrite,
+SkillsRestructure and AtsValidation (each returns `"<node>: gapAnalysis is null"`), so one
+slow SCORE call short-circuits the entire tailor run. Run each candidate **at least twice**
+and watch output-token count as the leading indicator — a model emitting >10k tokens for a
+sub-1k-token answer is over-thinking and will eventually hit its timeout.
+
+Measured 2026-09-25 on the real `gap_analysis` shape (8 must-have + 3 nice-to-have, ~384
+input tokens, `orchestrationClient` budget **180s** — see `references/score-screening.md`):
+
+| Model | trial 1 | trial 2 | out tokens | valid JSON |
+|---|---|---|---|---|
+| `glm-5.3` | 44.7s | 51.8s | 8,624 | ❌ |
+| `glm-5.2` | 12.8s | 13.1s | 1,351 | ❌ |
+| `deepseek-v4.1-flash` | 12.2s | 13.2s | 3,476 | ✅ |
+| `deepseek-v4-pro:0813` | **8.4s** | **10.2s** | 1,471 | ✅ |
+| `glm-5.3-flash` | 49.6s | 44.8s | 13,078 | ✅ |
+
+A longer variant of this prompt pushed `glm-5.3` to 125.4s / 19,285 tokens / invalid JSON —
+close enough to the 180s wall to fail intermittently. **Reasoning-index rank mis-predicts
+this node**: glm-5.3 leads v4-pro on the index (51.5 vs 49.6) and is still the worst choice.
+
 
 ### D.5 — Estimate wall-clock time and select winners
 
