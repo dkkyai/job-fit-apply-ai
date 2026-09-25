@@ -243,6 +243,17 @@ enum class ResultOutcome {
 }
 
 /**
+ * The compare-and-set predicate for a fenced worker result. Legacy workers without a claim token
+ * retain their compatibility behavior; a current worker must still own the row in CLAIMED state.
+ */
+private fun resultClaimPredicate(jobId: String, claimToken: String?): Op<Boolean> =
+    SqlExpressionBuilder.run {
+        val id = Jobs.id eq jobId
+        if (claimToken == null) id else
+            id and (Jobs.status eq JobStatus.CLAIMED.value) and (Jobs.claimToken eq claimToken)
+    }
+
+/**
  * Persist the worker's result and move the row to DONE or ERROR.
  *
  * A `null` [ResultRequest.claim_token] is accepted against any row: a worker built before
@@ -277,7 +288,7 @@ suspend fun recordResult(jobId: String, req: ResultRequest): ResultOutcome {
             val retryCount = row[Jobs.retryCount]
             if (retryCount < MAX_RETRYABLE_ATTEMPTS) {
                 val delaySeconds = RETRY_BACKOFF_BASE_SECONDS * (1L shl retryCount)
-                val changed = Jobs.update({ Jobs.id eq jobId }) {
+                val changed = Jobs.update({ resultClaimPredicate(jobId, req.claim_token) }) {
                     it[Jobs.status]        = JobStatus.PENDING.value
                     it[Jobs.error]         = req.error
                     it[Jobs.retryCount]    = retryCount + 1
@@ -310,10 +321,21 @@ suspend fun recordResult(jobId: String, req: ResultRequest): ResultOutcome {
 /** Persist a terminal completion. Call only after claim/token guards have passed. */
 private suspend fun recordTerminalResult(jobId: String, req: ResultRequest, now: Long): ResultOutcome {
     val newStatus = if (req.error != null) JobStatus.ERROR else JobStatus.DONE
-    // Only now is a sequence number burned — an ignored result must not consume one.
-    val nextSeq = completedSeqCounter.incrementAndGet()
-    dbQuery {
-        Jobs.update({ Jobs.id eq jobId }) { row ->
+    return dbQuery {
+        val existing = Jobs.selectAll().where { Jobs.id eq jobId }.firstOrNull()
+            ?: return@dbQuery ResultOutcome.STALE_CLAIM
+        if (existing[Jobs.completedSeq] != null &&
+            existing[Jobs.status] in listOf(JobStatus.DONE.value, JobStatus.ERROR.value)) {
+            return@dbQuery ResultOutcome.ALREADY_TERMINAL
+        }
+        if (req.claim_token != null && req.claim_token != existing[Jobs.claimToken]) {
+            return@dbQuery ResultOutcome.STALE_CLAIM
+        }
+
+        // Burn a sequence only after checking ownership; the conditional update below is the final
+        // compare-and-set fence against a claim that changed after the read.
+        val nextSeq = completedSeqCounter.incrementAndGet()
+        val changed = Jobs.update({ resultClaimPredicate(jobId, req.claim_token) }) { row ->
             // Clear stale transient errors on a retry-then-success terminal result.
             row[Jobs.error]           = req.error
             row[Jobs.status]          = newStatus.value
@@ -337,8 +359,8 @@ private suspend fun recordTerminalResult(jobId: String, req: ResultRequest, now:
             row[Jobs.writebackDone]   = false
             row[Jobs.completedSeq]    = nextSeq
         }
+        if (changed == 0) ResultOutcome.STALE_CLAIM else ResultOutcome.RECORDED
     }
-    return ResultOutcome.RECORDED
 }
 
 /**
