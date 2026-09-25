@@ -477,6 +477,37 @@ class StoreCompletionReliabilityTest {
     }
 
     @Test
+    fun `a displaced retryable result cannot requeue the replacement claim`() = runTest {
+        val jobId = enqueue(defaultJdJson(), null, null)
+        val displaced = claimNext()!!
+        expireClaim(jobId)
+        val replacement = claimNext()!!
+        val before = getJob(jobId)!!
+
+        val late = recordResult(
+            jobId,
+            ResultRequest(
+                pipeline_action = "SKIP",
+                fit_score = 0,
+                error = "LLM HTTP 429",
+                retryable = true,
+                claim_token = displaced.claimToken,
+            ),
+        )
+
+        assertEquals(ResultOutcome.STALE_CLAIM, late)
+        val after = getJob(jobId)!!
+        assertEquals(JobStatus.CLAIMED.value, after.status)
+        assertEquals(before.retryCount, after.retryCount)
+        assertEquals(before.nextAttemptAt, after.nextAttemptAt)
+        assertEquals(before.error, after.error)
+        assertNull(after.completedSeq)
+
+        assertEquals(ResultOutcome.RECORDED, recordResult(jobId, tailorResult(replacement.claimToken)))
+        assertEquals(JobStatus.DONE.value, getJob(jobId)!!.status)
+    }
+
+    @Test
     fun `a displaced worker cannot overwrite the attempt that replaced it`() = runTest {
         enqueue(defaultJdJson(), null, null)
         val displaced = claimNext()!!
