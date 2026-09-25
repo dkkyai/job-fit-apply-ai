@@ -298,7 +298,7 @@ suspend fun recordResult(jobId: String, req: ResultRequest): ResultOutcome {
         // don't land as a blank label (which the Poller maps to JD_Not_Found).
         return if (requeued == ResultOutcome.RECORDED) {
             val forRetryExhaustion = recordTerminalResult(
-                jobId, req.copy(terminal_label = TerminalLabel.JD_ERROR), now
+                jobId, req.copy(terminal_label = "JD_Error"), now
             )
             forRetryExhaustion
         } else requeued
@@ -313,13 +313,12 @@ private suspend fun recordTerminalResult(jobId: String, req: ResultRequest, now:
     // Only now is a sequence number burned — an ignored result must not consume one.
     val nextSeq = completedSeqCounter.incrementAndGet()
     dbQuery {
-        // Also clear stale transient errors on success (retry-then-success scenario).
-        if (req.error == null) row[Jobs.error] = null
         Jobs.update({ Jobs.id eq jobId }) { row ->
+            // Clear stale transient errors on a retry-then-success terminal result.
+            row[Jobs.error]           = req.error
             row[Jobs.status]          = newStatus.value
             row[Jobs.fitScore]        = req.fit_score
             row[Jobs.pipelineAction]  = req.pipeline_action
-            req.error?.let { row[Jobs.error] = it }
             // Processed-posting identity + report URL (for completed-feed consumers). job_url may
             // have been null at enqueue (EMAIL_RAW) — the result carries the scraped value.
             req.company?.let { row[Jobs.company] = it }
