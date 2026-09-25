@@ -15,6 +15,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.IOException
+import java.io.InterruptedIOException
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -235,6 +236,27 @@ class SteelBrowserTest {
         assertFalse(browser.isAvailable())
         verify(client, times(1)).createSession(anyOrNull(), any())  // no in-scrape retry on a timeout
         assertTrue(backoffs.isEmpty())                              // and therefore no backoff sleep
+    }
+
+    @Test
+    @DisplayName("an interrupted I/O createSession failure is not retried in-scrape")
+    fun interruptedIoIsNotRetried() {
+        val client = mock<SteelClient>()
+        whenever(client.createSession(anyOrNull(), any()))
+            .thenAnswer { throw InterruptedIOException("request cancelled") }
+        val backoffs = mutableListOf<Long>()
+        val browser = SteelBrowser(
+            baseUrl = "http://steel:3000",
+            connectMaxAttempts = 3,
+            client = client,
+            store = mock(),
+            nanoTime = { 0L },
+            sleep = { backoffs.add(it) },
+        )
+
+        assertFalse(browser.isAvailable())
+        verify(client, times(1)).createSession(anyOrNull(), any())
+        assertTrue(backoffs.isEmpty(), "cancellation-shaped I/O must not enter retry backoff")
     }
 
     @Test
@@ -516,6 +538,23 @@ class SteelBrowserTest {
         assertEquals("scraped:true", result)
         assertEquals(2, blockCalls)                                    // block re-run on a fresh tab
         verify(fx.client, times(2)).createSession(anyOrNull(), any())  // on a brand-new session
+    }
+
+    @Test
+    @DisplayName("withPageForDomain retries a transport reset that occurs mid-scrape")
+    fun withPageForDomainRetriesMidScrapeTransportReset() {
+        val fx = TargetClosedFixture(failFirst = 0, error = PlaywrightException("unused"))
+        var blockCalls = 0
+
+        val result = fx.browser.withPageForDomain("jobleads.com") {
+            blockCalls++
+            if (blockCalls == 1) throw PlaywrightException("CDP ECONNRESET while reading page")
+            "recovered"
+        }
+
+        assertEquals("recovered", result)
+        assertEquals(2, blockCalls)
+        verify(fx.client, times(2)).createSession(anyOrNull(), any())
     }
 
     @Test
