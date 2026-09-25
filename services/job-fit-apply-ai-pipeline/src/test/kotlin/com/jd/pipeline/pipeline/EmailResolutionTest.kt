@@ -57,6 +57,34 @@ class EmailResolutionTest {
     }
 
     @Test
+    fun `a blocked-path rate limit remains a retryable ingestion error`() {
+        val state = JDState(
+            isJobPosting = true,
+            intake = email(),
+            error = "scrape_jd: HTTP 429 — rate-limited",
+            scrapePath = "blocked",
+        )
+
+        assertEquals(EmailDisposition.Error(state.error), EmailResolution.classify(state))
+    }
+
+    @Test
+    fun `terminal scrape outcome takes precedence over digest fan-out`() {
+        val state = JDState(
+            isJobPosting = false,
+            intake = email(isDigest = true),
+            error = "scrape_jd: CAPTCHA widget detected",
+            scrapePath = "cdp_fallback",
+            digestJobs = listOf(JDState(isJobPosting = true, company = "must not fan out")),
+        )
+
+        assertEquals(
+            EmailDisposition.ScrapeTerminal(ScrapeTerminalReason.BLOCKED, state.error),
+            EmailResolution.classify(state),
+        )
+    }
+
+    @Test
     fun `error takes precedence over a digest classification`() {
         // A digest whose scan errored should surface the error, not fan out stale children.
         val s = JDState(

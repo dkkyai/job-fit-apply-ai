@@ -42,6 +42,28 @@ class ScrapeOutcomeTest {
     }
 
     @Test
+    @DisplayName("recognizes durable CAPTCHA and Cloudflare access blocks regardless of scrape path")
+    fun durableAccessBlocksAreTerminal() {
+        listOf(
+            "scrape_jd: CAPTCHA widget detected" to "cdp_fallback",
+            "scrape_jd: Cloudflare browser challenge" to "blocked",
+            "scrape_jd: forbidden" to "http",
+        ).forEach { (error, path) ->
+            assertEquals(
+                ScrapeTerminalReason.BLOCKED,
+                ScrapeOutcome.classify(JDState(error = error, scrapePath = path)),
+                "expected durable access block for $error",
+            )
+        }
+    }
+
+    @Test
+    @DisplayName("requires a scrape error prefix before terminalizing generic access text")
+    fun nonScrapeAccessTextIsNotTerminal() {
+        assertNull(ScrapeOutcome.classify(JDState(error = "HTTP 403 forbidden", scrapePath = "http")))
+    }
+
+    @Test
     @DisplayName("leaves transient service faults as JD_Error candidates")
     fun transientServiceFaultIsNotScrapeFailure() {
         val outcome = ScrapeOutcome.classify(JDState(error = "scrape_jd: LLM service returned 503"))
