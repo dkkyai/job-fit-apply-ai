@@ -16,6 +16,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @DisplayName("IntakeLoopTest")
 class IntakeLoopTest {
@@ -67,6 +68,34 @@ class IntakeLoopTest {
         IntakeLoop(gmail, bridge, batchSize = 2, interSubmitDelayMs = 1_000, sleep = { delays.add(it) }).pollOnce()
 
         assertEquals(listOf(1_000L), delays)
+    }
+
+    @Test
+    @DisplayName("an interrupted pacing wait restores interrupt and stops the pass")
+    fun interruptedPacingWaitStopsPass() {
+        val gmail = mock<GmailClient> {
+            on { fetchIntakeEmails(3) } doReturn listOf(email("a"), email("b"), email("c"))
+            on { getOrCreateLabel(TerminalLabels.PROCESSING) } doReturn "proc-id"
+        }
+        val bridge = mock<PollerBridgeClient> { on { submitEmail(any()) } doReturn "job-x" }
+
+        try {
+            val submitted = IntakeLoop(
+                gmail,
+                bridge,
+                batchSize = 3,
+                interSubmitDelayMs = 1_000,
+                sleep = { throw InterruptedException("shutdown") },
+            ).pollOnce()
+
+            assertEquals(1, submitted)
+            assertTrue(Thread.currentThread().isInterrupted)
+            verify(bridge).submitEmail(eq(email("a")))
+            verify(bridge, never()).submitEmail(eq(email("b")))
+            verify(bridge, never()).submitEmail(eq(email("c")))
+        } finally {
+            Thread.interrupted()
+        }
     }
 
     @Test

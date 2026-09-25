@@ -32,7 +32,15 @@ class IntakeLoop(
                     .onFailure { System.err.println("[intake] Processing label failed for ${email.messageId}: ${it.message}") }
                 submitted++
                 println("[intake] submitted ${email.messageId} → job $jobId")
-                if (index < emails.lastIndex) sleep(interSubmitDelayMs)
+                if (index < emails.lastIndex) {
+                    try {
+                        sleep(interSubmitDelayMs)
+                    } catch (e: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        // Don't swallow the shutdown signal — exit this pass immediately
+                        break
+                    }
+                }
             } catch (e: Exception) {
                 System.err.println("[intake] submit failed for ${email.messageId}: ${e.message}")
             }
