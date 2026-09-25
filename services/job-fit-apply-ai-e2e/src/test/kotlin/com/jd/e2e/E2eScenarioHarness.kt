@@ -123,6 +123,16 @@ class E2eScenarioHarness {
             text.replace("{{${entry.key}}}", entry.value)
         }
 
+    /** Wait until the async notifier has recorded Discord delivery for [company]. */
+    fun awaitDiscordDelivery(company: String): List<String> =
+        pollUntil(
+            90,
+            1000,
+            { "notifier to deliver Discord for '$company' (sink saw: ${sink.describe()})" },
+        ) {
+            sink.discordTexts().filter { it.contains(company) }.takeIf { it.isNotEmpty() }
+        }
+
     fun runScenario(
         company: String,
         responses: Map<String, List<FakeLlmServer.PlannedResponse>> = emptyMap(),
@@ -185,13 +195,7 @@ class E2eScenarioHarness {
         }
         println("[e2e] job $jobId in completed feed (${firstSighting.size} event(s) at first sighting)")
 
-        val firstDiscord = pollUntil(
-            90,
-            1000,
-            { "notifier to deliver Discord for '$company' (sink saw: ${sink.describe()})" },
-        ) {
-            sink.discordTexts().filter { it.contains(company) }.takeIf { it.isNotEmpty() }
-        }
+        val firstDiscord = awaitDiscordDelivery(company)
         println("[e2e] notifier delivered Discord for '$company' (${firstDiscord.size} message(s) at first sighting)")
 
         // Everything below is evidence for "exactly one" / "none at all" assertions, which are
