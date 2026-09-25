@@ -7,6 +7,9 @@ import com.microsoft.playwright.Playwright
 import com.microsoft.playwright.PlaywrightException
 import org.slf4j.LoggerFactory
 import java.net.URI
+import java.net.http.HttpTimeoutException
+import java.io.IOException
+import java.io.InterruptedIOException
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -161,7 +164,7 @@ class SteelBrowser(
                     val backoffMs = connectBackoffBaseMs shl (attempt - 1)  // 500, 1000, 2000…
                     log.warn("Steel connect attempt {}/{} failed: {} — retrying in {}ms",
                         attempt, connectMaxAttempts, e.message, backoffMs)
-                    runCatching { sleep(backoffMs) }
+                    if (!sleepBeforeRetry(backoffMs)) break
                 } else {
                     break
                 }
@@ -171,13 +174,23 @@ class SteelBrowser(
     }
 
     /**
-     * Whether a failed connect is worth an immediate in-scrape retry: only a fast, transient HTTP 5xx
-     * from createSession (e.g. the SingletonLock race while Chrome relaunches). A timeout or any other
-     * error is NOT retried in-scrape — retrying would just multiply createSession's 90s ceiling — so it
-     * defers to the cooldown re-probe (and, past the breaker threshold, the wider circuit-open window).
+     * Whether a failed connect is worth an immediate in-scrape retry: a fast transient HTTP 5xx from
+     * createSession (e.g. the SingletonLock race while Chrome relaunches) or an HTTP-client transport
+     * reset. Timeouts are deliberately excluded: retrying a 90s request timeout would multiply the
+     * pipeline stall, whereas a reset fails fast and a bounded retry usually recovers it.
      */
     private fun isRetriableConnectError(e: Throwable): Boolean =
-        e is SteelHttpException && e.statusCode in 500..599
+        (e is SteelHttpException && e.statusCode in 500..599) ||
+            (e is IOException && e !is HttpTimeoutException && e !is InterruptedIOException)
+
+    /** Sleep between retries without swallowing cancellation: restore the interrupt flag and stop. */
+    private fun sleepBeforeRetry(delayMs: Long): Boolean = try {
+        sleep(delayMs)
+        true
+    } catch (_: InterruptedException) {
+        Thread.currentThread().interrupt()
+        false
+    }
 
     /**
      * All in-scrape connect attempts failed. Advance the circuit breaker and arm the cooldown: for the
@@ -248,7 +261,7 @@ class SteelBrowser(
             if (attempt > 0) {
                 val backoffMs = deadSessionBackoffMs(attempt - 1)
                 log.warn("Steel session for {} died; retry {}/{} after {}ms", host, attempt, targetClosedMaxRetries, backoffMs)
-                runCatching { sleep(backoffMs) }
+                if (!sleepBeforeRetry(backoffMs)) break
                 if (!isAvailable()) break
             }
             try {
