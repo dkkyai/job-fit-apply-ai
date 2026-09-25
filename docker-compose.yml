@@ -126,6 +126,8 @@ services:
       GMAIL_CREDENTIALS_FILE: "/secrets/dkkytech_credentials.json"
       GMAIL_TOKEN_FILE: "/secrets/tokens/gmail_token.json"
       GMAIL_MAX_EMAILS: "${GMAIL_MAX_EMAILS:-10}"
+      INTAKE_BATCH_SIZE: "${INTAKE_BATCH_SIZE:-3}"
+      INTAKE_INTER_SUBMIT_DELAY_MS: "${INTAKE_INTER_SUBMIT_DELAY_MS:-15000}"
     volumes:
       # Gmail credentials + token. RW so the ~weekly OAuth refresh persists across restarts.
       # Seed once from the existing token; the container is the sole Gmail owner after cutover.

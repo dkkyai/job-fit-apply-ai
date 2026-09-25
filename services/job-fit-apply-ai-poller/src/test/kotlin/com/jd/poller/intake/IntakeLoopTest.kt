@@ -16,6 +16,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @DisplayName("IntakeLoopTest")
 class IntakeLoopTest {
@@ -26,12 +27,12 @@ class IntakeLoopTest {
     @DisplayName("submits every fetched email and marks each Processing")
     fun submitsAndLabels() {
         val gmail = mock<GmailClient> {
-            on { fetchIntakeEmails() } doReturn listOf(email("a"), email("b"))
+            on { fetchIntakeEmails(any()) } doReturn listOf(email("a"), email("b"))
             on { getOrCreateLabel(TerminalLabels.PROCESSING) } doReturn "proc-id"
         }
         val bridge = mock<PollerBridgeClient> { on { submitEmail(any()) } doReturn "job-x" }
 
-        val submitted = IntakeLoop(gmail, bridge).pollOnce()
+        val submitted = IntakeLoop(gmail, bridge, interSubmitDelayMs = 0).pollOnce()
 
         assertEquals(2, submitted)
         verify(bridge, times(2)).submitEmail(any())
@@ -40,16 +41,74 @@ class IntakeLoopTest {
     }
 
     @Test
+    @DisplayName("limits each intake pass to the configured batch size")
+    fun limitsEachPassToConfiguredBatchSize() {
+        val gmail = mock<GmailClient> {
+            on { fetchIntakeEmails(2) } doReturn listOf(email("a"), email("b"))
+            on { getOrCreateLabel(TerminalLabels.PROCESSING) } doReturn "proc-id"
+        }
+        val bridge = mock<PollerBridgeClient> { on { submitEmail(any()) } doReturn "job-x" }
+
+        val submitted = IntakeLoop(gmail, bridge, batchSize = 2).pollOnce()
+
+        assertEquals(2, submitted)
+        verify(gmail).fetchIntakeEmails(2)
+    }
+
+    @Test
+    @DisplayName("paces successful submissions by the configured delay")
+    fun pacesSuccessfulSubmissions() {
+        val gmail = mock<GmailClient> {
+            on { fetchIntakeEmails(2) } doReturn listOf(email("a"), email("b"))
+            on { getOrCreateLabel(TerminalLabels.PROCESSING) } doReturn "proc-id"
+        }
+        val bridge = mock<PollerBridgeClient> { on { submitEmail(any()) } doReturn "job-x" }
+        val delays = mutableListOf<Long>()
+
+        IntakeLoop(gmail, bridge, batchSize = 2, interSubmitDelayMs = 1_000, sleep = { delays.add(it) }).pollOnce()
+
+        assertEquals(listOf(1_000L), delays)
+    }
+
+    @Test
+    @DisplayName("an interrupted pacing wait restores interrupt and stops the pass")
+    fun interruptedPacingWaitStopsPass() {
+        val gmail = mock<GmailClient> {
+            on { fetchIntakeEmails(3) } doReturn listOf(email("a"), email("b"), email("c"))
+            on { getOrCreateLabel(TerminalLabels.PROCESSING) } doReturn "proc-id"
+        }
+        val bridge = mock<PollerBridgeClient> { on { submitEmail(any()) } doReturn "job-x" }
+
+        try {
+            val submitted = IntakeLoop(
+                gmail,
+                bridge,
+                batchSize = 3,
+                interSubmitDelayMs = 1_000,
+                sleep = { throw InterruptedException("shutdown") },
+            ).pollOnce()
+
+            assertEquals(1, submitted)
+            assertTrue(Thread.currentThread().isInterrupted)
+            verify(bridge).submitEmail(eq(email("a")))
+            verify(bridge, never()).submitEmail(eq(email("b")))
+            verify(bridge, never()).submitEmail(eq(email("c")))
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    @Test
     @DisplayName("a failed submit does not block the other emails and is not counted")
     fun submitFailureIsIsolated() {
         val gmail = mock<GmailClient> {
-            on { fetchIntakeEmails() } doReturn listOf(email("bad"), email("good"))
+            on { fetchIntakeEmails(any()) } doReturn listOf(email("bad"), email("good"))
             on { getOrCreateLabel(any()) } doReturn "proc-id"
         }
         val bridge = mock<PollerBridgeClient>()
         whenever(bridge.submitEmail(any())).thenThrow(RuntimeException("bridge down")).thenReturn("job-ok")
 
-        val submitted = IntakeLoop(gmail, bridge).pollOnce()
+        val submitted = IntakeLoop(gmail, bridge, interSubmitDelayMs = 0).pollOnce()
 
         assertEquals(1, submitted)
         // The failed email is never labeled in-flight, so it is re-fetched next pass.
@@ -60,7 +119,7 @@ class IntakeLoopTest {
     @Test
     @DisplayName("empty inbox submits nothing")
     fun emptyInbox() {
-        val gmail = mock<GmailClient> { on { fetchIntakeEmails() } doReturn emptyList() }
+        val gmail = mock<GmailClient> { on { fetchIntakeEmails(any()) } doReturn emptyList() }
         val bridge = mock<PollerBridgeClient>()
         assertEquals(0, IntakeLoop(gmail, bridge).pollOnce())
         verify(bridge, never()).submitEmail(any())
@@ -70,7 +129,7 @@ class IntakeLoopTest {
     @DisplayName("a labeling failure still counts the submit (bridge already has the work item)")
     fun labelFailureStillCountsSubmit() {
         val gmail = mock<GmailClient> {
-            on { fetchIntakeEmails() } doReturn listOf(email("a"))
+            on { fetchIntakeEmails(any()) } doReturn listOf(email("a"))
             on { getOrCreateLabel(any()) } doReturn "proc-id"
         }
         doThrow(RuntimeException("gmail 500")).whenever(gmail).labelEmail(any(), any())
