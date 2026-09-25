@@ -279,6 +279,36 @@ class ProcessorCommandHandlerTest {
         }
 
         @Test
+        @DisplayName("completes a terminal scrape outcome with the scrape-failed label")
+        fun terminalScrapeOutcomeUsesScrapeFailedLabel() {
+            val bridge = mock<BridgeClient>()
+            val pipeline = mock<ProcessingPipeline>()
+            val ingestion = mock<IngestionPipeline>()
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
+            val posted = CountDownLatch(1)
+            val blocked = ingested(isJobPosting = true).copy(
+                jobUrl = "https://jobs.example.com/123",
+                error = "scrape_jd: HTTP 403 blocked",
+                scrapePath = "blocked",
+            )
+
+            whenever(bridge.claim()).doReturn(emailClaim()).doAnswer { processorThread.interrupt(); null }
+            whenever(ingestion.invoke(any())).doReturn(blocked)
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
+
+            processorThread.isDaemon = true
+            processorThread.start()
+
+            assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should complete the scrape failure within 5s")
+            verify(bridge).postResult(eq("job-email"), argThat {
+                terminalLabel == TerminalLabel.JD_SCRAPE_FAILED &&
+                    error?.contains("BLOCKED") == true &&
+                    scrapePath == "blocked"
+            }, anyOrNull())
+            verify(pipeline, never()).invoke(any())
+        }
+
+        @Test
         @DisplayName("posts a skip when an EMAIL_RAW claim has no email payload")
         fun skipsWhenEmailPayloadMissing() {
             val bridge = mock<BridgeClient>()

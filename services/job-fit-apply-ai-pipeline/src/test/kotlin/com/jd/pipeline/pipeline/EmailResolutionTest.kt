@@ -41,6 +41,22 @@ class EmailResolutionTest {
     }
 
     @Test
+    fun `terminal scrape failure is distinct from a transient ingestion error`() {
+        val state = JDState(
+            isJobPosting = true,
+            intake = email(),
+            jobUrl = "https://jobs.example.com/123",
+            error = "scrape_jd: HTTP 403 blocked",
+            scrapePath = "blocked",
+        )
+
+        assertEquals(
+            EmailDisposition.ScrapeTerminal(ScrapeTerminalReason.BLOCKED, state.error),
+            EmailResolution.classify(state),
+        )
+    }
+
+    @Test
     fun `error takes precedence over a digest classification`() {
         // A digest whose scan errored should surface the error, not fan out stale children.
         val s = JDState(

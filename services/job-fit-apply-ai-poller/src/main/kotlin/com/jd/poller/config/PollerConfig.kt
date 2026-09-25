@@ -39,7 +39,7 @@ object PollerConfig {
     val INTAKE_BATCH_SIZE: Int = positiveInt("INTAKE_BATCH_SIZE", get("INTAKE_BATCH_SIZE", "3"))
     val GMAIL_SEARCH_QUERY: String = get(
         "GMAIL_SEARCH_QUERY",
-        "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:Processing -label:JD_Error",
+        "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:Processing -label:JD_Error -label:JD_Scrape_Failed",
     )
 
     // ── Poll loops ──────────────────────────────────────────────────────────────

@@ -87,6 +87,7 @@ class GmailClient(
             "JD_Processed",
             "JD_Processed_Digest",
             "JD_Not_Found",
+            "JD_Scrape_Failed",
             "Recruiter_Response_Required"
         )
         val labelsResponse = service.users().labels().list("me").execute()

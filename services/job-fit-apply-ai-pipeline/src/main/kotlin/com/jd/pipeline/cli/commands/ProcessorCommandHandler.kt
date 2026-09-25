@@ -308,6 +308,19 @@ object ProcessorCommandHandler {
         }
 
         return when (val disposition = EmailResolution.classify(ingState)) {
+            is EmailDisposition.ScrapeTerminal -> {
+                System.err.println(
+                    "[processor] terminal scrape outcome for ${claimed.jobId}: ${disposition.reason}",
+                )
+                postTerminal(
+                    bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
+                    skipResult(
+                        "scrape terminal ${disposition.reason}: ${disposition.message}",
+                        disposition.reason.terminalLabel,
+                        ingState.scrapePath,
+                    ),
+                )
+            }
             is EmailDisposition.Error -> {
                 // Scan/scrape FAILED (e.g. a transient LLM 507) — not a verdict that this isn't a
                 // job. Label JD_Error, never JD_Not_Found: mislabeling a real recruiter email as
