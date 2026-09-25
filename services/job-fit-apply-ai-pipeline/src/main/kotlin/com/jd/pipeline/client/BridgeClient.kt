@@ -96,7 +96,8 @@ class BridgeClient(
     }
 
     /**
-     * POST the terminal result. [claimToken] is the fence the bridge handed out with the claim:
+     * POST a result. A retryable result is accepted with 202 after the bridge durably defers it.
+     * [claimToken] is the fence the bridge handed out with the claim:
      * if this claim was requeued and re-claimed while we were working, the bridge refuses the
      * write (409) rather than letting us overwrite the attempt that replaced us.
      */
@@ -114,7 +115,7 @@ class BridgeClient(
         }
         http.execute(req) { resp ->
             val body = EntityUtils.toString(resp.entity, Charsets.UTF_8)
-            check(resp.code == 200) { "POST /api/jobs/$jobId/result → ${resp.code}: $body" }
+            check(resp.code == 200 || resp.code == 202) { "POST /api/jobs/$jobId/result → ${resp.code}: $body" }
         }
     }
 

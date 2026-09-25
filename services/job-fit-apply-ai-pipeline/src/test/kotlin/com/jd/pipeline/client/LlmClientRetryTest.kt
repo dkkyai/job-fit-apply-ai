@@ -98,6 +98,26 @@ class LlmClientRetryTest {
     }
 
     @Test
+    @DisplayName("post preserves a temporary 503 as a typed transient failure")
+    fun temporary5xxIsTypedTransientFailure() {
+        val client = newClient()
+        val mockHttp = mock<HttpClient>()
+        val f503 = future(resp(503, "temporarily unavailable"))
+        whenever(mockHttp.sendAsync(any<HttpRequest>(), any<HttpResponse.BodyHandler<String>>()))
+            .thenReturn(f503)
+        injectHttp(client, mockHttp)
+
+        try {
+            invokePost(client)
+            fail("Expected transient failure for HTTP 503")
+        } catch (e: java.lang.reflect.InvocationTargetException) {
+            assertTrue(e.cause is TransientLlmFailure, "5xx must retain the typed retry signal: ${e.cause}")
+            assertTrue(e.cause!!.message!!.contains("503"))
+        }
+        verify(mockHttp, times(1)).sendAsync(any<HttpRequest>(), any<HttpResponse.BodyHandler<String>>())
+    }
+
+    @Test
     @DisplayName("post respects Retry-After header on 429")
     fun retry429WithRetryAfter() {
         val client = newClient()

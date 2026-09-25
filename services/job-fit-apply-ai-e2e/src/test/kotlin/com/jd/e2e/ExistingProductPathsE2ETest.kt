@@ -240,9 +240,9 @@ class ExistingProductPathsE2ETest {
         val company = "E2E Fail $nonce"
         val failed = harness.runScenario(
             company = company,
-            // One queued 500 is enough: LlmClient retries 429 only, so a 500 throws on the
-            // first attempt. A second queued failure would never be consumed.
-            responses = mapOf("score_fit" to listOf(failure(500))),
+            // The retry policy intentionally defers 429/timeouts/5xx. Use a permanent client error
+            // here to retain coverage for the terminal score-fit error contract.
+            responses = mapOf("score_fit" to listOf(failure(400))),
             expectTerminal = "error",
         ) {
             submitScrapedJob(

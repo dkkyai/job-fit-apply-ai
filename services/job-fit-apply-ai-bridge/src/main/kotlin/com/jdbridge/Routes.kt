@@ -180,6 +180,10 @@ fun Routing.configureRoutes() {
                 log.info("Result recorded for $jobId: ${req.pipeline_action}, score=${req.fit_score}, error=${req.error}")
                 call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
             }
+            ResultOutcome.REQUEUED -> {
+                log.info("Retryable result requeued for $jobId: ${req.error}")
+                call.respond(HttpStatusCode.Accepted, mapOf("status" to "requeued"))
+            }
             // 200, not an error: a duplicate POST is a worker retrying a lost response, and the
             // desired end state (one terminal result, one completed event) already holds.
             ResultOutcome.ALREADY_TERMINAL ->

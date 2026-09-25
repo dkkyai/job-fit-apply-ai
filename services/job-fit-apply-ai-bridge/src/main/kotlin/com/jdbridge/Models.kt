@@ -98,6 +98,8 @@ data class ResultRequest(
     val output_path: String?      = null,
     val has_cover_letter: Boolean = false,
     val error: String?            = null,
+    /** True only for a transient provider failure that should return to the queue. */
+    val retryable: Boolean         = false,
     // Processed-posting identity + report URL — persisted for completed-feed consumers (e.g. Notifier):
     val company: String?          = null,
     val role_title: String?       = null,
@@ -218,6 +220,8 @@ data class JobRow(
     val pipelineAction: String?,
     val artifacts: ArtifactUrls?,
     val error: String?,
+    val retryCount: Int,
+    val nextAttemptAt: Long?,
     val claimedAt: Long?,
     val createdAt: Long,
     val updatedAt: Long,

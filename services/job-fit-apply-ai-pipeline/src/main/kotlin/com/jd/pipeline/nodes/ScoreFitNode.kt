@@ -65,6 +65,10 @@ class ScoreFitNode(
                 System.err.println("[score_fit] WARN: failed to save score_fit.txt: ${e.message}")
             }
             result
+        } catch (e: com.jd.pipeline.client.TransientLlmFailure) {
+            // Re-propagate so the processor handler's retry classification can act on it
+            // instead of swallowing into a terminal JD_Error.
+            throw com.jd.pipeline.client.RetryableLlmError("score_fit: ${e.message}", e)
         } catch (e: Exception) {
             System.err.println("[score_fit] ERROR: ${e.message}")
             input.copy(fitScore = 0f, error = "score_fit: ${e.message}")

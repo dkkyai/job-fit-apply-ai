@@ -36,6 +36,7 @@ class BridgeClientHttpTest {
     @Volatile private var claimResponse: Pair<Int, String> = 200 to
         """{"job_id":"j1","type":"JD_SCRAPED","jd_record":{"jd_text":"x","company":"Acme","role_title":"SDET","location":null,"job_url":null,"source":"EMAIL"}}"""
     @Volatile private var submitStatus: Int = 200
+    @Volatile private var resultStatus: Int = 200
     @Volatile private var statusResponses: ArrayDeque<String> = ArrayDeque()
     @Volatile private var artifactHit: Boolean = false
 
@@ -53,7 +54,7 @@ class BridgeClientHttpTest {
                     respond(ex, claimResponse.first, claimResponse.second)
                 path.endsWith("/result") && ex.requestMethod == "POST" -> {
                     resultBody = ex.requestBody.readBytes().decodeToString()
-                    respond(ex, 200, "{}")
+                    respond(ex, resultStatus, "{}")
                 }
                 path.endsWith("/artifacts") && ex.requestMethod == "POST" -> {
                     artifactHit = true
@@ -143,6 +144,14 @@ class BridgeClientHttpTest {
         val sent = mapper.readTree(resultBody)
         assertEquals("DRAFT", sent.get("pipeline_action").asText())
         assertEquals(88, sent.get("fit_score").asInt())
+    }
+
+    @Test
+    @DisplayName("postResult accepts the bridge's 202 deferred-retry response")
+    fun postResultAcceptsRequeued() {
+        resultStatus = 202
+        client.postResult("job-123", sampleResult().copy(error = "LLM HTTP 429", retryable = true))
+        assertTrue(mapper.readTree(resultBody).get("retryable").asBoolean())
     }
 
     @Test

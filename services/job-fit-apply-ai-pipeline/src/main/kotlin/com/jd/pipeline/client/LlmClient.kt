@@ -223,7 +223,7 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
                 future.get(hardTimeoutSeconds, TimeUnit.SECONDS)
             } catch (e: TimeoutException) {
                 future.cancel(true)
-                throw RuntimeException("LLM call to $url exceeded hard timeout of ${hardTimeoutSeconds}s")
+                throw TransientLlmFailure("LLM call to $url exceeded hard timeout of ${hardTimeoutSeconds}s", e)
             } catch (e: ExecutionException) {
                 future.cancel(true)
                 throw RuntimeException("LLM call to $url failed: ${e.cause?.message ?: e.message}")
@@ -242,7 +242,12 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
                 Thread.sleep(delayMs)
                 continue
             }
-            lastException = RuntimeException("LLM HTTP ${response.statusCode()} from $url: ${response.body().take(300)}")
+            val message = "LLM HTTP ${response.statusCode()} from $url: ${response.body().take(300)}"
+            lastException = if (response.statusCode() == 429 || response.statusCode() in 500..599) {
+                TransientLlmFailure(message)
+            } else {
+                RuntimeException(message)
+            }
             break
         }
         throw lastException ?: RuntimeException("LLM HTTP request failed after retries")

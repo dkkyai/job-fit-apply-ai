@@ -2,6 +2,7 @@ package com.jd.pipeline.cli.commands
 
 import com.jd.pipeline.client.BridgeClient
 import com.jd.pipeline.client.ClaimDto
+import com.jd.pipeline.client.TransientFailureClassifier
 import com.jd.pipeline.client.SigninServer
 import com.jd.pipeline.client.WorkItemType
 import com.jd.pipeline.config.Config
@@ -96,6 +97,7 @@ object ProcessorCommandHandler {
                 pipeline.invoke(jdRecord)
             } catch (e: Exception) {
                 System.err.println("[processor] pipeline threw for ${claimed.jobId}: ${e.message}")
+                val retryable = TransientFailureClassifier.isRetryable(e)
                 ProcessingResult(
                     pipelineAction = PipelineAction.SKIP.name,
                     fitScore       = 0,
@@ -104,9 +106,10 @@ object ProcessorCommandHandler {
                     outputPath     = null,
                     hasCoverLetter = false,
                     error          = e.message,
+                    retryable      = retryable,
                     // Never let an execution failure fall through to the Poller's JD_Not_Found
                     // compatibility fallback: this is an error, not a classification outcome.
-                    terminalLabel  = TerminalLabel.JD_ERROR,
+                    terminalLabel  = if (retryable) null else TerminalLabel.JD_ERROR,
                     // Carry identity so the completed-event (JD_Error) still shows what failed.
                     company        = jdRecord.company,
                     roleTitle      = jdRecord.roleTitle,
@@ -301,9 +304,10 @@ object ProcessorCommandHandler {
             ingestion.invoke(emailState)   // scan → digest fan-out → scrape
         } catch (e: Exception) {
             System.err.println("[processor] ingestion failed for ${claimed.jobId}: ${e.message}")
+            val retryable = TransientFailureClassifier.isRetryable(e)
             return postTerminal(
                 bridge, claimed, logRecordOf(emailState, IngestionSource.EMAIL),
-                skipResult("ingestion: ${e.message}", TerminalLabel.JD_ERROR),
+                skipResult("ingestion: ${e.message}", if (retryable) null else TerminalLabel.JD_ERROR, retryable = retryable),
             )
         }
 
@@ -393,9 +397,10 @@ object ProcessorCommandHandler {
             ingestion.scrapeNode.process(state)   // dual-mode: extracts from capturedText, no fetch
         } catch (e: Exception) {
             System.err.println("[processor] page extraction failed for ${claimed.jobId}: ${e.message}")
+            val retryable = TransientFailureClassifier.isRetryable(e)
             return postTerminal(
                 bridge, claimed, logRecordOf(state, IngestionSource.EXTENSION),
-                skipResult("extraction: ${e.message}"),
+                skipResult("extraction: ${e.message}", if (retryable) null else TerminalLabel.JD_ERROR, retryable = retryable),
             )
         }
 
@@ -440,6 +445,7 @@ object ProcessorCommandHandler {
         error: String?,
         terminalLabel: String? = null,
         scrapePath: String = "",
+        retryable: Boolean = false,
     ): ProcessingResult = ProcessingResult(
         pipelineAction = PipelineAction.SKIP.name,
         fitScore       = 0,
@@ -448,6 +454,7 @@ object ProcessorCommandHandler {
         outputPath     = null,
         hasCoverLetter = false,
         error          = error,
+        retryable      = retryable,
         terminalLabel  = terminalLabel,
         // These items never reach ProcessingPipeline, so nothing else can record how their JD text
         // was fetched. A scrape that FAILED terminates right here — exactly the case the analyzer
