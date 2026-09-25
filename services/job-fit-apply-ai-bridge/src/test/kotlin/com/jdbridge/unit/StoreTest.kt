@@ -211,7 +211,30 @@ class StoreRecordResultTest {
         val terminal = getJob(jobId)!!
         assertEquals(JobStatus.ERROR.value, terminal.status)
         assertEquals(3, terminal.retryCount)
+        assertEquals("JD_Error", terminal.terminalLabel)
+        assertEquals("LLM HTTP 429", terminal.error)
         assertNotNull(terminal.completedSeq)
+    }
+
+    @Test
+    fun `successful retry clears the previous transient error`() = runTest {
+        val jobId = enqueue(defaultJdJson(), null, null)
+        val failedClaim = claimNext()!!
+        assertEquals(ResultOutcome.REQUEUED, recordResult(
+            jobId,
+            ResultRequest("SKIP", 0, error = "LLM HTTP 429", retryable = true, claim_token = failedClaim.claimToken),
+        ))
+        transaction { Jobs.update({ Jobs.id eq jobId }) { it[Jobs.nextAttemptAt] = 0L } }
+
+        val retryClaim = claimNext()!!
+        assertEquals(ResultOutcome.RECORDED, recordResult(
+            jobId,
+            ResultRequest("TAILOR", 85, claim_token = retryClaim.claimToken),
+        ))
+
+        val completed = getJob(jobId)!!
+        assertEquals(JobStatus.DONE.value, completed.status)
+        assertNull(completed.error)
     }
 }
 

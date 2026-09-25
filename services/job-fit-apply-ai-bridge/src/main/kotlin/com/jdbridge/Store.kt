@@ -277,7 +277,7 @@ suspend fun recordResult(jobId: String, req: ResultRequest): ResultOutcome {
             val retryCount = row[Jobs.retryCount]
             if (retryCount < MAX_RETRYABLE_ATTEMPTS) {
                 val delaySeconds = RETRY_BACKOFF_BASE_SECONDS * (1L shl retryCount)
-                Jobs.update({ Jobs.id eq jobId }) {
+                val changed = Jobs.update({ Jobs.id eq jobId }) {
                     it[Jobs.status]        = JobStatus.PENDING.value
                     it[Jobs.error]         = req.error
                     it[Jobs.retryCount]    = retryCount + 1
@@ -287,14 +287,21 @@ suspend fun recordResult(jobId: String, req: ResultRequest): ResultOutcome {
                     it[Jobs.terminalLabel] = null
                     it[Jobs.updatedAt]     = now
                 }
-                ResultOutcome.REQUEUED
+                if (changed == 0) ResultOutcome.STALE_CLAIM
+                else ResultOutcome.REQUEUED
             } else {
                 ResultOutcome.RECORDED
             }
         }
-        // The retry-budget boundary is terminal, but only after all earlier attempts were deferred.
-        // Keep the terminal write outside Exposed's synchronous transaction lambda.
-        return if (requeued == ResultOutcome.RECORDED) recordTerminalResult(jobId, req, now) else requeued
+        // The retry-budget boundary is terminal. Keep the terminal write outside Exposed's
+        // synchronous transaction lambda.  Force terminal label to JD_Error so exhausted retries
+        // don't land as a blank label (which the Poller maps to JD_Not_Found).
+        return if (requeued == ResultOutcome.RECORDED) {
+            val forRetryExhaustion = recordTerminalResult(
+                jobId, req.copy(terminal_label = TerminalLabel.JD_ERROR), now
+            )
+            forRetryExhaustion
+        } else requeued
     }
 
     return recordTerminalResult(jobId, req, now)
@@ -306,6 +313,8 @@ private suspend fun recordTerminalResult(jobId: String, req: ResultRequest, now:
     // Only now is a sequence number burned — an ignored result must not consume one.
     val nextSeq = completedSeqCounter.incrementAndGet()
     dbQuery {
+        // Also clear stale transient errors on success (retry-then-success scenario).
+        if (req.error == null) row[Jobs.error] = null
         Jobs.update({ Jobs.id eq jobId }) { row ->
             row[Jobs.status]          = newStatus.value
             row[Jobs.fitScore]        = req.fit_score

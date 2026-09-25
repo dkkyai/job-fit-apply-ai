@@ -4,6 +4,13 @@ package com.jd.pipeline.client
 class TransientLlmFailure(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
 /**
+ * Node caught a TransientLlmFailure but still needs to return a JDState (non-throwing nodes like
+ * ScoreFitNode). Wrapping keeps isRetryable true so the processor handler can classify it, and
+ * the original error message survives inside the transformer so downstream logs remain correct.
+ */
+class RetryableLlmError(message: String, cause: Throwable) : RuntimeException(message, cause)
+
+/**
  * Keeps retry classification at the processor/LLM boundary rather than treating every pipeline
  * exception as transient.  Wrapped exceptions are inspected because node frameworks commonly add
  * context while preserving the underlying provider failure.

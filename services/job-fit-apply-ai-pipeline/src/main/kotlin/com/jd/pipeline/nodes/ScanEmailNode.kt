@@ -133,6 +133,9 @@ class ScanEmailNode(
 
         return try {
             parseLlmResponse(input, llm.call(prompt))
+        } catch (e: com.jd.pipeline.client.TransientLlmFailure) {
+            println("[scan_email] Transient LLM failure: ${e.message}")
+            throw com.jd.pipeline.client.RetryableLlmError("scan_email: ${e.message}", e)
         } catch (e: Exception) {
             println("[scan_email] LLM error: ${e.message}")
             input.copy(isJobPosting = false, error = "scan_email: ${e.message}")
@@ -226,6 +229,8 @@ class ScanEmailNode(
                 techStack = node.path("tech_stack").map { it.asText() },
                 skippedReason = if (!isJobPosting) "Not a job posting" else ""
             )
+        } catch (e: com.jd.pipeline.client.TransientLlmFailure) {
+            throw com.jd.pipeline.client.RetryableLlmError("scan_email: ${e.message}", e)
         } catch (e: Exception) {
             input.copy(isJobPosting = false, error = "scan_email: JSON parse failed — ${cleaned.take(200)}")
         }
