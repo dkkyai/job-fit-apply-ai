@@ -9,8 +9,8 @@ calls are flagged, never rewritten. The workflow never pushes commits.
 
 Required env: GITHUB_TOKEN, OLLAMA_CLOUD_API_KEY, GITHUB_REPOSITORY,
 GITHUB_EVENT_PATH.
-Optional env: OLLAMA_MODEL (default deepseek-v4-pro:0813),
-OLLAMA_BASE_URL (default https://ollama.com/v1), PR_NUMBER (workflow_dispatch).
+Optional env: OLLAMA_MODEL (default deepseek-v4-pro:0813:ollama-cloud),
+OLLAMA_BASE_URL (default https://ollama.com), PR_NUMBER (workflow_dispatch).
 """
 
 import base64
@@ -22,8 +22,15 @@ import urllib.request
 import urllib.error
 
 # ---------------------------------------------------------------- tunables
-MODEL = os.environ.get("OLLAMA_MODEL", "deepseek-v4-pro:0813")
-OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com/v1")
+# Native Ollama Cloud API (https://ollama.com/api/chat) — the same endpoint and
+# model naming the tuner already uses. The OpenAI-compatible /v1/chat/completions
+# endpoint returned empty 200s for these model ids, so we don't use it.
+MODEL = os.environ.get("OLLAMA_MODEL", "deepseek-v4-pro:0813:ollama-cloud")
+OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com")
+if OLLAMA_BASE.rstrip("/") == "https://ollama.com" and not MODEL.endswith(":ollama-cloud"):
+    # Native cloud API addresses cloud models with the :ollama-cloud suffix;
+    # accept the bare id too so OLLAMA_MODEL=deepseek-v4-pro:0813 just works.
+    MODEL = f"{MODEL}:ollama-cloud"
 FULL_FILE_BUDGET_CHARS = 120_000   # <= this much diff text -> include full files
 MAX_FILE_CHARS = 30_000            # per-file truncation cap
 MAX_COMMENTS = 25
@@ -96,13 +103,13 @@ def _ollama_attempt(key, messages, use_json_mode):
     body = {
         "model": MODEL,
         "messages": messages,
-        "temperature": 0.2,
-        "max_tokens": 8000,
+        "stream": False,
+        "options": {"temperature": 0.2, "num_predict": 8000},
     }
     if use_json_mode:
-        body["response_format"] = {"type": "json_object"}
+        body["format"] = "json"
     req = urllib.request.Request(
-        f"{OLLAMA_BASE}/chat/completions",
+        f"{OLLAMA_BASE}/api/chat",
         data=json.dumps(body).encode(),
         method="POST",
         headers={"Authorization": f"Bearer {key}",
@@ -118,8 +125,8 @@ def extract_findings(resp):
     """Parse model output into findings. Falls back to lenient brace-matching
     when the model wraps its JSON in fences or prose."""
     try:
-        raw = resp["choices"][0]["message"].get("content") or ""
-    except (IndexError, KeyError):
+        raw = resp["message"].get("content") or ""
+    except (AttributeError, KeyError):
         raw = ""
     try:
         return json.loads(raw), raw
