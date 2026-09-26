@@ -173,8 +173,12 @@ object Config {
     val RENDER_PDF_TIMEOUT_MS: Long = get("RENDER_PDF_TIMEOUT_MS", "180000").toLong()
 
     // ── User Profile ─────────────────────────────────────────────────────────────
-    /** Slim pipeline config (preferences + scoring aids). Gitignored — produced by `--init-profile`. */
-    val CANDIDATE_PROFILE_PATH: Path = PROJECT_DIR.resolve("config").resolve("candidate_profile.yaml")
+    /** Slim pipeline config (preferences + scoring aids). Gitignored (personal) — produced by `--init-profile`.
+     *  Override with the CANDIDATE_PROFILE_YAML_PATH env var to point elsewhere (e.g. a private profile repo). */
+    val CANDIDATE_PROFILE_PATH: Path = get("CANDIDATE_PROFILE_YAML_PATH", "").let { override ->
+        if (override.isNotBlank()) Paths.get(override)
+        else PROJECT_DIR.resolve("config").resolve("candidate_profile.yaml")
+    }
 
     // ── Output ───────────────────────────────────────────────────────────────────
     val OUTPUT_DIR: Path = PROJECT_DIR.resolve("output")
