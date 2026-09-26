@@ -165,7 +165,7 @@ def reviewable(path):
         return False
     if path.endswith(SKIP_SUFFIXES):
         return False
-    return not any(part in SKIP_DIRS for part in (path,))
+    return not any(skip in path for skip in SKIP_DIRS)
 
 
 def valid_new_lines(patch):
@@ -215,7 +215,9 @@ def main():
     with open(os.environ["GITHUB_EVENT_PATH"]) as f:
         event = json.load(f)
 
-    pr_number = os.environ.get("PR_NUMBER") or event["pull_request"]["number"]
+    pr_number = os.environ.get("PR_NUMBER") or event.get("pull_request", {}).get("number")
+    if not pr_number:
+        raise SystemExit("Could not determine PR number (PR_NUMBER env / pull_request event).")
     pr = gh_api(f"/repos/{repo}/pulls/{pr_number}")
     head_sha = pr["head"]["sha"]
     if any(l["name"] == SKIP_LABEL for l in pr.get("labels", [])):
