@@ -187,6 +187,13 @@ the processor runs in Docker.
 When running the pipeline directly on the host (`./gradlew run`), the overrides above work
 as written, with no mount needed.
 
+**Note on `--resume-gen` with an override:** that command writes its output *next to its
+input*, so pointing `RESUME_YAML_PATH` at an out-of-tree file writes a derived
+`<name>-generated.html` into that same directory. The pipeline itself is unaffected — the
+per-job render still goes to the job's output directory — but the artifact lands in whatever
+directory holds your résumé. Add a `*-generated.html` ignore there if you don't want it
+committed.
+
 > **Backups:** any pre-existing copy of a generated file is moved aside with a timestamped `.bak` suffix before being overwritten.
 
 ## Environment + LLM setup
