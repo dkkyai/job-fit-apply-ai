@@ -89,15 +89,21 @@ def ollama_chat(messages):
         raise SystemExit(
             "OLLAMA_CLOUD_API_KEY is missing. Add it at repo Settings -> "
             "Secrets and variables -> Actions -> New repository secret.")
+    return _ollama_attempt(key, messages, use_json_mode=True)
+
+
+def _ollama_attempt(key, messages, use_json_mode):
+    body = {
+        "model": MODEL,
+        "messages": messages,
+        "temperature": 0.2,
+        "max_tokens": 8000,
+    }
+    if use_json_mode:
+        body["response_format"] = {"type": "json_object"}
     req = urllib.request.Request(
         f"{OLLAMA_BASE}/chat/completions",
-        data=json.dumps({
-            "model": MODEL,
-            "messages": messages,
-            "temperature": 0.2,
-            "max_tokens": 8000,
-            "response_format": {"type": "json_object"},
-        }).encode(),
+        data=json.dumps(body).encode(),
         method="POST",
         headers={"Authorization": f"Bearer {key}",
                  "Content-Type": "application/json"})
@@ -106,6 +112,27 @@ def ollama_chat(messages):
             return json.load(r)
     except urllib.error.HTTPError as e:
         raise SystemExit(f"Ollama Cloud -> {e.code}: {e.read().decode()[:500]}")
+
+
+def extract_findings(resp):
+    """Parse model output into findings. Falls back to lenient brace-matching
+    when the model wraps its JSON in fences or prose."""
+    try:
+        raw = resp["choices"][0]["message"].get("content") or ""
+    except (IndexError, KeyError):
+        raw = ""
+    try:
+        return json.loads(raw), raw
+    except json.JSONDecodeError:
+        pass
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0)), raw
+        except json.JSONDecodeError:
+            pass
+    return None, raw
 
 
 # ---------------------------------------------------------------- diff utils
@@ -207,11 +234,16 @@ def main():
     context = "\n\n".join(sections)
 
     prompt = REVIEW_PROMPT.format(repo=repo, context=context)
-    resp = ollama_chat([{"role": "user", "content": prompt}])
-    try:
-        findings = json.loads(resp["choices"][0]["message"]["content"])
-    except (KeyError, json.JSONDecodeError) as e:
-        raise SystemExit(f"Could not parse model output as JSON: {e}")
+    messages = [{"role": "user", "content": prompt}]
+    findings, raw = extract_findings(ollama_chat(messages))
+    if findings is None:
+        print("json_object mode output unparseable; retrying without it...")
+        findings, raw = extract_findings(_ollama_attempt(
+            os.environ["OLLAMA_CLOUD_API_KEY"], messages, use_json_mode=False))
+    if findings is None:
+        raise SystemExit(
+            "Could not parse model output as JSON. First 500 chars:\n"
+            + (raw[:500] if raw else "<empty response>"))
 
     valid = {f["filename"]: valid_new_lines(f.get("patch")) for f in changed}
     inline, file_level = [], []
