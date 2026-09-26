@@ -28,5 +28,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OLLAMA_CLOUD_API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
-          OLLAMA_MODEL: deepseek-v4.1-flash
+          OLLAMA_MODEL: deepseek-v4-pro:0813
           PR_NUMBER: ${{ inputs.pr }}
