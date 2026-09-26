@@ -46,8 +46,13 @@ SKIP_NAMES = ("package-lock.json", "yarn.lock", "pnpm-lock.yaml",
 SKIP_DIRS = ("build/", "dist/", "out/", "node_modules/", ".gradle/",
              "vendor/", "__pycache__/", ".git/")
 
-REVIEW_PROMPT = """You are a senior code reviewer for the {repo} repository
-(Kotlin/JVM backend; LangGraph-style pipeline). Review the changed code below.
+REVIEW_PROMPT = """OUTPUT CONTRACT (highest priority, overrides everything below):
+your entire response must be exactly one JSON object matching the schema
+below. Do not write any markdown, headings, bullet lists, or prose. Do not
+wrap the JSON in code fences. Begin your response with {{ and end it with }}.
+
+You are reviewing changed code for the {repo} repository (Kotlin/JVM backend;
+LangGraph-style pipeline).
 
 {context}
 
@@ -62,7 +67,7 @@ bug with exactly one right fix, API misuse with a clear correction). If so,
 provide `suggestion` with the exact replacement lines. If the fix requires
 judgment, omit `suggestion` and explain the concern instead.
 
-Return JSON only, no prose outside the JSON:
+Schema:
 {{"summary": "2-3 sentence overall assessment",
   "comments": [{{"path": "repo/relative/path",
                  "line": <new-file line number, or null for a file-level note>,
@@ -70,7 +75,9 @@ Return JSON only, no prose outside the JSON:
                  "suggestion": "exact replacement code, or null"}}]}}
 Line numbers refer to the NEW version of each file. Rank by severity; at most
 25 comments.
-"""
+
+FINAL REMINDER: respond with ONLY the JSON object described above. No other
+text before or after it."""
 
 
 # ---------------------------------------------------------------- http helpers
@@ -263,11 +270,15 @@ def main():
     messages = [{"role": "user", "content": prompt}]
     findings, raw = extract_findings(resp1 := ollama_chat(messages))
     resp2 = None
+    if findings is not None:
+        print("JSON parsed on attempt 1 (json mode).")
     if findings is None:
         print("json_object mode output unparseable; retrying without it...")
         resp2 = _ollama_attempt(
             os.environ["OLLAMA_CLOUD_API_KEY"], messages, use_json_mode=False)
         findings, raw = extract_findings(resp2)
+        if findings is not None:
+            print("JSON parsed on attempt 2 (no json mode).")
     if findings is None:
         # Some models ignore the JSON instruction and answer in prose; ask
         # for a JSON-only re-emit before giving up.
@@ -282,6 +293,8 @@ def main():
         resp2 = _ollama_attempt(
             os.environ["OLLAMA_CLOUD_API_KEY"], repair, use_json_mode=True)
         findings, raw = extract_findings(resp2)
+        if findings is not None:
+            print("JSON parsed on attempt 3 (repair re-emit).")
     if findings is None:
         raise SystemExit(
             "Could not parse model output as JSON. First 500 chars:\n"
