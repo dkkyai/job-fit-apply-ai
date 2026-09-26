@@ -122,6 +122,20 @@ def _ollama_attempt(key, messages, use_json_mode):
         raise SystemExit(f"Ollama Cloud -> {e.code}: {e.read().decode()[:500]}")
 
 
+def describe_response(resp):
+    """One-line structural summary of a chat response (no secrets)."""
+    try:
+        keys = sorted(resp.keys())
+        msg = resp.get("message") or {}
+        mkeys = sorted(msg.keys()) if isinstance(msg, dict) else []
+        clen = len(msg.get("content") or "")
+        tlen = len(msg.get("thinking") or "")
+        return (f"top keys={keys} message keys={mkeys} "
+                f"content_len={clen} thinking_len={tlen} done={resp.get('done')}")
+    except Exception as e:
+        return f"<undescribable: {e}>"
+
+
 def extract_findings(resp):
     """Parse model output into findings. Falls back to lenient brace-matching
     when the model wraps its JSON in fences or prose."""
@@ -243,15 +257,20 @@ def main():
 
     prompt = REVIEW_PROMPT.format(repo=repo, context=context)
     messages = [{"role": "user", "content": prompt}]
-    findings, raw = extract_findings(ollama_chat(messages))
+    findings, raw = extract_findings(resp1 := ollama_chat(messages))
     if findings is None:
         print("json_object mode output unparseable; retrying without it...")
-        findings, raw = extract_findings(_ollama_attempt(
-            os.environ["OLLAMA_CLOUD_API_KEY"], messages, use_json_mode=False))
+        resp2 = _ollama_attempt(
+            os.environ["OLLAMA_CLOUD_API_KEY"], messages, use_json_mode=False)
+        findings, raw = extract_findings(resp2)
+    else:
+        resp2 = None
     if findings is None:
         raise SystemExit(
             "Could not parse model output as JSON. First 500 chars:\n"
-            + (raw[:500] if raw else "<empty response>"))
+            + (raw[:500] if raw else "<empty response>")
+            + "\nResponse shape: "
+            + describe_response(resp2 if resp2 is not None else resp1))
 
     valid = {f["filename"]: valid_new_lines(f.get("patch")) for f in changed}
     inline, file_level = [], []
