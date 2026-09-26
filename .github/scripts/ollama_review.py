@@ -9,7 +9,8 @@ calls are flagged, never rewritten. The workflow never pushes commits.
 
 Required env: GITHUB_TOKEN, OLLAMA_CLOUD_API_KEY, GITHUB_REPOSITORY,
 GITHUB_EVENT_PATH.
-Optional env: OLLAMA_MODEL (default deepseek-v4-pro:0813:ollama-cloud),
+Optional env: OLLAMA_MODEL (default deepseek-v4-pro:0813; a trailing
+:ollama-cloud is stripped because the direct API wants the bare id),
 OLLAMA_BASE_URL (default https://ollama.com), PR_NUMBER (workflow_dispatch).
 """
 
@@ -25,12 +26,12 @@ import urllib.error
 # Native Ollama Cloud API (https://ollama.com/api/chat) — the same endpoint and
 # model naming the tuner already uses. The OpenAI-compatible /v1/chat/completions
 # endpoint returned empty 200s for these model ids, so we don't use it.
-MODEL = os.environ.get("OLLAMA_MODEL", "deepseek-v4-pro:0813:ollama-cloud")
+MODEL = os.environ.get("OLLAMA_MODEL", "deepseek-v4-pro:0813")
 OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "https://ollama.com")
-if OLLAMA_BASE.rstrip("/") == "https://ollama.com" and not MODEL.endswith(":ollama-cloud"):
-    # Native cloud API addresses cloud models with the :ollama-cloud suffix;
-    # accept the bare id too so OLLAMA_MODEL=deepseek-v4-pro:0813 just works.
-    MODEL = f"{MODEL}:ollama-cloud"
+if OLLAMA_BASE.rstrip("/") == "https://ollama.com" and MODEL.endswith(":ollama-cloud"):
+    # Direct cloud API wants the bare id (deepseek-v4-pro:0813); the
+    # :ollama-cloud suffix is the local CLI proxy naming, not the API name.
+    MODEL = MODEL[: -len(":ollama-cloud")]
 FULL_FILE_BUDGET_CHARS = 120_000   # <= this much diff text -> include full files
 MAX_FILE_CHARS = 30_000            # per-file truncation cap
 MAX_COMMENTS = 25
