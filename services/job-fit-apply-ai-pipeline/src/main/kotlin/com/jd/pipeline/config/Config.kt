@@ -149,11 +149,13 @@ object Config {
 
     // ── Resume ───────────────────────────────────────────────────────────────────
     /** Canonical, candidate-authored résumé (structured YAML) — the source of all résumé content.
-     *  Gitignored (personal). Override with the RESUME_YAML_PATH env var to point elsewhere. */
-    val RESUME_YAML_PATH: Path = get("RESUME_YAML_PATH", "").let { override ->
-        if (override.isNotBlank()) Paths.get(override)
-        else PROJECT_DIR.resolve("src/main/resources/resume").resolve("resume.yaml")
-    }
+     *  Gitignored (personal). Override with the RESUME_YAML_PATH env var to point elsewhere
+     *  (e.g. a private profile repo checkout); unset falls back to the in-tree path. */
+    val RESUME_YAML_PATH: Path =
+        resolveProfilePath(
+            get("RESUME_YAML_PATH", ""),
+            PROJECT_DIR.resolve("src/main/resources/resume").resolve("resume.yaml"),
+        )
     /** Committed example résumé YAML — reference + `--init-profile` starting point. */
     val RESUME_YAML_TEMPLATE_PATH: Path = PROJECT_DIR.resolve("src/main/resources/resume").resolve("resume.template.yaml")
     /** Committed HTML head+CSS skeleton (with a `<!-- RESUME_BODY -->` sentinel) the deterministic renderer fills in. */
@@ -173,8 +175,14 @@ object Config {
     val RENDER_PDF_TIMEOUT_MS: Long = get("RENDER_PDF_TIMEOUT_MS", "180000").toLong()
 
     // ── User Profile ─────────────────────────────────────────────────────────────
-    /** Slim pipeline config (preferences + scoring aids). Gitignored — produced by `--init-profile`. */
-    val CANDIDATE_PROFILE_PATH: Path = PROJECT_DIR.resolve("config").resolve("candidate_profile.yaml")
+    /** Slim pipeline config (preferences + scoring aids). Gitignored — produced by `--init-profile`.
+     *  Override with the CANDIDATE_PROFILE_YAML_PATH env var to point elsewhere (e.g. a private
+     *  profile repo checkout); unset falls back to the in-tree path. */
+    val CANDIDATE_PROFILE_PATH: Path =
+        resolveProfilePath(
+            get("CANDIDATE_PROFILE_YAML_PATH", ""),
+            PROJECT_DIR.resolve("config").resolve("candidate_profile.yaml"),
+        )
 
     // ── Output ───────────────────────────────────────────────────────────────────
     val OUTPUT_DIR: Path = PROJECT_DIR.resolve("output")
@@ -341,3 +349,14 @@ object Config {
         return value
     }
 }
+
+/**
+ * Resolve a profile file path: an explicit `override` wins, otherwise `defaultPath`.
+ *
+ * Pure and dependency-injected so the precedence rule is directly testable — the
+ * `Config.*` properties themselves are cached at object-init and read the process env,
+ * which a test cannot vary. A blank (or whitespace-only) override is treated as unset,
+ * matching `Config.get()`'s empty-value handling.
+ */
+internal fun resolveProfilePath(override: String?, defaultPath: Path): Path =
+    if (override.isNullOrBlank()) defaultPath else Paths.get(override.trim())

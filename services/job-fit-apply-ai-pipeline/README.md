@@ -145,6 +145,55 @@ What it does:
 
 The personal files (`resume.yaml`, `candidate_profile.yaml`, `generated_resume.html`) are **gitignored** — your personal data never gets committed.
 
+### Keeping personal data out of the repo entirely
+
+Both personal files can live outside this checkout — e.g. a private profile repo — and be
+pointed at with two independent overrides:
+
+| Variable | Points at | Unset → falls back to |
+|---|---|---|
+| `RESUME_YAML_PATH` | your canonical résumé YAML | `src/main/resources/resume/resume.yaml` |
+| `CANDIDATE_PROFILE_YAML_PATH` | your slim pipeline config | `config/candidate_profile.yaml` |
+
+```sh
+export RESUME_YAML_PATH="$HOME/projects/profile/base-resume.yaml"
+export CANDIDATE_PROFILE_YAML_PATH="$HOME/projects/profile/candidate_profile.yaml"
+```
+
+The schemas are unchanged — only where the pipeline looks for them. Each override answers
+exactly one question, so the two can never disagree about precedence. Setting neither
+preserves the in-tree behaviour exactly.
+
+**Running the processor in Docker:** the container does **not** mount your home directory, so
+these must be paths *inside* the container. Mount the profile directory and point the
+overrides at the mount target:
+
+```yaml
+# docker-compose.yml, under the `processor` service
+volumes:
+  - "${JFAA_PROFILE_DIR:-${HOME}/projects/profile}:/profile:ro"
+environment:
+  RESUME_YAML_PATH: /profile/base-resume.yaml
+  CANDIDATE_PROFILE_YAML_PATH: /profile/candidate_profile.yaml
+```
+
+Note that this is a **single directory bind-mount** for the container, distinct from the two
+path overrides: the mount decides what the container can *see*, and the two variables decide
+which files the pipeline *reads*. `${JFAA_PROFILE_DIR}` exists only as a Compose convenience
+default for the mount source on the host — it is not read by the pipeline, and the pipeline
+never consults it. A host checkout at `~/projects/profile` with no mount will not work when
+the processor runs in Docker.
+
+When running the pipeline directly on the host (`./gradlew run`), the overrides above work
+as written, with no mount needed.
+
+**Note on `--resume-gen` with an override:** that command writes its output *next to its
+input*, so pointing `RESUME_YAML_PATH` at an out-of-tree file writes a derived
+`<name>-generated.html` into that same directory. The pipeline itself is unaffected — the
+per-job render still goes to the job's output directory — but the artifact lands in whatever
+directory holds your résumé. Add a `*-generated.html` ignore there if you don't want it
+committed.
+
 > **Backups:** any pre-existing copy of a generated file is moved aside with a timestamped `.bak` suffix before being overwritten.
 
 ## Environment + LLM setup
