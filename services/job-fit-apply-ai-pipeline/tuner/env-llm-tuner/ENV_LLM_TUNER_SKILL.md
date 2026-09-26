@@ -16,6 +16,11 @@ pipeline. Work through the sections below in order:
 This section is rewritten by Section C on every run. All hand edits will be
 overwritten the next time the skill executes.
 
+**Registry fingerprint: `e893776e00d237d5`**
+
+Regenerate with `./gen_registry.sh` (see Section C.1). If the emitted fingerprint matches
+the value above, the registry below is current — skip straight to Section D.
+
 ### Config variables and the nodes they drive
 
 | Config var               | Node(s)                                                         | Temp | JSON  | Thinking    | Typical output tokens |
@@ -132,70 +137,12 @@ maintained — preserve it across self-scans** (do not delete it when rewriting 
 
 ## Section B — Hardware Reference
 
-Local models run on **oMLX** (MLX format). MacBook Max 64 GB memory budget (leave ~8 GB for OS):
-- Available for model weights: ~56 GB
-- Max at MLX 4-bit: ~70B dense (~38 GB) — but prefer MoE for speed (see below)
-- Max at MLX 8-bit: ~32B dense (~34 GB)
-- MoE models (e.g. `*-A3B-*`) load the full weights but only activate ~3B params per
-  token, so they run at small-model speed with large-model breadth — preferred for the
-  **extraction/classification/scoring** nodes (SCAN, SCRAPE, SCORE, PROFILE_GEN) where
-  throughput matters and per-token reasoning depth is light.
-- **DENSE models beat MoE for resume CONTENT writing.** RESUME_REASONING (SummaryRewrite +
-  BulletRewrite) and SKILLS (SkillsRestructure) are dense multi-constraint tasks — map JD
-  requirements onto real candidate facts, inject ATS keywords, frame impact, never fabricate —
-  and depend on *single-token quality*, which scales with **active** params, not total. A
-  ~3B-active MoE (e.g. `Qwen3.6-35B-A3B`) measurably degraded resume PDFs (2026-06 regression);
-  switching RESUME_REASONING + SKILLS to a dense model fixed it.
-  **Rule: prefer dense for RESUME_REASONING + SKILLS; MoE is fine for the lighter JSON/extraction nodes.**
-- **THREE constraints the dense pick MUST satisfy (all verified 2026-06-24 via `--test-resume`):**
-  1. **NOT multimodal.** `gemma-4-*` is image-text → oMLX runs it on `VLMBatchedEngine`, brutally slow
-     for text: `gemma-4-31B-it-qat-8bit` ~1.8 tok/s (timeout); `gemma-4-12B-it-qat-4bit` HUNG on the real
-     long-prompt summary_rewrite (315s, zero tokens — fine only on tiny test prompts). Multimodal is OUT
-     for the resume hot path at any size; check the model card for image/vision support before choosing.
-  2. **Capable enough for strict structured output.** bullet_rewrite expects a JSON *array* of RoleRewrite;
-     `Qwen3.5-9B-OptiQ-4bit` (dense text) returned a wrapping *object* → deserialization failure. Sub-~27B
-     dense models may be too weak for the schema. Prefer ≥27B dense.
-  3. **`/no_think` must fire** or qwen3 models leak chain-of-thought. The check is
-     `model.substringAfterLast("--").startsWith("qwen3")` (LlmClient.kt) — prefix-tolerant, so HF-cache ids
-     like `mlx-community--Qwen3.6-27B-4bit` work. (gemma is not a thinking model, so this only matters for qwen.)
-  **Chosen pick: `mlx-community--Qwen3.6-27B-4bit`** (dense, text engine, ~13 tok/s) — the only installed
-  model meeting all three; full TAILOR run ~10 min/job. Cover-letter/draft prose is single-pass and does
-  well on `gemma-4-12B-it-qat-4bit` (multimodal but those prompts are short, so the VLM engine is tolerable).
+**Moved to `references/hardware.md`.** Read it before Section D.4 (shortlisting) and
+Section D.5 (wall-clock estimation) — it holds the local memory budget, the three dense-model
+constraints, the cloud output-cap table and probe history, and the oMLX speed measurements.
 
-- **CLOUD picks for RESUME_REASONING have a FOURTH constraint the local rule doesn't surface — max OUTPUT
-  tokens (verified 2026-07-05 via `--test-resume` + isolated Ollama Cloud screening).** `bullet_rewrite` is
-  the pipeline's single LARGEST-output call: it returns a JSON *array* of RoleRewrite (≈8 roles × ~4–5
-  rewritten bullets = **~25k–34k output tokens**). Cloud models silently TRUNCATE it if their generation cap
-  is too low, or waste the budget thinking. Measured on the real node + a faithful array-shaped probe:
-  | Cloud model         | done_reason | out tokens | result |
-  |---------------------|-------------|------------|--------|
-  | `deepseek-v4-pro`   | stop        | ~26k       | ✅ full 8-role array, real run: 33 bullets, ATS 74→**86** after refine |
-  | `deepseek-v4-flash` | stop        | ~34k       | ✅ full array (rank 66 → lower quality; 1M ctx; fallback) |
-  | `glm-5.1`           | **length**  | 32768 cap  | ❌ over-thinks, burns the whole 32k budget → returns EMPTY content |
-  | `kimi-k2.6`         | **length**  | 16384 cap  | ❌ hard 16k cap → truncated JSON → node nulls tailoredBullets AND cascades to null ATS |
-  A truncated `bullet_rewrite` doesn't just lose bullets — it nulls `tailoredBullets`, which cascades to a
-  null ATS score and disables the ATS refinement pass (the whole point of the tailor subgraph). So for the
-  CLOUD RESUME_REASONING pick: **verify the model completes this array with `done_reason=stop` (not `length`),
-  and prefer a model that doesn't over-think.** Top LMArena rank is NOT sufficient — glm-5.1 (rank 22) and
-  kimi-k2.6 (rank 34) both FAIL this node despite outranking deepseek-v4-pro (rank 38), which is why
-  `deepseek-v4-pro:ollama-cloud` is the chosen cloud RESUME_REASONING model. NOTE: `LlmClient.callOllama`
-  sets no `num_predict`, so these caps are the models'/Ollama-Cloud defaults, not ours — raising an explicit
-  cap might rescue kimi but NOT glm-5.1 (it emits no JSON at all). glm-5.1 stays fine for SCORE/RESUME_GEN
-  (smaller outputs).
-
-oMLX/MLX token-generation speeds on M-series Max (tokens/sec, 4-bit):
-| Model class            | 4-bit | 8-bit |
-|------------------------|-------|-------|
-| 7–9B dense             | 60–85 | 38–55 |
-| 12–14B dense           | 40–55 | 24–34 |
-| 27–32B dense           | 16–24 | 9–15  |
-| 30–35B MoE (~3B active)| 45–70 | —     |
-
-MLX is generally ~15–30% faster than Ollama/GGUF on Apple Silicon for the same model.
-Use these figures and the typical output tokens in Section A to estimate
-wall-clock time per node. Report as `~Xs`.
-
----
+It is deliberately not inline: Sections C and E do not need it, and carrying it in the
+always-loaded context cost ~1,500 tokens per run. See `README-TOKENS.md`.
 
 ## Section C — Pipeline Self-Scan (run this first)
 
@@ -268,45 +215,9 @@ ENV_LLM_TUNER_SKILL.md updated: N changes.   (or "unchanged.")
 
 If nothing changed, print `Self-Scan: pipeline unchanged.` and skip to Section D.
 
-## Self-Scan Changelog (2026-07-18 run)
-- [MATCH]   SCAN_MODEL: ScanEmailNode, LlmDigestStrategy (fromModelString, temp 0.0, jsonMode true)
-- [MATCH]   SCRAPE_MODEL: ScrapeJdNode (fromModelString, temp 0.0, jsonMode true; defaults to SCAN_MODEL)
-- [CHANGED] SCORE_MODEL: node class `AtsScoringNode` → **`AtsValidationNode`**
-            (AtsValidationNode.kt:28, `orchestrationClient`, nodeKey still "ats_scoring").
-            Driver unchanged: SCORE_MODEL, temp 0.0, jsonMode true, thinking off.
-            ScoreFitNode / JdExtractionNode / GapAnalysisNode unchanged.
-- [MATCH]   RESUME_REASONING_MODEL: SummaryRewriteNode, BulletRewriteNode (reasoningClient, temp 0.25;
-            BulletRewriteNode overrides timeoutSeconds=480 for the large array output)
-- [MATCH]   SKILLS_MODEL: SkillsRestructureNode (skillsClient, temp 0.2, jsonMode true)
-- [MATCH]   COVER_LETTER_MODEL: GenerateCoverLetterNode (fromModelString, temp 0.4, jsonMode false)
-- [MATCH]   DRAFT_REPLY_MODEL: DraftReplyComposer (fromModelString, temp 0.3, jsonMode false)
-- [MATCH]   RESUME_GEN_MODEL / PROFILE_GEN_MODEL: remain absent from Config.kt (removed 2026-07-16).
-Backend enum (MLX_LOCAL, OLLAMA_LOCAL, OLLAMA_CLOUD, DEEPSEEK_CLOUD, MINIMAX_CLOUD) and
-backendFor() routing (LlmClient.kt:382-391) verified unchanged vs the routing-rules table.
-Section A2 re-verified against tuner/run-analyzer/analyzer/llm.py:29 — still oMLX-local /
-`:ollama-cloud` / `:ollama-local` only, no `:cloud`. Unchanged.
-NOTE: Config.kt:91 still comments "Creative (temp=0.4)" for RESUME_REASONING, but
-reasoningClient uses 0.25 (LlmClient.kt:321). Stale source comment only — no behaviour impact.
-ENV_LLM_TUNER_SKILL.md updated: 1 change (SCORE_MODEL node-class rename).
+## Self-Scan Changelog
 
-## Self-Scan Changelog (2026-07-16 run, superseded)
-- [MATCH]   SCAN_MODEL: ScanEmailNode, LlmDigestStrategy (fromModelString, temp 0.0, jsonMode true)
-- [MATCH]   SCRAPE_MODEL: ScrapeJdNode (fromModelString, temp 0.0, jsonMode true)
-- [MATCH]   SCORE_MODEL: ScoreFitNode, JdExtractionNode, GapAnalysisNode, AtsScoringNode
-            (ScoreFitNode now uses fromModelString instead of orchestrationClient —
-             functionally equivalent: temp 0.0, jsonMode true, thinking disabled)
-- [MATCH]   RESUME_REASONING_MODEL: SummaryRewriteNode, BulletRewriteNode (reasoningClient, temp 0.25)
-- [MATCH]   SKILLS_MODEL: SkillsRestructureNode (skillsClient, temp 0.2, jsonMode true)
-- [MATCH]   COVER_LETTER_MODEL: GenerateCoverLetterNode (fromModelString, temp 0.4, jsonMode false)
-- [MATCH]   DRAFT_REPLY_MODEL: DraftReplyComposer (fromModelString, temp 0.3, jsonMode false)
-- [REMOVED] RESUME_GEN_MODEL: GenerateResumeHtmlNode — node removed; resume HTML now rendered
-            deterministically from resume.yaml (no LLM). Config.kt line 261-262.
-- [REMOVED] PROFILE_GEN_MODEL: GenerateCandidateProfileNode — node removed; candidate profile
-            now authored as structured YAML (no LLM). Config.kt line 261-262.
-Backend enum (MLX_LOCAL, OLLAMA_LOCAL, OLLAMA_CLOUD, DEEPSEEK_CLOUD, MINIMAX_CLOUD) and
-backendFor() routing verified unchanged vs the routing-rules table.
-ENV_LLM_TUNER_SKILL.md updated: 2 removals (RESUME_GEN_MODEL, PROFILE_GEN_MODEL).
-
+Current history lives in `references/changelog.md` (append there; never here).
 
 ---
 
@@ -341,8 +252,15 @@ never recommend an Ollama GGUF tag for a local file.
 
 ### D.2 — Fetch model catalogues
 
-For each active provider key, fetch the URL(s) from the table above. For each
-model found, extract:
+**Use the helper scripts — do not read raw API payloads.** They print exactly the lines
+the decision needs:
+
+```bash
+scripts/tuner_tools.py models                 # installed oMLX models (one per line)
+scripts/tuner_tools.py cloud                  # ollama-cloud catalogue (one per line)
+```
+
+For each model found, extract:
 
 - Model name and version / release date
 - Parameter count and quantisation options (local models)
@@ -350,24 +268,36 @@ model found, extract:
 - Context-window size
 - Pricing tier (cloud models)
 
+**Note:** the Ollama Cloud catalogue is also the authority on RETIREMENT. A model listed in
+an existing env file but absent from `cloud` has been withdrawn — check `done_reason` errors
+too, since a model can be retired mid-run (observed: `deepseek-v4-flash`, 2026-09-25).
+
 If a URL is unreachable or returns no useful content, note it in your output
-and substitute a web search for `"<provider> latest models April 2026"` to
+and substitute a web search for `"<provider> latest models <month year>"` to
 recover current information. **Do not silently fall back to training-data
 knowledge without noting the fallback.**
 
 ### D.3 — Cross-reference live quality benchmarks
 
-Fetch at least one of the leaderboards below and record each shortlisted
-model's rank or score. This step is what prevents stale training-data quality
-estimates — do not skip it.
+**Use the trimmed helper — do not fetch the leaderboard page directly.** The rendered
+leaderboard is a 45-column × ~400-row table (~5,278 tokens); the helper returns ~140 tokens
+for the models you actually care about:
 
-- **General quality (Elo):** https://lmarena.ai/
-- **Open-weights overall:** https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard
-- **Coding / instruction-following:** https://evalplus.github.io/leaderboard.html
+```bash
+scripts/tuner_tools.py leaderboard "Kimi K3" "GLM-5.3" "DeepSeek-V4.1-Flash" ...
+```
+
+It prints rank, general/reasoning/code/agent indexes, and price for each named model.
+
+> Implementation note: the leaderboard is a client-rendered Next.js app whose served HTML
+> contains **zero** table rows. The helper reassembles the `self.__next_f.push` RSC chunks
+> and parses the embedded model JSON. If it reports "page structure may have changed",
+> the upstream payload changed shape — fix the helper, do not fall back to reading the page.
 
 Record each model's leaderboard position alongside its catalogue entry so
 Section D.4 can rank candidates by current, measured quality rather than
 training-data impressions.
+
 
 ### D.4 — Shortlist 2–3 candidates per config var
 
@@ -381,11 +311,33 @@ or local-oMLX candidates are valid (no `:cloud`). Reject any model that can't re
 object for the audit prompt (small dense/MoE locals tend to emit a bare array/scalar).
 
 **For RESUME_REASONING specifically, leaderboard rank is NOT sufficient — screen the
-max-output-token behaviour on the bullet_rewrite array (see Section B's cloud-cap table).**
-A candidate must complete the ~25k–34k-token 8-role array with `done_reason=stop`, not
-`length`. A quick screen: POST an 8-role/5-bullet `format:json` array request to the model
-and check `done_reason` + that the content parses. Reject any that truncate (kimi-k2.6) or
-over-think to empty (glm-5.1), regardless of Elo.
+max-output-token behaviour on the bullet_rewrite array (see `references/hardware.md`'s cap
+table).** A candidate must complete the ~25k–34k-token 8-role array with `done_reason=stop`,
+not `length`. Reject any that truncate or over-think to empty, regardless of Elo.
+
+**For EVERY JSON node, screen time-to-valid-JSON and VARIANCE — not just rank or a single
+run.** A node can fail *upstream* of the one you are testing and silently disable the whole
+subgraph: `gapAnalysis` is a hard dependency for SummaryRewrite, BulletRewrite,
+SkillsRestructure and AtsValidation (each returns `"<node>: gapAnalysis is null"`), so one
+slow SCORE call short-circuits the entire tailor run. Run each candidate **at least twice**
+and watch output-token count as the leading indicator — a model emitting >10k tokens for a
+sub-1k-token answer is over-thinking and will eventually hit its timeout.
+
+Measured 2026-09-25 on the real `gap_analysis` shape (8 must-have + 3 nice-to-have, ~384
+input tokens, `orchestrationClient` budget **180s** — see `references/score-screening.md`):
+
+| Model | trial 1 | trial 2 | out tokens | valid JSON |
+|---|---|---|---|---|
+| `glm-5.3` | 44.7s | 51.8s | 8,624 | ❌ |
+| `glm-5.2` | 12.8s | 13.1s | 1,351 | ❌ |
+| `deepseek-v4.1-flash` | 12.2s | 13.2s | 3,476 | ✅ |
+| `deepseek-v4-pro:0813` | **8.4s** | **10.2s** | 1,471 | ✅ |
+| `glm-5.3-flash` | 49.6s | 44.8s | 13,078 | ✅ |
+
+A longer variant of this prompt pushed `glm-5.3` to 125.4s / 19,285 tokens / invalid JSON —
+close enough to the 180s wall to fail intermittently. **Reasoning-index rank mis-predicts
+this node**: glm-5.3 leads v4-pro on the index (51.5 vs 49.6) and is still the worst choice.
+
 
 ### D.5 — Estimate wall-clock time and select winners
 
@@ -443,6 +395,26 @@ per config var per output file using:
 ## Section E — Output File Format
 
 Write all four files to `tuner/env-llm-tuner/`. Overwrite if they exist.
+
+**Do NOT read the existing env files to rewrite them.** They are ~33 KB (~9,244 tokens)
+of mostly comment text, and the comments are regenerated — not preserved. Get just the
+assignments with:
+
+```bash
+scripts/tuner_tools.py values <profile>     # profile ∈ quality|local-quality|local-good-enough|recommended
+```
+
+To confirm your intended selections are already in place (the common no-op case), diff
+them without reading the files:
+
+```bash
+scripts/tuner_tools.py values recommended > /tmp/want.json   # after editing to taste
+scripts/tuner_tools.py diff recommended /tmp/want.json       # prints only CHANGED vars
+```
+
+Author the full file content with its comment blocks; use `values`/`diff` only to detect
+drift cheaply on subsequent runs. See `README-TOKENS.md`.
+
 
 ### File header (every file)
 
