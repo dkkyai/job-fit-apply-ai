@@ -262,13 +262,26 @@ def main():
     prompt = REVIEW_PROMPT.format(repo=repo, context=context)
     messages = [{"role": "user", "content": prompt}]
     findings, raw = extract_findings(resp1 := ollama_chat(messages))
+    resp2 = None
     if findings is None:
         print("json_object mode output unparseable; retrying without it...")
         resp2 = _ollama_attempt(
             os.environ["OLLAMA_CLOUD_API_KEY"], messages, use_json_mode=False)
         findings, raw = extract_findings(resp2)
-    else:
-        resp2 = None
+    if findings is None:
+        # Some models ignore the JSON instruction and answer in prose; ask
+        # for a JSON-only re-emit before giving up.
+        print("output still unparseable; asking model to re-emit JSON only...")
+        repair = messages + [
+            {"role": "assistant", "content": raw[:2000]},
+            {"role": "user", "content": (
+                "That response was not valid JSON. Reply with ONLY the JSON "
+                "object described in the original instructions: no markdown, "
+                "no code fences, no commentary before or after.")},
+        ]
+        resp2 = _ollama_attempt(
+            os.environ["OLLAMA_CLOUD_API_KEY"], repair, use_json_mode=True)
+        findings, raw = extract_findings(resp2)
     if findings is None:
         raise SystemExit(
             "Could not parse model output as JSON. First 500 chars:\n"
