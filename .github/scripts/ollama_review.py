@@ -101,10 +101,12 @@ def ollama_chat(messages):
 
 
 def _ollama_attempt(key, messages, use_json_mode):
+    think = os.environ.get("OLLAMA_THINK", "false").lower() in ("1", "true", "yes")
     body = {
         "model": MODEL,
         "messages": messages,
         "stream": False,
+        "think": think,
         "options": {"temperature": 0.2, "num_predict": 8000},
     }
     if use_json_mode:
