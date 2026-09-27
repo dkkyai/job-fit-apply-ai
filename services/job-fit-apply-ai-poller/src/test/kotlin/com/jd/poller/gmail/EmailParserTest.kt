@@ -169,4 +169,52 @@ class EmailParserTest {
         val parsed = EmailParser.parse(message(payload))
         assertTrue(parsed.htmlBodies.isEmpty())
     }
+
+    // ── What GmailClient consumes: plainText + the first HTML body ────────────────
+    // GmailClient.toRawEmail reads only these two fields. They are pinned byte-for-byte on
+    // the inputs where the parser does extra work (script tags, attachments, nesting), so a
+    // change to anything else the parser computes cannot silently alter what reaches the
+    // Processor.
+
+    private val scriptedHtml = """
+        <html><head><script src="https://cdn.example.com/track.js"></script></head>
+        <body><p>Staff SDET at <a href="https://jobs.example.com/42">Acme</a></p>
+        <script>window.__x = "<b>not content</b>";</script>
+        <p>Remote &amp; hybrid</p></body></html>
+    """.trimIndent()
+
+    @Test
+    @DisplayName("consumed fields: HTML with script tags")
+    fun consumedFieldsForScriptedHtml() {
+        val parsed = EmailParser.parse(message(part("text/html", scriptedHtml)))
+        assertEquals(EXPECTED_SCRIPTED_PLAIN, parsed.plainText)
+        assertEquals(listOf(scriptedHtml), parsed.htmlBodies)
+    }
+
+    @Test
+    @DisplayName("consumed fields: nested multipart with an attachment and scripted HTML")
+    fun consumedFieldsForNestedMultipartWithAttachment() {
+        val attachment = MessagePart().setMimeType("application/pdf").setFilename("jd.pdf")
+            .setBody(MessagePartBody().setAttachmentId("att-1").setSize(1234))
+        val payload = part(
+            "multipart/mixed",
+            parts = listOf(
+                part("multipart/alternative", parts = listOf(
+                    part("text/plain", "Plain body wins\nline two"),
+                    part("text/html", scriptedHtml),
+                )),
+                attachment,
+                part("text/html", "<p>second html part</p>"),
+            ),
+        )
+        val parsed = EmailParser.parse(message(payload))
+        assertEquals("Plain body wins\nline two", parsed.plainText)
+        assertEquals(listOf(scriptedHtml, "<p>second html part</p>"), parsed.htmlBodies)
+    }
+
+    private companion object {
+        // Script bodies never reach the text; the anchor's href is surfaced; entities stay
+        // HTML-escaped (Jsoup.clean output) — current behaviour, pinned as-is.
+        const val EXPECTED_SCRIPTED_PLAIN = "Staff SDET at Acme https://jobs.example.com/42 Remote &amp; hybrid"
+    }
 }
