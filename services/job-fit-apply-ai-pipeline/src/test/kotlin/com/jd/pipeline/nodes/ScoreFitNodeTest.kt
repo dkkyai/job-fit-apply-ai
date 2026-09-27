@@ -233,6 +233,43 @@ class ScoreFitNodeTest {
         }
     }
 
+    @Nested
+    @DisplayName("Rubric arithmetic: base dimensions + mobile bonus")
+    inner class RubricArithmeticTests {
+        private val fullBase = mapOf("framework" to 15, "cicd" to 20, "web_api" to 20, "seniority" to 20,
+            "stack_overlap" to 10, "location" to 10, "domain" to 5)
+
+        @Test
+        @DisplayName("a role with no mobile work can still reach 100")
+        fun noMobileNoPenalty() {
+            assertEquals(100f, ScoreFitNode().scoreFromDimensions(fullBase + ("mobile" to 0)))
+        }
+
+        @Test
+        @DisplayName("mobile adds up to 15 on top of the base, and the total caps at 100")
+        fun mobileBonusCapped() {
+            val partial = fullBase + ("cicd" to 10) + ("seniority" to 10)   // base 80
+            assertEquals(95f, ScoreFitNode().scoreFromDimensions(partial + ("mobile" to 15)))
+            assertEquals(95f, ScoreFitNode().scoreFromDimensions(partial + ("mobile" to 40)), "bonus clamps to 15")
+            assertEquals(100f, ScoreFitNode().scoreFromDimensions(fullBase + ("mobile" to 15)), "total caps at 100")
+        }
+
+        @Test
+        @DisplayName("out-of-range dimensions clamp to their rubric maximum")
+        fun clampsDimensions() {
+            val inflated = fullBase + ("framework" to 25) + ("location" to -3)   // → 15 and 0
+            assertEquals(90f, ScoreFitNode().scoreFromDimensions(inflated))
+        }
+
+        @Test
+        @DisplayName("falls back (null) when a base dimension is missing, e.g. the old rubric's keys")
+        fun nullWithoutRubricKeys() {
+            val oldRubric = mapOf("mobile" to 25, "cicd" to 20, "web_api" to 15, "seniority" to 15,
+                "stack_overlap" to 10, "location" to 10, "domain" to 5)
+            assertEquals(null, ScoreFitNode().scoreFromDimensions(oldRubric))
+        }
+    }
+
     @Test
     @DisplayName("postingDetails passes the board's location, work model, salary and type to the scorer")
     fun postingDetailsBlock() {
