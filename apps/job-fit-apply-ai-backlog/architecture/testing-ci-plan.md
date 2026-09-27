@@ -10,8 +10,8 @@ This document outlines a comprehensive testing strategy and CI/CD pipeline for t
 
 **Scope:**
 - **Utility functions** (`src/lib/utils.ts`) – test `cn` class merging.
-- **Custom hooks** (`src/hooks/use-mobile.tsx`, `src/hooks/use-toast.ts`) – test responsive behavior and toast interactions.
-- **React components** – test `NavLink` component and the main `Index` page logic (sorting, filtering, status updates).
+- **Custom hooks** (`src/hooks/use-toast.ts`) – test toast interactions.
+- **React components** – test the whole `App` (routes, toasters) and the main `Index` page logic (sorting, filtering, status updates).
 - **Supabase integration** – mock Supabase client to test data fetching and mutations without hitting real API.
 
 **Mock Strategy:**
@@ -28,7 +28,7 @@ These thresholds will be enforced in CI; lower coverage will fail the build.
 
 **Test File Structure:**
 - Place unit test files next to the source files with the `.test.ts` or `.test.tsx` suffix.
-- Example: `src/components/NavLink.test.tsx`, `src/hooks/use-mobile.test.tsx`.
+- Example: `src/hooks/__tests__/use-toast.test.ts`, `src/__tests__/App.test.tsx`.
 - For page‑level tests, create `src/pages/Index.test.tsx`.
 
 **Recommended Test Commands:**

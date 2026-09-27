@@ -14,9 +14,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
-import { ExternalLink, MapPin, Briefcase, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { ExternalLink, MapPin, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 
 const statusColors: Record<Status, string> = {
   backlog: "bg-[hsl(var(--status-backlog))] text-white",
