@@ -70,7 +70,7 @@ if [ "$INTAKE" = "1" ]; then
   if running "$P-poller"; then
     if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-poller" 2>/dev/null)" = "healthy" ]; then
       ok "poller ($P-poller) healthy — Gmail intake + write-back"
-    else warn "poller container up but not healthy (loops stalled?  →  docker logs $P-poller)"; fi
+    else warn "poller container up but not healthy (loops stalled, or Gmail auth rejected → --reauth?  →  docker logs $P-poller)"; fi
   else bad "poller ($P-poller) not running  →  make up"; fi
   if running "$P-jsearch"; then
     if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-jsearch" 2>/dev/null)" = "healthy" ]; then
