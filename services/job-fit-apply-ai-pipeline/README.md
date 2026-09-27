@@ -378,6 +378,14 @@ finds **blocked or thin** (Cloudflare / 403 / JS-rendered SPA), and for any doma
 **`CDP_FORCE_DOMAINS`** — a proactive list for sites that soft-block plain HTTP (e.g. Glassdoor)
 where waiting to detect a block isn't reliable.
 
+**Where report fields come from:** remote policy, salary, employment type, seniority, YOE and
+tech stack are read first from data the page embeds for that posting — Jobright's `__NEXT_DATA__`
+job object, then schema.org `JobPosting` JSON-LD (Dice, Built In, Indeed, ZipRecruiter, most ATS).
+Those values win over the LLM's reading of the page; the LLM fills whatever they leave blank, and
+its `"unknown"` never overwrites a known value. JSearch jobs take the same fields from the API.
+Every field must also be listed on the bridge's `SubmitJobRequest`: the bridge re-encodes queued
+jobs from that class, so a field missing there is silently dropped and the report shows "—".
+
 All browser scraping goes through this host CDP Chrome — there is no in-process launch
 fallback. If the debug Chrome is unreachable, browser-needing scrapes **fail cleanly** with a
 one-time alert (see Alerts below); plain-HTTP scraping is unaffected.

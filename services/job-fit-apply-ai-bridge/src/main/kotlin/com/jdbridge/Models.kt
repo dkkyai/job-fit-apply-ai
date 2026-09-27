@@ -62,6 +62,15 @@ data class SubmitJobRequest(
     val source: String?          = null,          // "EMAIL" | "JSEARCH" | "MANUAL"
     val idempotency_key: String? = null,
     val intake_meta: JsonElement? = null,          // opaque — stored verbatim
+    // Scrape/API-extracted JD fields, passed through to the Processor's JdRecord. The request is
+    // re-encoded from this class on enqueue, so a field missing here is silently dropped (the
+    // server ignores unknown keys) and the report shows "—" for it.
+    val salary_range: String?    = null,
+    val remote_policy: String?   = null,
+    val employment_type: String? = null,
+    val seniority_level: String? = null,
+    val yoe_required: Int?       = null,
+    val tech_stack: List<String>? = null,
 )
 
 /**
