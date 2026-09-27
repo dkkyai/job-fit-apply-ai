@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.net.InetSocketAddress
 import java.nio.file.Files
-import kotlin.io.path.readText
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -37,7 +36,6 @@ class BridgeClientHttpTest {
         """{"job_id":"j1","type":"JD_SCRAPED","jd_record":{"jd_text":"x","company":"Acme","role_title":"SDET","location":null,"job_url":null,"source":"EMAIL"}}"""
     @Volatile private var submitStatus: Int = 200
     @Volatile private var resultStatus: Int = 200
-    @Volatile private var statusResponses: ArrayDeque<String> = ArrayDeque()
     @Volatile private var artifactHit: Boolean = false
 
     @BeforeEach
@@ -60,11 +58,6 @@ class BridgeClientHttpTest {
                     artifactHit = true
                     ex.requestBody.readBytes()
                     respond(ex, 200, "{}")
-                }
-                path.startsWith("/api/jobs/") && ex.requestMethod == "GET" -> {
-                    val body = statusResponses.removeFirstOrNull()
-                        ?: """{"job_id":"job-123","status":"running"}"""
-                    respond(ex, 200, body)
                 }
                 else -> respond(ex, 404, """{"error":"not found"}""")
             }
@@ -155,27 +148,6 @@ class BridgeClientHttpTest {
     }
 
     @Test
-    @DisplayName("getStatus deserializes the status DTO")
-    fun getStatusParses() {
-        statusResponses.addLast("""{"job_id":"job-123","status":"done","fit_score":91,"pipeline_action":"DRAFT"}""")
-        val status = client.getStatus("job-123")
-
-        assertEquals("done", status.status)
-        assertEquals(91, status.fit_score)
-        assertEquals("DRAFT", status.pipeline_action)
-    }
-
-    @Test
-    @DisplayName("pollUntilTerminal returns as soon as the job reaches a terminal status")
-    fun pollUntilTerminalStopsOnDone() {
-        statusResponses.addLast("""{"job_id":"job-123","status":"running"}""")
-        statusResponses.addLast("""{"job_id":"job-123","status":"done","fit_score":70}""")
-
-        val status = client.pollUntilTerminal("job-123", timeoutMs = 5_000, intervalMs = 1)
-        assertEquals("done", status.status)
-    }
-
-    @Test
     @DisplayName("uploadArtifacts is a no-op when the file list is empty")
     fun uploadArtifactsNoop() {
         client.uploadArtifacts("job-123", emptyList())
@@ -191,13 +163,4 @@ class BridgeClientHttpTest {
         assertTrue(artifactHit)
     }
 
-    @Test
-    @DisplayName("downloadArtifact streams the response body to the destination file")
-    fun downloadArtifactWritesFile(@org.junit.jupiter.api.io.TempDir tempDir: java.nio.file.Path) {
-        // Reuse the status GET context, which echoes a JSON body, as a stand-in artifact payload.
-        statusResponses.addLast("""ARTIFACT-BYTES""")
-        val dest = tempDir.resolve("downloaded.txt")
-        client.downloadArtifact("job-123", "resume.pdf", dest.toFile())
-        assertEquals("ARTIFACT-BYTES", dest.readText())
-    }
 }

@@ -7,7 +7,8 @@
 --   • writes    → services/job-fit-apply-ai-pipeline/.../nodes/SupabaseTrackNode.kt
 --   • reads     → apps/job-fit-apply-ai-backlog/src/pages/Index.tsx (Track interface + select)
 --   • dedup     → services/job-fit-apply-ai-pipeline/.../nodes/CheckDuplicateNode.kt
---   • tailoring → services/job-fit-apply-ai-pipeline/.../resources/migrations/001_resume_tailoring.sql
+--   • tailoring → the Supabase-era migration 001_resume_tailoring.sql, folded in below
+--                 (resume_tailoring + tracks.ats_score; the standalone file was removed)
 --
 -- Row-level security is intentionally dropped: under the direct-Postgres design
 -- the browser no longer talks to the database, so access control moves to the

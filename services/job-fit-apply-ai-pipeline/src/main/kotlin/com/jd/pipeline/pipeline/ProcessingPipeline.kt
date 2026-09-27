@@ -23,7 +23,7 @@ import java.io.File
  * Processing half of the pipeline: check_duplicate → score_fit → tailor →
  * generate_cover_letter → render_pdf → add_artifact_url → supabase_track.
  *
- * No Gmail calls. Consumed by the worker via [WorkerCommandHandler].
+ * No Gmail calls. Consumed by the Processor via [com.jd.pipeline.cli.commands.ProcessorCommandHandler].
  */
 class ProcessingPipeline(
     private val checkDuplicate: Node<JDState>      = CheckDuplicateNode(),

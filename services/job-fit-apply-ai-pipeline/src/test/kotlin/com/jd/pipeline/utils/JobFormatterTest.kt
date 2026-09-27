@@ -106,107 +106,6 @@ class JobFormatterTest {
     }
 
     @Nested
-    @DisplayName("FormatJobLine Tests")
-    inner class FormatJobLineTests {
-
-        @Test
-        @DisplayName("Test formatJobLine creates properly formatted line")
-        fun testBasicFormatting() {
-            val state = createMockJob("Acme Corp", "Software Engineer", 85.0f, "http://example.com/artifact")
-            val widths = ColumnWidths(company = 10, title = 20, fit = 8, artifact = 30)
-
-            val line = JobFormatter.formatJobLine(state, widths)
-
-            // Check that the line contains expected parts
-            assertTrue(line.startsWith("Acme Corp  "), "Company should be padded")
-            assertTrue(line.contains(" | "), "Should contain separators")
-            assertTrue(line.contains("Fit: 85 "), "Should contain fit score")
-        }
-
-        @Test
-        @DisplayName("Test formatJobLine applies color correctly")
-        fun testColorApplication() {
-            val state = createMockJob("Test", "Job", 50.0f, "http://test.com")
-            val widths = ColumnWidths.default()
-
-            val coloredLine = JobFormatter.formatJobLine(state, widths, "\u001B[32m")
-
-            assertTrue(coloredLine.startsWith("\u001B[32m"), "Should start with color code")
-            assertTrue(coloredLine.endsWith("\u001B[0m"), "Should end with reset code")
-        }
-
-        @Test
-        @DisplayName("Test formatJobLine handles blank company/title")
-        fun testBlankFields() {
-            val state = createMockJob("", "", 90.0f, "http://example.com")
-            val widths = ColumnWidths(company = 10, title = 20, fit = 8, artifact = 30)
-
-            val line = JobFormatter.formatJobLine(state, widths)
-
-            assertTrue(line.contains("Unknown Company"), "Should use default for blank company")
-            assertTrue(line.contains("Unknown Role"), "Should use default for blank title")
-        }
-    }
-
-    @Nested
-    @DisplayName("FormatJobTable Tests")
-    inner class FormatJobTableTests {
-
-        @Test
-        @DisplayName("Test formatJobTable returns empty for empty list")
-        fun testEmptyList() {
-            val lines = JobFormatter.formatJobTable(emptyList())
-
-            assertTrue(lines.isEmpty())
-        }
-
-        @Test
-        @DisplayName("Test formatJobTable formats multiple jobs with consistent widths")
-        fun testMultipleJobsInTable() {
-            val jobs = listOf(
-                createMockJob("Company A", "Title A", 75.0f, "http://a.com"),
-                createMockJob("Company B", "Title B", 85.0f, "http://b.com")
-            )
-
-            val lines = JobFormatter.formatJobTable(jobs)
-
-            assertEquals(2, lines.size)
-
-            // Both lines should have same total length (same column widths applied)
-            assertEquals(lines[0].length, lines[1].length)
-        }
-    }
-
-    @Nested
-    @DisplayName("FormatSingleJob Tests")
-    inner class FormatSingleJobTests {
-
-        @Test
-        @DisplayName("Test formatSingleJob uses default widths")
-        fun testDefaultWidths() {
-            val state = createMockJob("Test Company", "Test Role", 60.0f, "http://test.com")
-
-            val line = JobFormatter.formatSingleJob(state)
-
-            assertTrue(line.isNotEmpty())
-            assertTrue(line.contains("Test Company"))
-            assertTrue(line.contains("Test Role"))
-            assertTrue(line.contains("Fit: 60"))
-        }
-
-        @Test
-        @DisplayName("Test formatSingleJob applies color")
-        fun testColor() {
-            val state = createMockJob("Test", "Role", 50.0f, "http://test.com")
-
-            val colored = JobFormatter.formatSingleJob(state, "\u001B[33m")
-
-            assertTrue(colored.startsWith("\u001B[33m"))
-            assertTrue(colored.endsWith("\u001B[0m"))
-        }
-    }
-
-    @Nested
     @DisplayName("FormatScoredJobsTable Tests")
     inner class FormatScoredJobsTableTests {
 
@@ -356,6 +255,20 @@ class JobFormatterTest {
         }
 
         @Test
+        @DisplayName("Test formatScoredJobsTable shows a long URL in full — the column widens to fit")
+        fun testLongUrlIsNotTruncated() {
+            // The artifact column is sized to the longest URL (computeColumnWidths), so
+            // truncateUrl never shortens anything on this — its only — call path. Pinned as-is.
+            val longUrl = "https://example.com/" + "a".repeat(100) + "/report.md"
+            val jobs = listOf(createMockJob("Acme", "Engineer", 80.0f, longUrl))
+
+            val dataRow = JobFormatter.formatScoredJobsTable(jobs)[3]
+
+            assertTrue(dataRow.contains(longUrl), "the full URL should appear")
+            assertTrue(!dataRow.contains("…"), "no ellipsis on the live path")
+        }
+
+        @Test
         @DisplayName("Test formatScoredJobsTable handles blank company/title")
         fun testBlankFields() {
             val jobs = listOf(
@@ -482,35 +395,4 @@ class JobFormatterTest {
         }
     }
 
-    @Nested
-    @DisplayName("truncateUrl (via formatJobLine)")
-    inner class TruncateUrlTests {
-
-        @Test
-        @DisplayName("a URL longer than the column width is truncated with an ellipsis")
-        fun truncatesLongUrl() {
-            val longUrl = "https://example.com/" + "a".repeat(100) + "/report.md"
-            val job = createMockJob("Acme", "Engineer", 80.0f, longUrl)
-            // artifact width well below the URL length forces truncation
-            val widths = ColumnWidths(company = 10, title = 20, fit = 8, artifact = 40)
-
-            val line = JobFormatter.formatJobLine(job, widths)
-
-            assertTrue(line.contains("…"), "long URL should be truncated with an ellipsis")
-            assertTrue(!line.contains(longUrl), "the full untruncated URL should not appear")
-        }
-
-        @Test
-        @DisplayName("a URL within the column width is left untouched")
-        fun leavesShortUrlUntouched() {
-            val shortUrl = "https://example.com/job"
-            val job = createMockJob("Acme", "Engineer", 80.0f, shortUrl)
-            val widths = ColumnWidths(company = 10, title = 20, fit = 8, artifact = 60)
-
-            val line = JobFormatter.formatJobLine(job, widths)
-
-            assertTrue(line.contains(shortUrl))
-            assertTrue(!line.contains("…"))
-        }
-    }
 }

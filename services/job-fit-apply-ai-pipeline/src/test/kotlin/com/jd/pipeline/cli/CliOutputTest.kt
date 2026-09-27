@@ -1,10 +1,8 @@
 package com.jd.pipeline.cli
 
-import com.jd.pipeline.nodes.ScrapeJdNode
 import com.jd.pipeline.pipeline.IngestionPipeline
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.state.JDState
-import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.utils.NodeTimer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -46,11 +44,6 @@ class CliOutputTest {
         return capture.toString(Charsets.UTF_8.name())
     }
 
-    private val digestEmail = IntakeContext.Email(
-        emailId = "e1", from = "jobs@example.com", subject = "Digest",
-        rawBody = "", htmlBody = "", isRecruiter = false, isDigest = true, isInlineDigest = false,
-    )
-
     private val jobEmail = IntakeContext.Email(
         emailId = "e2", from = "jobs@example.com", subject = "JD",
         rawBody = "", htmlBody = "", isRecruiter = false, isDigest = false, isInlineDigest = false,
@@ -75,107 +68,6 @@ class CliOutputTest {
         assertTrue(out.contains("RESUME_REASONING_MODEL"))
         assertTrue(out.contains("COVER_LETTER_MODEL"))
         assertTrue(out.contains("DRAFT_REPLY_MODEL"))
-    }
-
-    // ── printResult ──────────────────────────────────────────────────────────
-
-    @Nested
-    @DisplayName("printResult")
-    inner class PrintResult {
-
-        @Test
-        @DisplayName("digest email with a skip reason prints the reason")
-        fun digestWithReason() {
-            val state = JDState(intake = digestEmail, skippedReason = "no jobs found")
-            CliOutput.printResult(state)
-            assertTrue(output().contains("no jobs found"))
-        }
-
-        @Test
-        @DisplayName("digest email without a skip reason prints the generic digest message")
-        fun digestWithoutReason() {
-            val state = JDState(intake = digestEmail)
-            CliOutput.printResult(state)
-            assertTrue(output().contains("Digest email processed"))
-        }
-
-        @Test
-        @DisplayName("inline digest email is treated like a digest")
-        fun inlineDigest() {
-            val inlineEmail = jobEmail.copy(isInlineDigest = true)
-            val state = JDState(intake = inlineEmail)
-            CliOutput.printResult(state)
-            assertTrue(output().contains("Digest email processed"))
-        }
-
-        @Test
-        @DisplayName("non-job-posting email prints skipped message")
-        fun notJobPosting() {
-            val state = JDState(intake = jobEmail, isJobPosting = false)
-            CliOutput.printResult(state)
-            assertTrue(output().contains("Not a job posting"))
-        }
-
-        @Test
-        @DisplayName("tailored job prints output path and job url")
-        fun tailoredJob() {
-            val state = JDState(
-                intake = jobEmail,
-                isJobPosting = true,
-                company = "Acme",
-                roleTitle = "Engineer",
-                pipelineAction = PipelineAction.TAILOR,
-                outputPath = "/tmp/output/acme_engineer",
-                jobUrl = "https://example.com/jobs/1",
-            )
-            CliOutput.printResult(state)
-            val out = output()
-            assertTrue(out.contains("→ output: /tmp/output/acme_engineer"))
-            assertTrue(out.contains("→ job_url: https://example.com/jobs/1"))
-        }
-
-        @Test
-        @DisplayName("skipped job prints reason, not output path")
-        fun skippedJob() {
-            val state = JDState(
-                intake = jobEmail,
-                isJobPosting = true,
-                company = "Acme",
-                roleTitle = "Engineer",
-                pipelineAction = PipelineAction.SKIP,
-                skippedReason = "Fit score below threshold",
-            )
-            CliOutput.printResult(state)
-            val out = output()
-            assertTrue(out.contains("→ reason: Fit score below threshold"))
-            assertTrue(!out.contains("→ output:"))
-        }
-
-        @Test
-        @DisplayName("recruiter response required prints draft id when present")
-        fun recruiterResponseWithDraftId() {
-            val state = JDState(
-                intake = jobEmail,
-                isJobPosting = true,
-                isRecruiterResponseRequired = true,
-                draftId = "draft-123",
-            )
-            CliOutput.printResult(state)
-            assertTrue(output().contains("→ draft reply: draft-123"))
-        }
-
-        @Test
-        @DisplayName("recruiter response required without a draft id prints queued")
-        fun recruiterResponseWithoutDraftId() {
-            val state = JDState(
-                intake = jobEmail,
-                isJobPosting = true,
-                isRecruiterResponseRequired = true,
-                draftId = "",
-            )
-            CliOutput.printResult(state)
-            assertTrue(output().contains("→ draft reply: (queued)"))
-        }
     }
 
     // ── printBatchSummary ────────────────────────────────────────────────────
@@ -286,61 +178,4 @@ class CliOutputTest {
         }
     }
 
-    // ── printJsonSummary ─────────────────────────────────────────────────────
-
-    @Nested
-    @DisplayName("printJsonSummary")
-    inner class PrintJsonSummary {
-
-        @Test
-        @DisplayName("map overload prints JSON with defaults for missing keys")
-        fun mapOverloadDefaults() {
-            CliOutput.printJsonSummary(emptyMap<String, Any?>())
-            val out = output().trim()
-            assertTrue(out.startsWith("{"))
-            assertTrue(out.contains("\"pipeline_action\":\"skip\""))
-        }
-
-        @Test
-        @DisplayName("map overload prints provided values")
-        fun mapOverloadProvided() {
-            CliOutput.printJsonSummary(
-                mapOf(
-                    "output_path" to "/tmp/out",
-                    "fit_score" to 90,
-                    "pipeline_action" to "tailor",
-                    "artifact_url" to "https://example.com/art",
-                    "error" to "",
-                )
-            )
-            val out = output()
-            assertTrue(out.contains("\"output_path\":\"/tmp/out\""))
-            assertTrue(out.contains("\"fit_score\":90"))
-        }
-
-        @Test
-        @DisplayName("JDState overload prints state fields as JSON")
-        fun jdStateOverload() {
-            val state = JDState(
-                intake = jobEmail,
-                outputPath = "/tmp/out2",
-                fitScore = 77.0f,
-                pipelineAction = PipelineAction.TAILOR,
-                artifactUrl = "https://example.com/art2",
-                error = "",
-            )
-            CliOutput.printJsonSummary(state)
-            val out = output()
-            assertTrue(out.contains("\"output_path\":\"/tmp/out2\""))
-            assertTrue(out.contains("\"pipeline_action\":\"tailor\""))
-        }
-
-        @Test
-        @DisplayName("JDState overload defaults fit_score to 0 when null")
-        fun jdStateOverloadNullFitScore() {
-            val state = JDState(intake = jobEmail, fitScore = null)
-            CliOutput.printJsonSummary(state)
-            assertTrue(output().contains("\"fit_score\":0"))
-        }
-    }
 }

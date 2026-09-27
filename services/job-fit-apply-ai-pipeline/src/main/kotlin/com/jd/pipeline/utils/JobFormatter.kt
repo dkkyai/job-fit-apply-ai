@@ -11,16 +11,7 @@ data class ColumnWidths(
     val title: Int,
     val fit: Int = 8,       // "Fit: N/A" length
     val artifact: Int
-) {
-    companion object {
-        fun default(): ColumnWidths = ColumnWidths(
-            company = 10,
-            title = 20,
-            fit = 8,
-            artifact = 30
-        )
-    }
-}
+)
 
 /**
  * Utility object for formatting job output in aligned columns.
@@ -54,8 +45,6 @@ object JobFormatter {
         }
     }
 
-    private const val SEPARATOR = " | "
-    private const val SEPARATOR_LENGTH = 3
     private const val DEFAULT_URL_MAX_LENGTH = 40
 
     /**
@@ -80,33 +69,6 @@ object JobFormatter {
         }
 
         return ColumnWidths(maxCompany, maxTitle, maxFit, maxArtifact)
-    }
-
-    /**
-     * Format a single job line with the given column widths.
-     * 
-     * @param state The JDState representing the job
-     * @param widths The column widths to use
-     * @param color Optional ANSI color code to wrap the line with
-     * @return Formatted line with separators
-     */
-    fun formatJobLine(state: JDState, widths: ColumnWidths, color: String = ""): String {
-        val company = state.company.ifBlank { "Unknown Company" }
-        val title = state.roleTitle.ifBlank { "Unknown Role" }
-        val fitStr = "Fit: ${state.fitScore?.toInt() ?: "N/A"}"
-        val artifact = truncateUrl(state.metadataUrl, widths.artifact)
-
-        val companyPadded = company.padEnd(widths.company)
-        val titlePadded = title.padEnd(widths.title)
-        val fitPadded = fitStr.padEnd(widths.fit)
-
-        val line = "$companyPadded$SEPARATOR$titlePadded$SEPARATOR$fitPadded$SEPARATOR$artifact"
-
-        return if (color.isNotEmpty()) {
-            "$color$line\u001B[0m"
-        } else {
-            line
-        }
     }
 
     /**
@@ -172,31 +134,6 @@ object JobFormatter {
         lines.add(hRule('└', '┴', '┘'))
         
         return lines
-    }
-
-    /**
-     * Format a list of jobs into a table of aligned lines.
-     * 
-     * @param jobs List of JDState objects representing scored jobs
-     * @return List of formatted lines (one per job)
-     */
-    fun formatJobTable(jobs: List<JDState>): List<String> {
-        if (jobs.isEmpty()) return emptyList()
-
-        val widths = computeColumnWidths(jobs)
-        return jobs.map { formatJobLine(it, widths) }
-    }
-
-    /**
-     * Format a single job for non-batch (single job) output.
-     * Uses default minimum widths.
-     * 
-     * @param state The JDState representing the job
-     * @param color Optional ANSI color code
-     * @return Formatted line
-     */
-    fun formatSingleJob(state: JDState, color: String = ""): String {
-        return formatJobLine(state, ColumnWidths.default(), color)
     }
 
     /**

@@ -57,7 +57,6 @@ flowchart TD
     SaveSingle --> Submit
 
     Submit["bridge.submit(JdRecord)\n+ apply JD_Processing label"] --> Batch["--max-emails: fire-and-forget\n(worker owns terminal state)"]
-    Submit --> Single["--email: pollUntilTerminal\n→ EmailLabelingService"]
 ```
 
 `--max-emails` is **fire-and-forget**: it submits each job, applies the `JD_Processing`
@@ -276,8 +275,7 @@ All node-level model variables default to `qwen3.5:9b-q4_K_M`. Override per node
 
 | Variable | Default |
 |---|---|
-| `CHROME_EXECUTABLE_PATH` | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` (macOS) |
-| `CHROME_USER_DATA_DIR` | `~/Library/Application Support/Google/Chrome` (macOS) |
+| `CHROME_EXECUTABLE_PATH` | `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` (macOS) — read by `scripts/launch-chrome-cdp.sh` / `cdp-watchdog.sh`, not the JVM |
 | `CHROME_PROFILE_DIRECTORY` | `Default` |
 | `CHROME_CDP_ENDPOINT` | _(empty)_ — e.g. `http://localhost:9222` to use the persistent Chrome |
 | `CHROME_DEBUG_PORT` | `9222` |
@@ -289,7 +287,6 @@ All node-level model variables default to `qwen3.5:9b-q4_K_M`. Override per node
 | `STEEL_SIGNIN_TOKEN` | _(empty)_ — when set, required as `?token=` and included in the alert link. Recommended. |
 | `STEEL_SIGNIN_WINDOW_MS` | `1800000` (30 min) — how long a sign-in session stays open. A ceiling: it closes as soon as the sign-in lands. |
 | `PLAYWRIGHT_TIMEOUT_MS` | `45000` |
-| `PLAYWRIGHT_HEADLESS` | `false` |
 | `PLAYWRIGHT_FALLBACK_ON_CAPTCHA` | `true` |
 
 #### Re-authenticating a job board (Steel)
@@ -504,7 +501,7 @@ The pipeline uses OAuth 2.0 to authenticate with Gmail. Tokens are stored at `GM
 |---|---|
 | "Connection refused" on submit | Bridge container is down — `docker compose up -d bridge` (check `docker logs jobfit-bridge`) |
 | Jobs queued but never processed | Processor is down — `docker compose up -d processor` (check `docker logs jobfit-processor`) |
-| `pollUntilTerminal` times out | Processor crashed or is overloaded — `docker logs -f jobfit-processor`; `make doctor` |
+| A job stays `pending`/`claimed` | Processor crashed or is overloaded — `docker logs -f jobfit-processor`; `make doctor` |
 
 ### LinkedIn scraping
 
