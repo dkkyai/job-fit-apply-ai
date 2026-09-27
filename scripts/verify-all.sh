@@ -70,26 +70,33 @@ collect_junit() { # collect_junit <level> <module> <results-dir>
 gradle() { (cd "$1" && shift && ./gradlew --console=plain "$@"); }
 # DB-backed tests default to localhost:5432 — the LIVE database. Always hand them an explicit
 # URL: the throwaway container's, or an unreachable port (so they skip) if it isn't up.
-gradle_db() { (cd "$1" && shift && DATABASE_URL="${PG_URL:-postgresql://jobfit:jobfit@127.0.0.1:1/jobfit}" ./gradlew --console=plain "$@"); }
+gradle_db() { # gradle_db <db> <dir> <tasks...>
+  local db="$1"; shift
+  (cd "$1" && shift && DATABASE_URL="${PG_BASE:-postgresql://jobfit:jobfit@127.0.0.1:1}/$db" ./gradlew --console=plain "$@")
+}
 
 # ── throwaway Postgres for DB-backed tests ────────────────────────────────────────
+# One database per module, like a dev host (bridge → jobfit_test, pipeline → jobfit): the
+# bridge's TracksApiTest TRUNCATEs tracks RESTART IDENTITY and inserts explicit ids, which
+# would collide with the pipeline's inserts if the two shared a database.
 PG_NAME="jfaa-verify-pg-$$"
-PG_URL=""
+PG_BASE=""
 start_pg() {
   docker run -d --rm --name "$PG_NAME" -p 127.0.0.1::5432 \
-    -e POSTGRES_USER=jobfit -e POSTGRES_PASSWORD=jobfit -e POSTGRES_DB=jobfit_test \
+    -e POSTGRES_USER=jobfit -e POSTGRES_PASSWORD=jobfit -e POSTGRES_DB=jobfit \
     -v "$ROOT/db/init:/docker-entrypoint-initdb.d:ro" postgres:16-alpine >/dev/null || return 1
   local port i
   port="$(docker port "$PG_NAME" 5432/tcp | head -1 | awk -F: '{print $NF}')"
   for i in $(seq 1 60); do
     # pg_isready over TCP, so the init scripts (unix-socket phase) have finished.
-    docker exec "$PG_NAME" pg_isready -h 127.0.0.1 -U jobfit -d jobfit_test >/dev/null 2>&1 && break
+    docker exec "$PG_NAME" pg_isready -h 127.0.0.1 -U jobfit -d jobfit >/dev/null 2>&1 && break
     sleep 1
   done
-  # Named jobfit_test on purpose: the bridge's TracksApiTest provisions and seeds a database of
-  # that name and redirects TracksStore to it via a system property — which an explicit
-  # DATABASE_URL env var outranks. Pointing the env var at jobfit_test makes both agree.
-  PG_URL="postgresql://jobfit:jobfit@127.0.0.1:$port/jobfit_test"
+  # jobfit_test must exist up front: TracksApiTest connects to the DATABASE_URL database
+  # first, then provisions its schema there and redirects TracksStore to it — a redirect an
+  # explicit DATABASE_URL env var outranks, so the env var must name jobfit_test too.
+  docker exec "$PG_NAME" psql -q -U jobfit -d jobfit -c "CREATE DATABASE jobfit_test" || return 1
+  PG_BASE="postgresql://jobfit:jobfit@127.0.0.1:$port"
   echo "throwaway postgres $PG_NAME at 127.0.0.1:$port"
 }
 stop_pg() { docker rm -f "$PG_NAME" >/dev/null 2>&1 || true; }
@@ -118,7 +125,8 @@ if want unit; then
     dir="$(svc "$m")"
     # cleanTest forces a real run; DATABASE_URL points DB tests at the throwaway Postgres
     # (they skip themselves when it's unreachable, so a missing DB shows up as skips).
-    step unit "kotlin-test-$m" gradle_db "$dir" cleanTest test
+    db=jobfit; [ "$m" = bridge ] && db=jobfit_test
+    step unit "kotlin-test-$m" gradle_db "$db" "$dir" cleanTest test
     collect_junit unit "$m" "$dir/build/test-results/test"
   done
   step unit "web-vitest" bash -c "cd '$WEB' && npx vitest run --reporter=default --reporter=junit --outputFile.junit='$OUT/raw/vitest.xml'"
