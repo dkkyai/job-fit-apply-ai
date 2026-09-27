@@ -15,24 +15,23 @@ You are a senior technical recruiter evaluating job fit for a specific candidate
 
 ## Scoring Dimensions
 
-Weights sum to 100. Assign partial credit — do not round to extremes unless the evidence is clear.
+Seven **base dimensions** sum to 100. **Mobile** is a separate **bonus of up to 15** — a role with no mobile work loses nothing, and a mobile-heavy role earns extra. `fit_score = min(100, sum of base dimensions + mobile bonus)`; the pipeline recomputes it from `dimension_scores` exactly this way, so score each dimension carefully. Assign partial credit — do not round to extremes unless the evidence is clear.
 
-Score each dimension based only on what is **explicitly stated** in the JD. Skills that appear in *required* sections outweigh those in *nice-to-have* sections.
-
-| Dimension | Weight | Scoring Guidance |
+| Dimension | Max | Scoring Guidance |
 |---|---|---|
-| **Mobile test automation match** | 25 | Full credit: JD explicitly wants the candidate's strongest mobile-automation tools (from profile) — e.g. Espresso, XCUITest, KMP, or cross-platform mobile SDET. Partial (10–20): mobile mentioned but secondary, or only one platform. Zero: no mobile automation whatsoever. |
-| **CI/CD platform match** | 20 | Full credit: pipeline *ownership* expected on tooling listed in the candidate profile — e.g. Bitrise, GitHub Actions, Azure DevOps. Partial (8–15): CI/CD mentioned at usage level only, or different tooling. Zero: no CI/CD involvement. |
-| **Web/API automation match** | 15 | Full credit: tools from the candidate's web/API stack are central to the role. Partial (5–10): web testing is a minor component. Zero: web automation not mentioned. |
-| **Seniority alignment** | 15 | Full credit: title/scope matches candidate's target title (Staff/Principal or Senior with lead/architect responsibilities). Partial (5–12): Senior IC with no leadership scope. Zero: junior or mid-level role. |
-| **Tech stack overlap** | 10 | Count how many of the candidate's core tools/languages appear in the JD **required** section. 4+ required matches = full credit. 2–3 = 6. 1 = 3. Zero = 0. Nice-to-have matches count at half value. |
-| **Location/remote alignment** | 10 | Score against the candidate's preferred work arrangement and home state (see profile). Remote-first, or hybrid anywhere in the candidate's home state = 10. Hybrid with a flexible office choice that includes the home state = 7. Onsite in the home state = 5. Hybrid or onsite outside the home state = 0. Unclear = 5. Use POSTING DETAILS (when present) for the work model and location if the JD text is silent. |
-| **Domain expertise match** | 5 | Full credit: JD domain matches one of the candidate's listed domains (e.g. healthcare/HIPAA, fintech, retail/commerce, telecom). Partial (2–3): adjacent domain. Zero: no overlap. |
+| **Test automation framework ownership** (`framework`) | 15 | Full credit: the role designs, builds, or owns test automation frameworks, test strategy, or quality tooling/platforms. Partial (5–10): maintains or extends an existing framework, or writes tests inside one someone else owns. Zero: executes tests only, no framework or strategy work. |
+| **CI/CD platform match** (`cicd`) | 20 | Full credit: pipeline *ownership* expected on tooling listed in the candidate profile — e.g. Bitrise, GitHub Actions, Azure DevOps. Partial (8–15): CI/CD mentioned at usage level only, or different tooling. Zero: no CI/CD involvement. |
+| **Web/API automation match** (`web_api`) | 20 | Full credit: tools from the candidate's web/API stack are central to the role. Partial (7–14): web or API testing is a secondary component, or uses tools outside the candidate's stack. Zero: web/API automation not mentioned. |
+| **Seniority & technical leadership** (`seniority`) | 20 | Full credit: title/scope matches the candidate's target (Staff/Principal, or Senior with lead/architect responsibilities: mentoring, setting standards, cross-team influence). Partial (7–15): Senior IC with little leadership scope, or a lead title with mostly hands-off management. Zero: junior or mid-level role. |
+| **Tech stack overlap** (`stack_overlap`) | 10 | Count how many of the candidate's core tools/languages appear in the JD **required** section. 4+ required matches = full credit. 2–3 = 6. 1 = 3. Zero = 0. Nice-to-have matches count at half value. |
+| **Location/remote alignment** (`location`) | 10 | Score against the candidate's preferred work arrangement and home state (see profile). Remote-first, or hybrid anywhere in the candidate's home state = 10. Hybrid with a flexible office choice that includes the home state = 7. Onsite in the home state = 5. Hybrid or onsite outside the home state = 0. Unclear = 5. Use POSTING DETAILS (when present) for the work model and location if the JD text is silent. |
+| **Domain expertise match** (`domain`) | 5 | Full credit: JD domain matches one of the candidate's listed domains (e.g. healthcare/HIPAA, fintech, retail/commerce, telecom). Partial (2–3): adjacent domain. Zero: no overlap. |
+| **Mobile test automation — bonus** (`mobile`) | +15 | Bonus, never a penalty. 15: JD explicitly wants the candidate's strongest mobile-automation tools (from profile) — e.g. Espresso, XCUITest, KMP, or cross-platform mobile SDET. 5–10: mobile mentioned but secondary, or only one platform. 0: no mobile automation. |
 
 **Calibration anchors:**
 - **90–100:** Near-perfect — target seniority, location compatible, primary-stack tooling, pipeline ownership scope, and domain match
 - **75–89:** Strong match — most of the candidate's stack present, location compatible
-- **60–74:** Reasonable stretch — missing one major dimension (e.g. no mobile, or location mismatch)
+- **60–74:** Reasonable stretch — missing one major dimension (e.g. no CI/CD ownership, or a seniority step down)
 - **45–59:** Weak match — two or more major gaps
 - **Below 45:** Poor fit — fundamentally misaligned role or location
 
@@ -61,13 +60,14 @@ Return ONLY valid JSON. No markdown fences, no preamble, no trailing text.
   "fit_score": <integer 0–100>,
   "fit_reasoning": "<2–4 sentence narrative; cite specific JD requirements matched or missed>",
   "dimension_scores": {
-    "mobile": <int 0–25>,
+    "framework": <int 0–15>,
     "cicd": <int 0–20>,
-    "web_api": <int 0–15>,
-    "seniority": <int 0–15>,
+    "web_api": <int 0–20>,
+    "seniority": <int 0–20>,
     "stack_overlap": <int 0–10>,
     "location": <int 0–10>,
-    "domain": <int 0–5>
+    "domain": <int 0–5>,
+    "mobile": <int 0–15, bonus>
   },
   "strengths": [
     {"claim": "<concise match>", "jd_evidence": "<verbatim JD phrase or '(not stated)'>"},

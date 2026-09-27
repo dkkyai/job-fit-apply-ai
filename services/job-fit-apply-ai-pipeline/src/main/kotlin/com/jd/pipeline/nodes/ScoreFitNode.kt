@@ -109,12 +109,18 @@ class ScoreFitNode(
 
         return try {
             val node = mapper.readTree(cleaned)
-            val score = node.path("fit_score").floatValue().takeIf { it > 0f } ?: 0f
+            val modelScore = node.path("fit_score").floatValue().takeIf { it > 0f } ?: 0f
+            val dimensionScores = parseDimensionScores(node.path("dimension_scores"))
+            // The rubric is arithmetic over the dimensions (base + capped mobile bonus); apply it
+            // here rather than trusting the model's sum. Falls back to the model's number when the
+            // response doesn't carry the rubric's dimensions.
+            val score = scoreFromDimensions(dimensionScores)?.also {
+                if (it != modelScore) println("[score_fit] Model said $modelScore; rubric sum of dimensions = $it")
+            } ?: modelScore
             println("[92m[score_fit] Score fit = $score[0m")
 
             val strengthsWithEvidence = parseEvidenceArray(node.path("strengths"))
             val gapsWithEvidence = parseEvidenceArray(node.path("gaps"))
-            val dimensionScores = parseDimensionScores(node.path("dimension_scores"))
             val llmHardGates = node.path("hard_gate_violations").map { it.asText() }.filter { it.isNotBlank() }
             val compMin = node.path("posted_comp_min").takeIf { !it.isNull && !it.isMissingNode }?.intValue()
             val compMax = node.path("posted_comp_max").takeIf { !it.isNull && !it.isMissingNode }?.intValue()
@@ -208,6 +214,17 @@ class ScoreFitNode(
                 else -> null
             }
         }
+    }
+
+    /**
+     * `min(100, base dimensions + mobile bonus)`, each dimension clamped to its rubric maximum.
+     * Null unless every base dimension is present (e.g. an older or foreign response shape).
+     */
+    internal fun scoreFromDimensions(dimensions: Map<String, Int>): Float? {
+        if (!BASE_DIMENSION_MAX.keys.all { it in dimensions }) return null
+        val base = BASE_DIMENSION_MAX.entries.sumOf { (key, max) -> dimensions.getValue(key).coerceIn(0, max) }
+        val bonus = (dimensions[MOBILE_BONUS_KEY] ?: 0).coerceIn(0, MOBILE_BONUS_MAX)
+        return minOf(100, base + bonus).toFloat()
     }
 
     private fun parseDimensionScores(node: JsonNode): Map<String, Int> {
@@ -354,6 +371,14 @@ class ScoreFitNode(
 
         const val CANDIDATE_PROFILE_PLACEHOLDER = "{{CANDIDATE_PROFILE}}"
 
+        /** Rubric maxima (SCORE_SKILL.md). The base dimensions sum to 100; mobile is a bonus on top. */
+        val BASE_DIMENSION_MAX = linkedMapOf(
+            "framework" to 15, "cicd" to 20, "web_api" to 20, "seniority" to 20,
+            "stack_overlap" to 10, "location" to 10, "domain" to 5,
+        )
+        const val MOBILE_BONUS_KEY = "mobile"
+        const val MOBILE_BONUS_MAX = 15
+
         /**
          * Renders a [CandidateProfile] into the markdown block consumed by SCORE_SKILL.md.
          * Delegates to [com.jd.pipeline.utils.CandidateProfileRenderer.renderForScoring].
@@ -376,7 +401,7 @@ class ScoreFitNode(
             |{
             |  "fit_score": integer (0-100),
             |  "fit_reasoning": "string — narrative explanation of the score",
-            |  "dimension_scores": {"mobile": int, "cicd": int, "web_api": int, "seniority": int, "stack_overlap": int, "location": int, "domain": int},
+            |  "dimension_scores": {"framework": int 0-15, "cicd": int 0-20, "web_api": int 0-20, "seniority": int 0-20, "stack_overlap": int 0-10, "location": int 0-10, "domain": int 0-5, "mobile": int 0-15 bonus},
             |  "strengths": [{"claim": "string", "jd_evidence": "string"}, ...],
             |  "gaps": [{"claim": "string", "jd_evidence": "string"}, ...],
             |  "red_flags": ["string", ...],
@@ -397,7 +422,7 @@ class ScoreFitNode(
             |}
             |
             |Scoring guidance:
-            |- fit_score >= 50: worth tailoring; < 50: skip
+            |- fit_score = min(100, sum of the base dimensions + the mobile bonus); mobile is never a penalty
             |- strengths/gaps: 2-5 items each; jd_evidence is a verbatim JD phrase or "(not stated)"
             |- red_flags: soft concerns that pull score down but do not gate
             |- hard_gate_violations: pure manual QA, 80%+ product dev work, active security clearance required

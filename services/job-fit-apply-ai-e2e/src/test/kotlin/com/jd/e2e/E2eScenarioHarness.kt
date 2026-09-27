@@ -54,7 +54,7 @@ data class ScenarioResult(
 }
 
 /**
- * Mirrors NOTIFICATION_FIT_THRESHOLD, which docker-compose.e2e.yml pins to 50 for the slice
+ * Mirrors FIT_THRESHOLD, which docker-compose.e2e.yml pins to 50 for the slice
  * precisely so this side can be a constant. Change one, change the other — a mismatch shows up
  * as a 30s timeout waiting for a Telegram that was never going to be sent.
  */

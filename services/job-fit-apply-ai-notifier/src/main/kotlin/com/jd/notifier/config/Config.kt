@@ -36,8 +36,8 @@ object Config {
     val DISCORD_API_BASE: String  = get("DISCORD_API_BASE", "https://discord.com")
     val TELEGRAM_API_BASE: String = get("TELEGRAM_API_BASE", "https://api.telegram.org")
 
-    /** Telegram high-fit ping fires when fit_score >= this. */
-    val NOTIFICATION_FIT_THRESHOLD: Int = get("NOTIFICATION_FIT_THRESHOLD", "50").toInt()
+    /** Telegram high-fit ping fires when fit_score >= this — the processor's tailoring threshold. */
+    val FIT_THRESHOLD: Int = get("FIT_THRESHOLD", "50").toFloat().toInt()
 
     // ── Loop + state ─────────────────────────────────────────────────────────────
     val POLL_INTERVAL_MS: Long = get("NOTIFIER_POLL_INTERVAL_MS", "20000").toLong()

@@ -42,7 +42,7 @@ object PollerConfig {
     val INTAKE_MAX_SCAN: Int = positiveInt("INTAKE_MAX_SCAN", get("INTAKE_MAX_SCAN", "100"))
     val GMAIL_SEARCH_QUERY: String = get(
         "GMAIL_SEARCH_QUERY",
-        "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:Processing -label:JD_Error -label:JD_Scrape_Failed",
+        "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:Processing -label:JD_Error -label:JD_Scrape_Failed -label:JD_Application_Update",
     )
 
     // ── Poll loops ──────────────────────────────────────────────────────────────
