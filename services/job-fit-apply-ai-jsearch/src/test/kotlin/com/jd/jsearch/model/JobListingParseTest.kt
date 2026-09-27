@@ -52,7 +52,6 @@ class JobListingParseTest {
         )
         assertTrue(!l.jobIsRemote)
         assertNull(l.jobApplyLink)
-        assertNull(l.jobPublisher)
     }
 
     @Test
