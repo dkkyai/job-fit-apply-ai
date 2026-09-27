@@ -372,4 +372,29 @@ class MetadataUtilsTest {
         assertEquals("", MetadataUtils.jobBoard(JDState(jobUrl = "https://u9255466.ct.sendgrid.net/ls/click?upn=x")))
         assertEquals("LinkedIn", MetadataUtils.jobBoard(JDState(jobUrl = "https://x.co", jobBoard = "LinkedIn")))
     }
+
+    @Test
+    @DisplayName("report.md links the Job Title to the posting and has no separate Job Posting row")
+    fun jobTitleLinksToPosting(@TempDir tempDir: Path) {
+        val state = TestJDStateFactory.createHighScoredState().copy(
+            outputPath = tempDir.toString(), roleTitle = "Staff SDET",
+            jobUrl = "https://jobright.ai/jobs/info/abc?utm_source=1&imp_id=2",
+        )
+        MetadataUtils.writeMetadata(state)
+        val content = Files.readString(tempDir.resolve("report.md"))
+        assertTrue(content.contains(
+            "| Job Title | <a href=\"https://jobright.ai/jobs/info/abc?utm_source=1&imp_id=2\" " +
+                "target=\"_blank\" rel=\"noopener noreferrer\">Staff SDET</a> |"), content)
+        assertFalse(content.contains("| Job Posting |"))
+    }
+
+    @Test
+    @DisplayName("report.md shows a plain Job Title when there is no posting URL")
+    fun jobTitlePlainWithoutUrl(@TempDir tempDir: Path) {
+        val state = TestJDStateFactory.createHighScoredState().copy(
+            outputPath = tempDir.toString(), roleTitle = "Staff SDET", jobUrl = "",
+        )
+        MetadataUtils.writeMetadata(state)
+        assertTrue(Files.readString(tempDir.resolve("report.md")).contains("| Job Title | Staff SDET |"))
+    }
 }

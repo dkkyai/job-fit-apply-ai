@@ -151,7 +151,8 @@ object MetadataUtils {
             appendLine("| Field | Value |")
             appendLine("|-------|-------|")
             appendLine("| Company | ${state.company.ifEmpty { "—" }} |")
-            appendLine("| Job Title | ${state.roleTitle.ifEmpty { "—" }} |")
+            // The title links to the posting, so there is no separate "Job Posting" row.
+            appendLine("| Job Title | ${titleCell(state)} |")
             appendLine("| Fit Score | $fitScoreDisplay |")
             appendLine("| Location | ${state.location.ifEmpty { "—" }} |")
             appendLine("| Remote Policy | ${state.remotePolicy.takeIf { it != "unknown" } ?: "—"} |")
@@ -161,7 +162,6 @@ object MetadataUtils {
             appendLine("| YOE Required | ${state.yoeRequired?.toString() ?: "—"} |")
             appendLine("| Source | ${sourceCell(state)} |")
             appendLine("| Job Board | ${jobBoard(state).ifEmpty { "—" }} |")
-            appendLine("| Job Posting | ${linkOrNA(state.jobUrl)} |")
             appendLine()
 
             // Artifacts
@@ -254,6 +254,11 @@ object MetadataUtils {
 
         Files.writeString(outputDir.resolve("report.md"), md)
         println("[metadata] Wrote report.md to $outputDir")
+    }
+
+    private fun titleCell(state: JDState): String {
+        val title = state.roleTitle.ifEmpty { "—" }
+        return if (state.jobUrl.isBlank()) title else linkOrNA(state.jobUrl, title)
     }
 
     private fun linkOrNA(url: String?, label: String = "URL"): String {
