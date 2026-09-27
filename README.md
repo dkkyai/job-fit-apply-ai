@@ -94,7 +94,7 @@ flowchart TB
 
 | Service | Container | Host bind | Tailnet URL |
 |---|---|---|---|
-| Postgres | `jobfit-db` | `127.0.0.1:5432` | — (internal only) |
+| Postgres | `jobfit-db` | `${POSTGRES_BIND_ADDR:-127.0.0.1}:5432` | — (internal only; host clients use `127.0.0.1:5432`) |
 | Bridge (Ktor) | `jobfit-bridge` | `127.0.0.1:8765` | `http://<tailscale-name>:8765` |
 | Dashboard (nginx) | `jobfit-frontend` | `127.0.0.1:3030` | `http://<tailscale-name>:3030` |
 | Artifact server (markserv) | `jobfit-markserv` | `127.0.0.1:8081` | `http://<tailscale-name>:8081` |
