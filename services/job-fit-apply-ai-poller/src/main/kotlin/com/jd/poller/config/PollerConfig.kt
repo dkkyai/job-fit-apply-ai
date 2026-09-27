@@ -35,8 +35,11 @@ object PollerConfig {
     // ── Gmail ──────────────────────────────────────────────────────────────────
     val GMAIL_CREDENTIALS_FILE: String = get("GMAIL_CREDENTIALS_FILE", "gmail_credentials.json")
     val GMAIL_TOKEN_FILE: String = get("GMAIL_TOKEN_FILE", "tokens/gmail_token.json")
-    val GMAIL_MAX_EMAILS: Int = get("GMAIL_MAX_EMAILS", "10").toInt()
     val INTAKE_BATCH_SIZE: Int = positiveInt("INTAKE_BATCH_SIZE", get("INTAKE_BATCH_SIZE", "3"))
+    // Intake skips (never labels) replies in processed threads and blank-body emails, so they keep
+    // matching the query. Intake pages past them to fill the batch, fetching at most this many
+    // messages per pass (each is one messages.get).
+    val INTAKE_MAX_SCAN: Int = positiveInt("INTAKE_MAX_SCAN", get("INTAKE_MAX_SCAN", "100"))
     val GMAIL_SEARCH_QUERY: String = get(
         "GMAIL_SEARCH_QUERY",
         "newer_than:7d in:inbox -label:JD_Not_Found -label:Recruiter_Response_Required -label:Processing -label:JD_Error -label:JD_Scrape_Failed",
