@@ -4,6 +4,7 @@ import com.jd.pipeline.client.LlmCaller
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.isDigest
+import com.jd.pipeline.state.isRecruiterEmail
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -74,6 +75,25 @@ class ScanEmailNodeProcessTest {
             assertEquals("remote", result.remotePolicy)
             assertEquals(5, result.yoeRequired)
             assertEquals(listOf("Kotlin", "Selenium"), result.techStack)
+        }
+
+        @Test
+        @DisplayName("an interview confirmation with the JD attached is an application update, not a posting")
+        fun interviewConfirmationIsApplicationUpdate() {
+            // Shape of the Costco Travel emails that were re-tailored each interview round.
+            val json = """
+                {"is_job_posting": true, "is_application_update": true, "company": "Costco Travel",
+                 "role_title": "Quality Engineer - Engineering Productivity", "jd_text": "Position Summary ..."}
+            """.trimIndent()
+            val result = ScanEmailNode(llm = RecordingLlm(json)).process(
+                recruiterEmail(subject = "Costco Travel - (Round 2 Panel Interview) Quality Engineer - MSFT Teams Interview",
+                    rawBody = "You are confirmed for a MSFT Teams video interview. The job description is attached below.")
+            )
+
+            assertTrue(result.isApplicationUpdate)
+            assertTrue(!result.isJobPosting, "an application update must not be processed as a posting")
+            assertTrue(!result.isRecruiterEmail, "must not take the recruiter tailor-and-reply path")
+            assertTrue(result.skippedReason.startsWith("Application update"))
         }
 
         @Test

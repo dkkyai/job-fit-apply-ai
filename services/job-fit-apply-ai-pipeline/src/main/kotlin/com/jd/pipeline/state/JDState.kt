@@ -103,6 +103,9 @@ data class JDState(
     val skippedReason: String = "",
     val isChromeSessionExpired: Boolean = false,
     val isRecruiterResponseRequired: Boolean = false,
+    // Interview scheduling / assessment / application-status mail about a role already in progress.
+    // Not a new posting even when the JD is attached: labelled JD_Application_Update and skipped.
+    val isApplicationUpdate: Boolean = false,
     val draftId: String = "",
     // Recruiter reply body, generated Gmail-free by the Processor. The Poller delivers it
     // (creates the Gmail draft) via the bridge completed feed. Empty when not a recruiter reply.

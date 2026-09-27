@@ -368,6 +368,11 @@ object ProcessorCommandHandler {
                     bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
                     skipResult(null, TerminalLabel.JD_NOT_FOUND, ingState.scrapePath),
                 )
+            EmailDisposition.SkipApplicationUpdate ->
+                postTerminal(
+                    bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
+                    skipResult(null, TerminalLabel.APPLICATION_UPDATE, ingState.scrapePath),
+                )
             EmailDisposition.Process ->
                 Resolution.Proceed(ingestion.toJdRecord(ingState, idempotencyKey = email.messageId))
         }
