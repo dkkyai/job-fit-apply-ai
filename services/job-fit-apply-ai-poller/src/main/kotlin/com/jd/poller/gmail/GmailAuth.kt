@@ -171,13 +171,6 @@ object GmailAuth {
         }
     }
 
-    fun initiateOAuthFlow(): String {
-        val flow = buildAuthorizationCodeFlow()
-        return flow.newAuthorizationUrl()
-            .setRedirectUri(REDIRECT_URI)
-            .build()
-    }
-
     fun exchangeRedirectUrlForToken(redirectUrl: String): Boolean {
         val code = parseAuthCodeFromUrl(redirectUrl)
         if (code == null) {
@@ -190,22 +183,6 @@ object GmailAuth {
             true
         } catch (e: Exception) {
             println("[ERROR] Failed to exchange authorization code: ${e.message}")
-            false
-        }
-    }
-
-    fun verifyCredentials(): Boolean {
-        return try {
-            val credential = getCredentials()
-            val tempService = Gmail.Builder(
-                NetHttpTransport(),
-                GsonFactory.getDefaultInstance(),
-                credential
-            ).setApplicationName("JD Poller").build()
-            tempService.users().labels().list("me").execute()
-            true
-        } catch (e: Exception) {
-            println("[ERROR] Credential verification failed: ${e.message}")
             false
         }
     }

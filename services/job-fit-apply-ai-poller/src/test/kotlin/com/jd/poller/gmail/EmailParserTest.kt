@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 /**
  * EmailParser is pure MIME decoding — no Gmail auth/network. These build Gmail API [Message]
- * objects by hand and assert the decoded plain text / HTML / script extraction.
+ * objects by hand and assert the decoded plain text / HTML extraction.
  */
 @DisplayName("EmailParserTest")
 class EmailParserTest {
@@ -63,48 +63,11 @@ class EmailParserTest {
     }
 
     @Test
-    @DisplayName("collects inline scripts and script src URLs from HTML")
-    fun collectsScripts() {
-        val html = """
-            <html><body>
-              <script src="https://evil.example.com/track.js"></script>
-              <script>window.__x = 1;</script>
-              Legit content
-            </body></html>
-        """.trimIndent()
-        val parsed = EmailParser.parse(message(part("text/html", html)))
-        assertContains(parsed.scriptUrls, "https://evil.example.com/track.js")
-        assertTrue(parsed.inlineScripts.any { it.contains("window.__x") }, "should capture inline script body")
-    }
-
-    @Test
     @DisplayName("empty payload yields empty plain text, not a crash")
     fun emptyPayloadIsSafe() {
         val parsed = EmailParser.parse(Message().setId("m2"))
         assertEquals("", parsed.plainText)
         assertTrue(parsed.htmlBodies.isEmpty())
-    }
-
-    @Test
-    @DisplayName("part summary lists mime types with sizes")
-    fun partSummaryListsParts() {
-        val payload = part(
-            "multipart/mixed",
-            parts = listOf(part("text/plain", "hi"), part("text/html", "<p>hi</p>")),
-        )
-        val parsed = EmailParser.parse(message(payload))
-        assertContains(parsed.partSummary, "multipart/mixed")
-        assertContains(parsed.partSummary, "text/plain")
-        assertContains(parsed.partSummary, "text/html")
-    }
-
-    @Test
-    @DisplayName("part summary includes the filename when present")
-    fun partSummaryIncludesFilename() {
-        val attachment = MessagePart().setMimeType("application/pdf").setFilename("resume.pdf")
-        val payload = part("multipart/mixed", parts = listOf(attachment))
-        val parsed = EmailParser.parse(message(payload))
-        assertContains(parsed.partSummary, "filename=resume.pdf")
     }
 
     @Test

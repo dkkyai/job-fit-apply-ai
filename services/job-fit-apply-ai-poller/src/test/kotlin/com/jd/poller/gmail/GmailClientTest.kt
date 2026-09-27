@@ -590,14 +590,4 @@ class GmailClientTest {
         val session = javax.mail.Session.getDefaultInstance(java.util.Properties(), null)
         return javax.mail.internet.MimeMessage(session, bytes.inputStream())
     }
-
-    // ── checkTokenStatus delegate ──────────────────────────────────────────────
-
-    @Test
-    @DisplayName("checkTokenStatus delegates to GmailAuth (no stored token in this environment -> MISSING)")
-    fun checkTokenStatusDelegatesToGmailAuth() {
-        val rig = Rig()
-        val result = rig.client().checkTokenStatus()
-        assertEquals(GmailAuth.TokenStatus.MISSING, result.status)
-    }
 }

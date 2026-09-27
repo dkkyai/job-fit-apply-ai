@@ -262,8 +262,6 @@ class GmailClient(
         return MessageMeta(from = h["From"] ?: "", subject = h["Subject"] ?: "")
     }
 
-    fun checkTokenStatus(): GmailAuth.TokenCheckResult = GmailAuth.checkTokenStatus()
-
     private fun extractHeaders(payload: MessagePart?): Map<String, String> {
         val headers = mutableMapOf<String, String>()
         payload?.headers?.forEach { headers[it.name] = it.value }
