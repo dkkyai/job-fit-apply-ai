@@ -26,7 +26,7 @@ Score each dimension based only on what is **explicitly stated** in the JD. Skil
 | **Web/API automation match** | 15 | Full credit: tools from the candidate's web/API stack are central to the role. Partial (5–10): web testing is a minor component. Zero: web automation not mentioned. |
 | **Seniority alignment** | 15 | Full credit: title/scope matches candidate's target title (Staff/Principal or Senior with lead/architect responsibilities). Partial (5–12): Senior IC with no leadership scope. Zero: junior or mid-level role. |
 | **Tech stack overlap** | 10 | Count how many of the candidate's core tools/languages appear in the JD **required** section. 4+ required matches = full credit. 2–3 = 6. 1 = 3. Zero = 0. Nice-to-have matches count at half value. |
-| **Location/remote alignment** | 10 | Score against the candidate's preferred work arrangement and home location (see profile). Remote-first or hybrid in candidate's home metro = 10. Hybrid flexible location = 7. Onsite in home metro = 5. Onsite outside home metro = 0. Unclear = 5. |
+| **Location/remote alignment** | 10 | Score against the candidate's preferred work arrangement and home state (see profile). Remote-first, or hybrid anywhere in the candidate's home state = 10. Hybrid with a flexible office choice that includes the home state = 7. Onsite in the home state = 5. Hybrid or onsite outside the home state = 0. Unclear = 5. Use POSTING DETAILS (when present) for the work model and location if the JD text is silent. |
 | **Domain expertise match** | 5 | Full credit: JD domain matches one of the candidate's listed domains (e.g. healthcare/HIPAA, fintech, retail/commerce, telecom). Partial (2–3): adjacent domain. Zero: no overlap. |
 
 **Calibration anchors:**
@@ -83,6 +83,7 @@ Return ONLY valid JSON. No markdown fences, no preamble, no trailing text.
   "posted_comp_max": <integer USD annual, or null if not stated>,
   "work_arrangement": "<remote|hybrid|onsite|unknown>",
   "office_location": "<city, state if onsite or hybrid — empty string if remote or unknown>",
+  "office_state": "<two-letter US state code of the onsite/hybrid office — infer it from a city or neighborhood name (e.g. \"South Lake Union\" → \"WA\"); \"non-US\" for an office outside the US; empty string if remote or unknown>",
   "confidence": <float 0.0–1.0 reflecting how clearly the JD states role requirements>,
   "role_title": "<exact job title as stated in the JD, not paraphrased>",
   "seniority": "<level string (e.g. Staff, Senior, Principal, IC5, L6) — empty string if not stated>",

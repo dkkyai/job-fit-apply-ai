@@ -168,6 +168,82 @@ class ScoreFitNodeTest {
     }
 
     @Nested
+    @DisplayName("Hard Gate: Location is Washington state, not Seattle")
+    inner class StateLocationGateTests {
+
+        private fun gates(arrangement: String, office: String, officeState: String = "", state: JDState = stateWithProfile()) =
+            invokeComputeHardGates(state, workArrangement = arrangement, officeLocation = office, officeState = officeState)
+
+        @Test
+        @DisplayName("onsite in a Seattle suburb is home state, not a skip")
+        fun onsiteSuburbAllowed() {
+            assertTrue(gates("onsite", "Bothell, WA").isEmpty())
+            assertTrue(gates("onsite", "Spokane, Washington").isEmpty())
+        }
+
+        @Test
+        @DisplayName("hybrid outside Washington is skipped")
+        fun hybridOutOfStateGated() {
+            val g = gates("hybrid", "Merrifield, VA")
+            assertTrue(g.single().startsWith("Hybrid in Merrifield, VA — outside WA"), "got: $g")
+        }
+
+        @Test
+        @DisplayName("a neighborhood name with no state never causes a skip")
+        fun neighborhoodFailsOpen() {
+            assertTrue(gates("onsite", "South Lake Union").isEmpty())
+            assertTrue(gates("hybrid", "United States").isEmpty())
+        }
+
+        @Test
+        @DisplayName("the model's office_state resolves a neighborhood either way")
+        fun officeStateUsed() {
+            assertTrue(gates("hybrid", "South Lake Union", officeState = "WA").isEmpty())
+            assertTrue(gates("hybrid", "The Loop", officeState = "IL").isNotEmpty())
+            assertTrue(gates("onsite", "Shoreditch, London", officeState = "non-US").isNotEmpty())
+        }
+
+        @Test
+        @DisplayName("multi-location posting that includes Washington is allowed")
+        fun multiLocationWithHomeStateAllowed() {
+            assertTrue(gates("hybrid", "San Francisco, CA; Seattle, WA").isEmpty())
+            assertTrue(gates("hybrid", "San Francisco, CA; Chicago, IL; Salt Lake City, UT").isNotEmpty())
+        }
+
+        @Test
+        @DisplayName("Washington, DC is not Washington state")
+        fun washingtonDcIsNotWa() {
+            assertTrue(gates("onsite", "Washington, DC").isNotEmpty())
+        }
+
+        @Test
+        @DisplayName("falls back to the board's work model and location when the model says unknown")
+        fun boardFieldsFallback() {
+            val s = stateWithProfile().copy(remotePolicy = "Hybrid", location = "Austin, TX")
+            assertTrue(invokeComputeHardGates(s).single().startsWith("Hybrid in Austin, TX"))
+        }
+
+        @Test
+        @DisplayName("remote from either the board or the model means no location skip")
+        fun remoteNeverGated() {
+            assertTrue(invokeComputeHardGates(stateWithProfile().copy(remotePolicy = "Remote"),
+                workArrangement = "hybrid", officeLocation = "Austin, TX").isEmpty())
+            assertTrue(invokeComputeHardGates(stateWithProfile().copy(remotePolicy = "Hybrid", location = "Austin, TX"),
+                workArrangement = "remote").isEmpty())
+        }
+    }
+
+    @Test
+    @DisplayName("postingDetails passes the board's location, work model, salary and type to the scorer")
+    fun postingDetailsBlock() {
+        val s = JDState(location = "United States", remotePolicy = "Remote", salaryRange = "\$101K/yr - \$127K/yr", employmentType = "Full-time")
+        val block = ScoreFitNode().postingDetails(s)
+        assertTrue(block.contains("Location: United States") && block.contains("Work model: Remote") &&
+            block.contains("Salary: \$101K/yr") && block.contains("Employment type: Full-time"), block)
+        assertEquals("", ScoreFitNode().postingDetails(JDState()))
+    }
+
+    @Nested
     @DisplayName("Hard Gate: No profile")
     inner class NoProfileTests {
 
@@ -187,21 +263,9 @@ class ScoreFitNodeTest {
         compMin: Int? = null,
         compMax: Int? = null,
         workArrangement: String = "unknown",
-        officeLocation: String = ""
-    ): List<String> {
-        // computeHardGates is private; test via reflection for isolation
-        val method = ScoreFitNode::class.java.getDeclaredMethod(
-            "computeHardGates",
-            JDState::class.java,
-            Int::class.javaObjectType,
-            Int::class.javaObjectType,
-            String::class.java,
-            String::class.java
-        )
-        method.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        return method.invoke(ScoreFitNode(), state, compMin, compMax, workArrangement, officeLocation) as List<String>
-    }
+        officeLocation: String = "",
+        officeState: String = "",
+    ): List<String> = ScoreFitNode().computeHardGates(state, compMin, compMax, workArrangement, officeLocation, officeState)
 
     private fun stateWithProfile(preferences: CandidatePreferences = sampleProfile().preferences): JDState =
         JDState(

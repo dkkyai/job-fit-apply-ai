@@ -11,6 +11,7 @@ import com.jd.pipeline.models.JdStructured
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.state.isDigest
+import com.jd.pipeline.utils.UsStates
 import java.nio.file.Files
 
 /**
@@ -58,7 +59,7 @@ class ScoreFitNode(
         println("[score_fit] Scoring: ${input.roleTitle} @ ${input.company}")
 
         return try {
-            val prompt = "${loadSkillPrompt(input.candidateProfile)}\n\nJOB DESCRIPTION:\n$jdText"
+            val prompt = "${loadSkillPrompt(input.candidateProfile)}\n\n${postingDetails(input)}JOB DESCRIPTION:\n$jdText"
             val response = llm.call(prompt)
             val result = parseLlmResponse(input, response)
             try { saveScoreToFile(result) } catch (e: Exception) {
@@ -73,6 +74,21 @@ class ScoreFitNode(
             System.err.println("[score_fit] ERROR: ${e.message}")
             input.copy(fitScore = 0f, error = "score_fit: ${e.message}")
         }
+    }
+
+    /**
+     * The job board's structured fields for this posting (captured at scrape time), so the model
+     * doesn't have to infer work model and office location from prose alone. Empty when none are known.
+     */
+    internal fun postingDetails(input: JDState): String {
+        val lines = listOfNotNull(
+            input.location.takeIf { it.isNotBlank() }?.let { "Location: $it" },
+            input.remotePolicy.takeIf { it.isNotBlank() && it != "unknown" }?.let { "Work model: $it" },
+            input.salaryRange.takeIf { it.isNotBlank() }?.let { "Salary: $it" },
+            input.employmentType.takeIf { it.isNotBlank() }?.let { "Employment type: $it" },
+        )
+        if (lines.isEmpty()) return ""
+        return "POSTING DETAILS (from the job board's structured data):\n${lines.joinToString("\n")}\n\n"
     }
 
     private fun loadSkillPrompt(candidateProfile: CandidateProfile?): String {
@@ -104,10 +120,11 @@ class ScoreFitNode(
             val compMax = node.path("posted_comp_max").takeIf { !it.isNull && !it.isMissingNode }?.intValue()
             val workArrangement = node.path("work_arrangement").asText("unknown")
             val officeLocation = node.path("office_location").asText("")
+            val officeState = node.path("office_state").asText("")
             val confidence = node.path("confidence").takeIf { !it.isNull && !it.isMissingNode }?.floatValue()
 
             // Deterministic hard-gate checks using extracted JD data vs profile preferences
-            val deterministicGates = computeHardGates(input, compMin, compMax, workArrangement, officeLocation)
+            val deterministicGates = computeHardGates(input, compMin, compMax, workArrangement, officeLocation, officeState)
             val allHardGates = (llmHardGates + deterministicGates).distinct()
             if (allHardGates.isNotEmpty()) println("[score_fit] Hard-gate violations: $allHardGates")
 
@@ -206,12 +223,13 @@ class ScoreFitNode(
      * Computes hard-gate violations deterministically from extracted JD fields vs profile
      * preferences. Returns an empty list when no user profile is loaded.
      */
-    private fun computeHardGates(
+    internal fun computeHardGates(
         input: JDState,
         @Suppress("UNUSED_PARAMETER") compMin: Int?,
         compMax: Int?,
         workArrangement: String,
-        officeLocation: String
+        officeLocation: String,
+        officeState: String = "",
     ): List<String> {
         val prefs = input.candidateProfile?.preferences ?: return emptyList()
         val identity = input.candidateProfile.identity
@@ -223,15 +241,54 @@ class ScoreFitNode(
             gates.add("Compensation band (\$$compMax) is below target (\$$targetTc)")
         }
 
-        // Location: onsite outside candidate's home metro when they won't relocate
-        if (workArrangement == "onsite" && officeLocation.isNotBlank() && !prefs.willingToRelocate) {
-            val homeCity = identity.location.substringBefore(",").trim().lowercase()
-            if (!officeLocation.lowercase().contains(homeCity)) {
-                gates.add("Onsite-only in $officeLocation (candidate in ${identity.location}, no relocation)")
+        if (!prefs.willingToRelocate) {
+            locationGate(input, identity.location, workArrangement, officeLocation, officeState)?.let { gates.add(it) }
+        }
+        return gates
+    }
+
+    /**
+     * Onsite or hybrid work outside the candidate's home STATE (not city: listings use suburbs and
+     * neighborhoods, and a city list always misses one). Only skips when the posting positively names
+     * another state or a non-US office; a location with no identifiable state is "can't tell" → no gate.
+     */
+    private fun locationGate(
+        input: JDState,
+        homeLocation: String,
+        llmArrangement: String,
+        officeLocation: String,
+        officeState: String,
+    ): String? {
+        val boardPolicy = input.remotePolicy.lowercase()
+        // Either source saying remote means no gate: failing open beats skipping a real fit.
+        if (boardPolicy.contains("remote") || llmArrangement.equals("remote", ignoreCase = true)) return null
+        val arrangement = llmArrangement.lowercase().takeIf { it == "onsite" || it == "hybrid" }
+            ?: when {
+                boardPolicy.contains("hybrid") -> "hybrid"
+                boardPolicy.contains("onsite") || boardPolicy.contains("on-site") || boardPolicy.contains("office") -> "onsite"
+                else -> return null
             }
+
+        val homeState = UsStates.statesIn(homeLocation).firstOrNull()
+        val where = officeLocation.ifBlank { input.location }
+        val label = if (arrangement == "onsite") "Onsite-only" else "Hybrid"
+        if (homeState == null) {
+            // Home location names no state — fall back to the old home-city match.
+            val homeCity = homeLocation.substringBefore(",").trim().lowercase()
+            if (homeCity.isBlank() || officeLocation.isBlank() || officeLocation.lowercase().contains(homeCity)) return null
+            return "$label in $officeLocation (candidate in $homeLocation, no relocation)"
         }
 
-        return gates
+        val foreign = officeState.trim().equals("non-US", ignoreCase = true)
+        val states = buildSet {
+            UsStates.codeOf(officeState)?.let { add(it) }
+            addAll(UsStates.statesIn(officeLocation))
+            addAll(UsStates.statesIn(input.location))
+        }
+        if (homeState in states) return null
+        if (states.isEmpty() && !foreign) return null
+        val place = where.ifBlank { if (foreign) "a non-US office" else states.joinToString("/") }
+        return "$label in $place — outside $homeState (candidate in $homeLocation, no relocation)"
     }
 
     private fun saveScoreToFile(state: JDState) {
@@ -328,6 +385,7 @@ class ScoreFitNode(
             |  "posted_comp_max": integer or null,
             |  "work_arrangement": "remote|hybrid|onsite|unknown",
             |  "office_location": "string",
+            |  "office_state": "two-letter US state code of the office (from city or neighborhood), non-US, or empty",
             |  "confidence": float 0.0-1.0,
             |  "role_title": "string",
             |  "seniority": "string (e.g. Staff, Senior, Principal, IC5)",
