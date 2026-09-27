@@ -16,11 +16,13 @@ jobs:
         uses: the-pr-agent/pr-agent@v0.46.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          config.model: "ollama/deepseek-v4.1-flash"
+          config.model: "openrouter/meta/muse-spark-1.3-contributor"
           config.custom_model_max_tokens: "1048576"
           config.fallback_models: '["ollama/deepseek-v4.1-flash"]'
           OLLAMA.API_BASE: "https://ollama.com"
           OLLAMA.API_KEY: ${{ secrets.OLLAMA_CLOUD_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          openrouter.reasoning_effort: "low"
           config.restricted_mode: "true"
           config.enable_auto_approval: "false"
           github_action_config.auto_review: "true"
