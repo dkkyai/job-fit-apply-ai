@@ -309,7 +309,6 @@ object Config {
     /** API hosts, overridable so tests/e2e can point at a local sink. */
     val DISCORD_API_BASE: String  = get("DISCORD_API_BASE", "https://discord.com")
     val TELEGRAM_API_BASE: String = get("TELEGRAM_API_BASE", "https://api.telegram.org")
-    val NOTIFICATION_FIT_THRESHOLD: Int = get("NOTIFICATION_FIT_THRESHOLD", "50").toInt()
 
     // ── Liveness (container healthcheck) ─────────────────────────────────────────
     // The processor loop touches HEARTBEAT_FILE each iteration; `--health` exits 0 when it is

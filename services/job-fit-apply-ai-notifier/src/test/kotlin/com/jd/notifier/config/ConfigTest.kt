@@ -29,9 +29,9 @@ class ConfigTest {
     }
 
     @Test
-    @DisplayName("NOTIFICATION_FIT_THRESHOLD defaults to 50")
+    @DisplayName("FIT_THRESHOLD defaults to 50")
     fun fitThresholdDefault() {
-        assertEquals(50, Config.NOTIFICATION_FIT_THRESHOLD)
+        assertEquals(50, Config.FIT_THRESHOLD)
     }
 
     @Test
@@ -61,7 +61,7 @@ class ConfigTest {
     @Test
     @DisplayName("numeric configs parse as positive longs/ints (sanity)")
     fun numericConfigsArePositive() {
-        assertTrue(Config.NOTIFICATION_FIT_THRESHOLD > 0)
+        assertTrue(Config.FIT_THRESHOLD > 0)
         assertTrue(Config.POLL_INTERVAL_MS > 0)
         assertTrue(Config.HEALTH_MAX_AGE_MS > 0)
     }

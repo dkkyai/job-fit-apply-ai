@@ -41,7 +41,7 @@ data class NotifyOutcome(
  */
 class Notifier(
     private val client: NotificationClient = NotificationClient(),
-    private val fitThreshold: Int = Config.NOTIFICATION_FIT_THRESHOLD,
+    private val fitThreshold: Int = Config.FIT_THRESHOLD,
 ) {
     /**
      * Deliver [event]. [alreadyDelivered] names channels that landed on a previous attempt of this
