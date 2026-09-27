@@ -29,3 +29,5 @@ jobs:
           pr_reviewer.inline_key_issues: "true"
           pr_reviewer.persistent_comment: "true"
           config.output_run_details: "true"
+          config.ai_timeout: "600"
+
