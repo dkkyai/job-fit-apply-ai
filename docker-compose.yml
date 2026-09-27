@@ -22,8 +22,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobfit}
       POSTGRES_DB: ${POSTGRES_DB:-jobfit}
     ports:
-      # Host apps connect via localhost:${POSTGRES_PORT}; containers use host "db".
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Host apps connect via 127.0.0.1:${POSTGRES_PORT}; containers use host "db".
+      # Loopback only by default: an unqualified "PORT:5432" binds 0.0.0.0 and exposes the
+      # DB (default creds jobfit/jobfit) to the LAN. Same convention as STEEL_BIND_ADDR —
+      # set POSTGRES_BIND_ADDR to the tailnet IP if you truly need remote access; never 0.0.0.0.
+      - "${POSTGRES_BIND_ADDR:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - jobfit-db-data:/var/lib/postgresql/data
       # Runs ONLY on first boot against an empty data volume (initdb convention).
