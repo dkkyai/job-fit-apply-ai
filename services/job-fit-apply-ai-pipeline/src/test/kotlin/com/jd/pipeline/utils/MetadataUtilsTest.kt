@@ -363,4 +363,13 @@ class MetadataUtilsTest {
         // "unknown" should be displayed as "—" (dash)
         assertTrue(content.contains("—"))
     }
+
+    @Test
+    @DisplayName("Job Board falls back to the posting host, but not to an email click-tracker")
+    fun jobBoardFallsBackToPostingHost() {
+        assertEquals("jobright.ai", MetadataUtils.jobBoard(JDState(jobUrl = "https://jobright.ai/jobs/info/abc?utm_source=1")))
+        assertEquals("dice.com", MetadataUtils.jobBoard(JDState(jobUrl = "https://www.dice.com/job-detail/x")))
+        assertEquals("", MetadataUtils.jobBoard(JDState(jobUrl = "https://u9255466.ct.sendgrid.net/ls/click?upn=x")))
+        assertEquals("LinkedIn", MetadataUtils.jobBoard(JDState(jobUrl = "https://x.co", jobBoard = "LinkedIn")))
+    }
 }
