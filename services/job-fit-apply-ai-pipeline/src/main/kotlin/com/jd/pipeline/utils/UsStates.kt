@@ -24,15 +24,17 @@ object UsStates {
     )
     private val BY_NAME = NAMES.entries.associate { (code, name) -> name.lowercase() to code }
 
-    // "WA", "WA 98101", "WA 98101-1234"
-    private val CODE_TOKEN = Regex("^([A-Z]{2})(?:\\s+\\d{5}(?:-\\d{4})?)?$")
-    // "Seattle WA" / "Seattle WA 98101" — a code trailing a multi-word token without a comma
+    // "WA", "wa", "WA 98101", "WA 98101-1234". Any case: the code must be the WHOLE comma-separated
+    // part, so "tx" in "Austin, tx" counts but a two-letter word inside a phrase ("or remote") can't.
+    private val CODE_TOKEN = Regex("^([A-Za-z]{2})(?:\\s+\\d{5}(?:-\\d{4})?)?$")
+    // "Seattle WA" / "Seattle WA 98101" — a code trailing a multi-word token without a comma.
+    // Uppercase only: lowercase here would read "Seattle or" as Oregon.
     private val TRAILING_CODE = Regex("\\s([A-Z]{2})(?:\\s+\\d{5}(?:-\\d{4})?)?$")
 
-    /** Two-letter code for a code or full state name, or null. */
+    /** Two-letter code (any case) or full state name for a whole value such as the model's office_state, or null. */
     fun codeOf(token: String): String? {
         val t = token.trim().replace(".", "")
-        if (t.length == 2 && t.uppercase() in NAMES && t == t.uppercase()) return t
+        if (t.length == 2 && t.uppercase() in NAMES) return t.uppercase()
         return BY_NAME[t.lowercase()]
     }
 
@@ -49,7 +51,7 @@ object UsStates {
                 (next.equals("DC", ignoreCase = true) || next.equals("District of Columbia", ignoreCase = true))) {
                 return@forEachIndexed
             }
-            val code = CODE_TOKEN.find(token)?.groupValues?.get(1)?.takeIf { it in NAMES }
+            val code = CODE_TOKEN.find(token)?.groupValues?.get(1)?.uppercase()?.takeIf { it in NAMES }
                 ?: BY_NAME[token.lowercase()]
                 ?: BY_NAME[token.lowercase().replace(Regex("\\s+\\d{5}(?:-\\d{4})?$"), "")]
                 ?: TRAILING_CODE.find(token)?.groupValues?.get(1)?.takeIf { it in NAMES }

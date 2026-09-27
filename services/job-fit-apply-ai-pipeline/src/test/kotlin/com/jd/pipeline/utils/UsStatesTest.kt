@@ -35,11 +35,23 @@ class UsStatesTest {
     }
 
     @Test
-    @DisplayName("codeOf accepts a code or a full name, and rejects lowercase two-letter words")
+    @DisplayName("codeOf accepts a code in any case or a full name, and rejects non-states")
     fun codeOf() {
         assertEquals("WA", UsStates.codeOf("WA"))
+        assertEquals("WA", UsStates.codeOf("wa"))
         assertEquals("WA", UsStates.codeOf("Washington"))
         assertEquals(null, UsStates.codeOf("non-US"))
-        assertEquals(null, UsStates.codeOf("or"))
+        assertEquals(null, UsStates.codeOf("xx"))
+    }
+
+    @Test
+    @DisplayName("a lowercase code counts only when it is the whole comma-separated part")
+    fun lowercaseWholeTokenCodes() {
+        assertEquals(setOf("TX"), UsStates.statesIn("Austin, tx"))
+        assertEquals(setOf("WA"), UsStates.statesIn("Bellevue, wa 98004"))
+        assertEquals(setOf("TX"), UsStates.statesIn("Austin, Tx"))
+        // A two-letter word inside a phrase is not a state.
+        assertEquals(emptySet(), UsStates.statesIn("Seattle or remote"))
+        assertEquals(emptySet(), UsStates.statesIn("Hybrid, in office twice a week"))
     }
 }
