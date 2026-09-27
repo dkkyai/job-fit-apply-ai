@@ -90,6 +90,7 @@ test.describe("Job Tracker App", () => {
   });
 });
 
+// Radix toast also mirrors its text into an aria-live announcer, so toast text is matched exactly.
 test.describe("Status updates", () => {
   test("choosing a status POSTs it to the bridge and confirms with a toast", async ({ page }) => {
     const posts = await mockBridge(page);
@@ -98,8 +99,8 @@ test.describe("Status updates", () => {
     await acmeRow.getByRole("combobox").click();
     await page.getByRole("option", { name: "applied" }).click();
 
-    await expect(page.getByText("Status updated")).toBeVisible();
-    await expect(page.getByText("Changed to applied")).toBeVisible();
+    await expect(page.getByText("Status updated", { exact: true })).toBeVisible();
+    await expect(page.getByText("Changed to applied", { exact: true })).toBeVisible();
     expect(posts).toEqual([{ url: expect.stringContaining("/api/tracks/1/status"), body: { status: "applied" } }]);
   });
 
@@ -110,8 +111,8 @@ test.describe("Status updates", () => {
     await acmeRow.getByRole("combobox").click();
     await page.getByRole("option", { name: "skipped" }).click();
 
-    await expect(page.getByText("Update failed")).toBeVisible();
-    await expect(page.getByText("Failed to update status (HTTP 500)")).toBeVisible();
+    await expect(page.getByText("Update failed", { exact: true })).toBeVisible();
+    await expect(page.getByText("Failed to update status (HTTP 500)", { exact: true })).toBeVisible();
   });
 });
 
