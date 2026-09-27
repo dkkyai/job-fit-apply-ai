@@ -9,7 +9,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help up down restart status serve doctor logs replay check-env-file data-root-check compose-data-root-test e2e e2e-up e2e-run e2e-down e2e-logs e2e-multi e2e-src-up e2e-src-check e2e-src-down e2e-smoke processor-test
+.PHONY: help up down restart status serve doctor logs replay check-env-file data-root-check compose-data-root-test verify e2e e2e-up e2e-run e2e-down e2e-logs e2e-multi e2e-src-up e2e-src-check e2e-src-down e2e-smoke processor-test
 
 # ── Instance selection (multi-instance — see docs/multi-instance.md) ─────────
 # `make up INSTANCE=test` drives a second stack from .env.test. INSTANCE=prod (the
@@ -117,6 +117,9 @@ endif
 
 compose-data-root-test: ## Validate production/E2E data-root mount contracts
 	python3 ./scripts/test-compose-data-root.py
+
+verify: ## Every test level (static, unit, build, browser, e2e) → OUT=dir (default .verify/<sha>); LEVELS=static,unit to subset
+	./scripts/verify-all.sh --out $(or $(OUT),.verify/$(shell git rev-parse --short HEAD)) $(if $(LEVELS),--levels $(LEVELS),)
 
 e2e: ## Full e2e cycle: up + run + down (REAL_LLM=1 for real local models)
 	@trap '$(MAKE) e2e-down' INT TERM; \

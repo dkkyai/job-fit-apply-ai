@@ -388,8 +388,8 @@ cd services/job-fit-apply-ai-bridge && ./gradlew test
 # Dashboard — unit tests
 cd apps/job-fit-apply-ai-backlog && npm run test:unit
 
-# Dashboard — E2E (Playwright, requires the running app)
-cd apps/job-fit-apply-ai-backlog && npm run test:e2e
+# Dashboard — browser tests (Playwright against the built bundle; the bridge API is mocked)
+cd apps/job-fit-apply-ai-backlog && npm run build && npm run test:e2e
 
 # Extension
 cd apps/job-fit-apply-ai-extension && npm test
@@ -397,9 +397,38 @@ cd apps/job-fit-apply-ai-extension && npm test
 # Black-box E2E: Bridge → Processor → Notifier on an isolated compose slice
 make e2e
 
+# Every level at once, recorded per test (see "Whole-repo verification" below)
+make verify
+
 # Whole-stack health (read-only)
 make doctor
 ```
+
+### Whole-repo verification (`make verify`)
+
+`make verify` (`scripts/verify-all.sh`) runs every test level in order and records each
+test's outcome in `.verify/<sha>/results.tsv`:
+
+| Level | What runs |
+|---|---|
+| `static` | Kotlin compile (main + test) for all six modules, dashboard `tsc` typecheck, ESLint (dashboard + extension), Python byte-compile |
+| `unit` | Every module's suite: Kotlin (DB tests against a throwaway Postgres), Vitest, Jest, run-analyzer, compose contract |
+| `build` | Dashboard `vite build` and a Docker image for every first-party service |
+| `browser` | Playwright against the built dashboard |
+| `e2e` | `make e2e` |
+
+`LEVELS=static,unit` runs a subset. It is built for proving a refactor changes no behaviour:
+run it on the base commit and on the branch, then
+
+```bash
+python3 scripts/verify_results.py compare .verify/<base-sha> .verify/<branch-sha> --expect-removed removed.txt
+```
+
+reports every test whose status changed, every test that disappeared (anything not matched by
+a `<module>::<test>` glob in `--expect-removed` fails the comparison), and any step whose exit
+code got worse. It never touches the live stack: DB tests get their own Postgres container on a
+random loopback port, the run-analyzer's live contract tests are pointed at nothing (they
+skip), images are tagged `jfaa-verify/*`, and the e2e slice runs under its own project.
 
 ### Black-box E2E (`services/job-fit-apply-ai-e2e`)
 

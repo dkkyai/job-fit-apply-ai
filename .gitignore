@@ -49,3 +49,5 @@ bun.lockb
 /.e2e/
 # Second ("source") e2e slice for the multi-instance scenarios (#56 sc. 9/10)
 /.e2e-src/
+# make verify output (scripts/verify-all.sh)
+/.verify/
