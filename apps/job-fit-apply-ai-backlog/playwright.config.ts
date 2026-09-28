@@ -19,6 +19,10 @@ export default defineConfig({
   webServer: {
     command: "npm run preview",
     url: "http://localhost:8080",
-    reuseExistingServer: !process.env.CI,
+    // PLAYWRIGHT_REUSE_SERVER=0 (scripts/verify-all.sh) forces a fresh preview of this bundle:
+    // with a server already on :8080 the run fails rather than testing some other app.
+    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER
+      ? process.env.PLAYWRIGHT_REUSE_SERVER === "1"
+      : !process.env.CI,
   },
 });

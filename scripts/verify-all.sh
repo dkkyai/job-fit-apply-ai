@@ -29,7 +29,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --out) OUT="$2"; shift 2 ;;
     --levels) LEVELS="$2"; shift 2 ;;
-    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -68,19 +68,26 @@ collect_junit() { # collect_junit <level> <module> <results-dir>
 }
 
 gradle() { (cd "$1" && shift && ./gradlew --console=plain "$@"); }
-# DB-backed tests default to localhost:5432 — the LIVE database. Always hand them an explicit
-# URL: the throwaway container's, or an unreachable port (so they skip) if it isn't up.
-gradle_db() { # gradle_db <db> <dir> <tasks...>
-  local db="$1"; shift
-  (cd "$1" && shift && DATABASE_URL="${PG_BASE:-postgresql://jobfit:jobfit@127.0.0.1:1}/$db" ./gradlew --console=plain "$@")
+# Test JVMs must not see a checkout's real settings:
+#  - DB-backed tests default to localhost:5432 — the LIVE database — so always hand them an
+#    explicit URL: the throwaway container's, or an unreachable port (they skip) if it isn't up.
+#  - pipeline/poller/jsearch/notifier Config falls back to the module's .env (poller/jsearch/
+#    notifier even let it win over the environment). In the main checkout that file holds real
+#    tokens and endpoints, so point dotenv at a file that doesn't exist (all load with
+#    ignoreIfMissing). JAVA_TOOL_OPTIONS reaches the forked test JVMs, which is where it matters.
+gradle_test() { # gradle_test <dir> <tasks...>
+  (cd "$1" && shift && \
+    DATABASE_URL="${PG_URL:-postgresql://jobfit:jobfit@127.0.0.1:1/jobfit}" \
+    JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Ddotenv.file=.env.verify-all-none" \
+    ./gradlew --console=plain "$@")
 }
 
 # ── throwaway Postgres for DB-backed tests ────────────────────────────────────────
-# One database per module, like a dev host (bridge → jobfit_test, pipeline → jobfit): the
-# bridge's TracksApiTest TRUNCATEs tracks RESTART IDENTITY and inserts explicit ids, which
-# would collide with the pipeline's inserts if the two shared a database.
+# One database for every module. The bridge's TracksApiTest provisions and seeds its own
+# jobfit_test database from here (and points TracksStore at it), so it never touches the
+# rows the pipeline's DB tests write.
 PG_NAME="jfaa-verify-pg-$$"
-PG_BASE=""
+PG_URL=""
 start_pg() {
   docker run -d --rm --name "$PG_NAME" -p 127.0.0.1::5432 \
     -e POSTGRES_USER=jobfit -e POSTGRES_PASSWORD=jobfit -e POSTGRES_DB=jobfit \
@@ -92,15 +99,24 @@ start_pg() {
     docker exec "$PG_NAME" pg_isready -h 127.0.0.1 -U jobfit -d jobfit >/dev/null 2>&1 && break
     sleep 1
   done
-  # jobfit_test must exist up front: TracksApiTest connects to the DATABASE_URL database
-  # first, then provisions its schema there and redirects TracksStore to it — a redirect an
-  # explicit DATABASE_URL env var outranks, so the env var must name jobfit_test too.
-  docker exec "$PG_NAME" psql -q -U jobfit -d jobfit -c "CREATE DATABASE jobfit_test" || return 1
-  PG_BASE="postgresql://jobfit:jobfit@127.0.0.1:$port"
+  docker exec "$PG_NAME" pg_isready -h 127.0.0.1 -U jobfit -d jobfit >/dev/null 2>&1 || return 1
+  PG_URL="postgresql://jobfit:jobfit@127.0.0.1:$port/jobfit"
   echo "throwaway postgres $PG_NAME at 127.0.0.1:$port"
 }
 stop_pg() { docker rm -f "$PG_NAME" >/dev/null 2>&1 || true; }
 trap stop_pg EXIT
+
+# Node deps are installed once per run, before the first level that needs them — never
+# trusted from whatever node_modules is on disk (a removed package that is still installed
+# would otherwise hide a missing-dependency break).
+NODE_DEPS=0
+node_deps() {
+  [ "$NODE_DEPS" -eq 1 ] && return 0
+  step deps "web-npm-ci" bash -c "cd '$WEB' && npm ci --no-audit --no-fund"
+  step deps "ext-npm-ci" bash -c "cd '$EXT' && npm ci --no-audit --no-fund"
+  NODE_DEPS=1
+}
+WEB_BUILT=0   # set once this run has built dist/ from the current tree
 
 echo "verify-all: $ROOT @ $(git -C "$ROOT" rev-parse --short HEAD)$(git -C "$ROOT" diff --quiet HEAD || echo '+dirty') → $OUT"
 git -C "$ROOT" rev-parse HEAD > "$OUT/HEAD"
@@ -110,10 +126,9 @@ if want static; then
   for m in "${KOTLIN_MODULES[@]}"; do
     step static "kotlin-compile-$m" gradle "$(svc "$m")" compileKotlin compileTestKotlin
   done
-  step static "web-npm-ci" bash -c "cd '$WEB' && npm ci --no-audit --no-fund"
+  node_deps
   step static "web-typecheck" bash -c "cd '$WEB' && npx tsc --noEmit -p tsconfig.app.json"
   step static "web-eslint" bash -c "cd '$WEB' && npm run lint"
-  step static "ext-npm-ci" bash -c "cd '$EXT' && npm ci --no-audit --no-fund"
   step static "ext-eslint" bash -c "cd '$EXT' && npm run lint"
   step static "python-compile" python3 -m compileall -q "$ANALYZER" "$ROOT/scripts"
 fi
@@ -124,11 +139,11 @@ if want unit; then
   for m in "${TESTED_MODULES[@]}"; do
     dir="$(svc "$m")"
     # cleanTest forces a real run; DATABASE_URL points DB tests at the throwaway Postgres
-    # (they skip themselves when it's unreachable, so a missing DB shows up as skips).
-    db=jobfit; [ "$m" = bridge ] && db=jobfit_test
-    step unit "kotlin-test-$m" gradle_db "$db" "$dir" cleanTest test
+    # (they skip themselves when it's unreachable — compare treats passed→skipped as a change).
+    step unit "kotlin-test-$m" gradle_test "$dir" cleanTest test
     collect_junit unit "$m" "$dir/build/test-results/test"
   done
+  node_deps
   step unit "web-vitest" bash -c "cd '$WEB' && npx vitest run --reporter=default --reporter=junit --outputFile.junit='$OUT/raw/vitest.xml'"
   [ -f "$OUT/raw/vitest.xml" ] && python3 "$RESULTS" junit --level unit --module web "$OUT/raw/vitest.xml" >> "$OUT/results.tsv"
   step unit "ext-jest" bash -c "cd '$EXT' && npx jest --json --outputFile='$OUT/raw/jest.json'"
@@ -138,6 +153,7 @@ if want unit; then
   step unit "run-analyzer" env JD_BRIDGE_URL=http://127.0.0.1:1 JD_DB_CONTAINER=jfaa-verify-no-such-container \
     python3 "$RESULTS" pyunit --level unit --module run-analyzer "$ANALYZER" --out "$OUT/raw/pyunit.tsv"
   cat "$OUT/raw/pyunit.tsv" >> "$OUT/results.tsv" 2>/dev/null
+  step unit "verify-results-selftest" python3 "$ROOT/scripts/test_verify_results.py"
   step unit "compose-data-root" make -C "$ROOT" compose-data-root-test
   python3 "$RESULTS" passlines --level unit --module compose "$OUT/logs/unit-compose-data-root.log" >> "$OUT/results.tsv"
   stop_pg
@@ -145,7 +161,8 @@ fi
 
 # ── build (production artifacts) ──────────────────────────────────────────────────
 if want build; then
-  step build "web-vite-build" bash -c "cd '$WEB' && npm run build"
+  node_deps
+  step build "web-vite-build" bash -c "cd '$WEB' && npm run build" && WEB_BUILT=1
   for pair in bridge:services/job-fit-apply-ai-bridge processor:services/job-fit-apply-ai-pipeline \
               poller:services/job-fit-apply-ai-poller jsearch:services/job-fit-apply-ai-jsearch \
               notifier:services/job-fit-apply-ai-notifier frontend:apps/job-fit-apply-ai-backlog \
@@ -157,9 +174,13 @@ fi
 
 # ── browser (Playwright against the built bundle) ─────────────────────────────────
 if want browser; then
-  [ -d "$WEB/dist" ] || step browser "web-vite-build" bash -c "cd '$WEB' && npm run build"
+  node_deps
+  # Never test a dist/ left over from an earlier run: rebuild unless this run just built it.
+  [ "$WEB_BUILT" -eq 1 ] || step browser "web-vite-build" bash -c "cd '$WEB' && npm run build"
   step browser "playwright-install" bash -c "cd '$WEB' && npx playwright install chromium"
-  step browser "playwright" bash -c "cd '$WEB' && PLAYWRIGHT_JUNIT_OUTPUT_NAME='$OUT/raw/playwright.xml' npx playwright test --reporter=junit"
+  # PLAYWRIGHT_REUSE_SERVER=0: start our own preview of this bundle; if :8080 is already taken
+  # Playwright fails the step instead of silently testing whatever is listening there.
+  step browser "playwright" bash -c "cd '$WEB' && PLAYWRIGHT_REUSE_SERVER=0 PLAYWRIGHT_JUNIT_OUTPUT_NAME='$OUT/raw/playwright.xml' npx playwright test --reporter=junit"
   [ -f "$OUT/raw/playwright.xml" ] && python3 "$RESULTS" junit --level browser --module web "$OUT/raw/playwright.xml" >> "$OUT/results.tsv"
 fi
 

@@ -4,8 +4,9 @@
 scripts/verify-all.sh writes <out>/results.tsv (level, module, test id, status) by calling
 the `junit` / `jest` / `pyunit` / `passlines` subcommands below. `compare` then diffs two
 such runs, which is how a refactor proves it changed no behaviour: every test that exists
-in both runs must have the same status, and every test that disappeared must be one the
-refactor deleted on purpose (listed in --expect-removed).
+in both runs must keep its status (only a move *to* passed is allowed), every test that
+disappeared must be one the refactor deleted on purpose (listed in --expect-removed), every
+added test must pass or skip, and no step's exit code may get worse.
 
   verify_results.py junit  --level unit --module bridge  build/test-results/test/*.xml
   verify_results.py jest   --level unit --module extension  jest.json
@@ -14,7 +15,8 @@ refactor deleted on purpose (listed in --expect-removed).
   verify_results.py compare <baseline-dir> <candidate-dir> [--expect-removed FILE]
 
 Statuses: passed, failed, skipped. A test id that occurs more than once (parameterized
-cases with identical display names) is suffixed #2, #3, ... so rows stay unique.
+cases with identical display names) is suffixed #2, #3, ... in run order, so rows stay
+unique and each suffix keeps naming the same case across runs.
 """
 
 from __future__ import annotations
@@ -31,11 +33,15 @@ from pathlib import Path
 
 
 def emit(level: str, module: str, rows: list[tuple[str, str]], out=None) -> None:
+    """Write rows given in RUN order. Duplicates are suffixed before sorting: sorting first
+    would order same-named cases by status, so two cases swapping pass/fail would look
+    identical across runs."""
     seen: Counter[str] = Counter()
+    unique = []
     for test_id, status in rows:
         seen[test_id] += 1
-        if seen[test_id] > 1:
-            test_id = f"{test_id}#{seen[test_id]}"
+        unique.append((f"{test_id}#{seen[test_id]}" if seen[test_id] > 1 else test_id, status))
+    for test_id, status in sorted(unique):
         print(f"{level}\t{module}\t{test_id}\t{status}", file=out or sys.stdout)
 
 
@@ -51,21 +57,22 @@ def cmd_junit(args: argparse.Namespace) -> int:
             else:
                 status = "passed"
             rows.append((f"{case.get('classname', '')}::{case.get('name', '')}", status))
-    emit(args.level, args.module, sorted(rows))
+    emit(args.level, args.module, rows)
     return 0
 
 
 def cmd_jest(args: argparse.Namespace) -> int:
     data = json.loads(Path(args.file).read_text())
-    root = Path(data.get("testResults", [{}])[0].get("name", "/")).anchor
+    suites = data.get("testResults") or []
+    root = Path(suites[0].get("name", "/")).anchor if suites else "/"
     rows = []
-    for suite in data.get("testResults", []):
+    for suite in suites:
         name = suite.get("name", "")
         rel = name.split("/apps/", 1)[-1] if "/apps/" in name else name.removeprefix(root)
         for a in suite.get("assertionResults", []):
             status = {"passed": "passed", "failed": "failed"}.get(a.get("status"), "skipped")
             rows.append((f"{rel}::{a.get('fullName', a.get('title', ''))}", status))
-    emit(args.level, args.module, sorted(rows))
+    emit(args.level, args.module, rows)
     return 0
 
 
@@ -73,6 +80,8 @@ class _Collector(unittest.TestResult):
     def __init__(self) -> None:
         super().__init__()
         self.rows: list[tuple[str, str]] = []
+        self._subtest_failed: set[str] = set()
+        self._rows_before = 0
 
     def addSuccess(self, test):  # noqa: N802 (unittest API)
         self.rows.append((test.id(), "passed"))
@@ -94,6 +103,22 @@ class _Collector(unittest.TestResult):
     def addUnexpectedSuccess(self, test):  # noqa: N802
         self.rows.append((test.id(), "failed"))
 
+    # A test whose subTest fails gets neither addSuccess nor addFailure; without this it
+    # would leave no row at all and vanish from the comparison.
+    def addSubTest(self, test, subtest, err):  # noqa: N802
+        super().addSubTest(test, subtest, err)
+        if err is not None:
+            self._subtest_failed.add(test.id())
+
+    def startTest(self, test):  # noqa: N802
+        super().startTest(test)
+        self._rows_before = len(self.rows)
+
+    def stopTest(self, test):  # noqa: N802
+        super().stopTest(test)
+        if test.id() in self._subtest_failed and len(self.rows) == self._rows_before:
+            self.rows.append((test.id(), "failed"))
+
 
 def cmd_pyunit(args: argparse.Namespace) -> int:
     # Same discovery as CI (`python3 -m unittest discover -s tests -p 'test_*.py'` run from
@@ -110,9 +135,9 @@ def cmd_pyunit(args: argparse.Namespace) -> int:
         print(tb, file=sys.stderr)
     if args.out:   # a file, so the runner's own chatter can go to the step log
         with open(args.out, "w") as fh:
-            emit(args.level, args.module, sorted(result.rows), fh)
+            emit(args.level, args.module, result.rows, fh)
     else:
-        emit(args.level, args.module, sorted(result.rows))
+        emit(args.level, args.module, result.rows)
     return 0 if result.wasSuccessful() else 1
 
 
@@ -120,9 +145,11 @@ def cmd_passlines(args: argparse.Namespace) -> int:
     rows = []
     for line in Path(args.file).read_text().splitlines():
         head, _, name = line.strip().partition(" ")
-        if head in ("PASS", "FAIL") and name:
+        # One-token names only: skips summaries like "PASS 9 Compose data-root contract
+        # tests", whose count would turn every added/removed test into a renamed row.
+        if head in ("PASS", "FAIL") and name and " " not in name:
             rows.append((name, "passed" if head == "PASS" else "failed"))
-    emit(args.level, args.module, sorted(rows))
+    emit(args.level, args.module, rows)
     return 0
 
 
@@ -158,6 +185,11 @@ def cmd_compare(args: argparse.Namespace) -> int:
     removed = sorted(k for k in base.keys() - cand.keys())
     added = sorted(k for k in cand.keys() - base.keys())
     changed = sorted(k for k in base.keys() & cand.keys() if base[k] != cand[k])
+    # Only a move TO passed is an improvement. passed→skipped counts: a test that stops
+    # running (unreachable DB, tripped assumption) proves nothing any more.
+    improved = [k for k in changed if cand[k] == "passed"]
+    regressed = [k for k in changed if cand[k] != "passed"]
+    added_failing = [k for k in added if cand[k] == "failed"]
     unexpected = [k for k in removed if not expected_gone(k)]
     unused_patterns = [p for p in patterns
                        if not any(fnmatch.fnmatchcase(f"{k[1]}::{k[2]}", p) for k in removed)]
@@ -169,11 +201,15 @@ def cmd_compare(args: argparse.Namespace) -> int:
 
     print(f"baseline  {args.baseline}: {len(base)} tests  {dict(Counter(base.values()))}")
     print(f"candidate {args.candidate}: {len(cand)} tests  {dict(Counter(cand.values()))}")
-    show("Status changed", changed, lambda k: f"[{k[0]}/{k[1]}] {k[2]}: {base[k]} -> {cand[k]}")
+    show("Status REGRESSED (anything but a move to passed)", regressed,
+         lambda k: f"[{k[0]}/{k[1]}] {k[2]}: {base[k]} -> {cand[k]}")
+    show("Status improved (now passed)", improved,
+         lambda k: f"[{k[0]}/{k[1]}] {k[2]}: {base[k]} -> {cand[k]}")
     show("Removed as expected (tests of deleted code)",
          [k for k in removed if expected_gone(k)], lambda k: f"[{k[0]}/{k[1]}] {k[2]}")
     show("Removed UNEXPECTEDLY", unexpected, lambda k: f"[{k[0]}/{k[1]}] {k[2]} ({base[k]})")
     show("Added", added, lambda k: f"[{k[0]}/{k[1]}] {k[2]} ({cand[k]})")
+    show("Added tests that FAIL", added_failing, lambda k: f"[{k[0]}/{k[1]}] {k[2]}")
     if unused_patterns:
         show("--expect-removed patterns that matched nothing", unused_patterns, str)
 
@@ -189,8 +225,8 @@ def cmd_compare(args: argparse.Namespace) -> int:
     show("Candidate steps that did not exit 0", sorted(failing),
          lambda k: f"[{k[0]}] {k[1]}: exit {steps_c[k]}")
 
-    regressions = [k for k in changed if cand[k] == "failed"]
-    ok = not regressions and not unexpected and not broken_steps and not unused_patterns
+    ok = (not regressed and not added_failing and not unexpected and not broken_steps
+          and not unused_patterns)
     print("\nRESULT:", "OK — no behaviour change detected" if ok else "DIFFERENCES FOUND")
     return 0 if ok else 1
 

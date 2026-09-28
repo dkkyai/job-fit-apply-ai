@@ -424,11 +424,14 @@ run it on the base commit and on the branch, then
 python3 scripts/verify_results.py compare .verify/<base-sha> .verify/<branch-sha> --expect-removed removed.txt
 ```
 
-reports every test whose status changed, every test that disappeared (anything not matched by
-a `<module>::<test>` glob in `--expect-removed` fails the comparison), and any step whose exit
-code got worse. It never touches the live stack: DB tests get their own Postgres container on a
-random loopback port, the run-analyzer's live contract tests are pointed at nothing (they
-skip), images are tagged `jfaa-verify/*`, and the e2e slice runs under its own project.
+fails the comparison if any shared test changes status other than *to* passed (passed→skipped
+counts — a test that stops running proves nothing), any test disappears without matching a
+`<module>::<test>` glob in `--expect-removed`, any added test fails, or any step's exit code gets
+worse. It never touches the live stack or a checkout's real settings: DB tests get their own
+Postgres container on a random loopback port, JVM tests are pointed at a nonexistent `.env`, the
+run-analyzer's live contract tests are pointed at nothing (they skip), Playwright refuses to reuse
+a server already on :8080, images are tagged `jfaa-verify/*`, and the e2e slice runs under its
+own project. `python3 scripts/test_verify_results.py` tests the comparator itself.
 
 ### Black-box E2E (`services/job-fit-apply-ai-e2e`)
 
