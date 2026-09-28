@@ -2,7 +2,7 @@
   "name": "job-backlog",
   "private": true,
   "version": "1.0.0",
-  "description": "A job tracking dashboard built with Vite, React, and Supabase.",
+  "description": "Job-tracking dashboard for the job-fit-apply-ai pipeline (Vite + React).",
   "type": "module",
   "scripts": {
     "dev": "vite",

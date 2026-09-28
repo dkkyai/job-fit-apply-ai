@@ -144,7 +144,7 @@ The `--max-emails` cron run is protected against re-entrant overlap at two level
 - Node.js 20+ (only needed for local dashboard dev; the container build handles production)
 - JDK 21 (only needed for local bridge dev / running the test suite)
 
-> **No Supabase.** The `tracks` / `resume_tailoring` schema is created automatically by the Postgres container from `db/init/001_schema.sql` on first boot.
+> The `tracks` / `resume_tailoring` schema is created automatically by the Postgres container from `db/init/001_schema.sql` on first boot.
 
 ---
 
@@ -160,8 +160,6 @@ make doctor                   # verify the whole stack (read-only)
 ```
 
 `make up` starts `db`, `bridge`, `frontend`, and `markserv`, then configures Tailscale Serve for `:8765`, `:3030`, and `:8081`. Config lives in the root `.env` (see `.env.example`); the `DATABASE_URL` the containers use is derived from `POSTGRES_*` and points at the compose service `db`.
-
-Migrating existing rows from a previous Supabase project? See `scripts/migrate_supabase_to_postgres.py` (idempotent REST → Postgres copy).
 
 ### 2. Host worker — `services/job-fit-apply-ai-pipeline`
 
@@ -187,7 +185,7 @@ make up            # docker compose up -d + Tailscale Serve
 # (scripts/launch-chrome-cdp.sh + its launchd watchdog) and the local model servers.
 ```
 
-The `processor` service sets `DB_BACKEND=postgres` and `DATABASE_URL=postgresql://…@db:5432/…` in `docker-compose.yml`, writing `tracks` directly over JDBC to the `jobfit-db` container. Its personal inputs (`.env`, `resume.yaml`, `config/candidate_profile.yaml`) are bind-mounted read-only from `services/job-fit-apply-ai-pipeline/`.
+The `processor` service sets `DATABASE_URL=postgresql://…@db:5432/…` in `docker-compose.yml`, writing `tracks` directly over JDBC to the `jobfit-db` container. Its personal inputs (`.env`, `resume.yaml`, `config/candidate_profile.yaml`) are bind-mounted read-only from `services/job-fit-apply-ai-pipeline/`.
 
 ### 3. Chrome Extension
 

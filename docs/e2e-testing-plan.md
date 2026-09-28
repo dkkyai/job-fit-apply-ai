@@ -66,7 +66,7 @@ interpolates the repo-root `.env` regardless of project name.
 
 This is JSearch's route. Beyond avoiding the Poller problem, it skips ingestion entirely: `ProcessorCommandHandler.kt:74` passes the record straight through, so `ScrapeJdNode` never runs and neither Steel nor Chrome CDP is touched. That removes the flakiest dependency in the stack from the critical path.
 
-`ProcessingPipeline` then runs: `checkDuplicate → scoreFit → tailor → coverLetter → renderPdf → addArtifactUrl → supabaseTrack`. PDF rendering needs only `python3` + pyyaml/jinja2 + `tectonic`, all already in the pipeline Dockerfile — no browser.
+`ProcessingPipeline` then runs: `checkDuplicate → scoreFit → tailor → coverLetter → renderPdf → addArtifactUrl → track`. PDF rendering needs only `python3` + pyyaml/jinja2 + `tectonic`, all already in the pipeline Dockerfile — no browser.
 
 The Extension route (`POST /api/pages`, `JD_PAGE_RAW`) is covered with captured text and one
 `scrape_jd` extraction call. The recruiter route (`POST /api/emails`, `EMAIL_RAW`) is covered

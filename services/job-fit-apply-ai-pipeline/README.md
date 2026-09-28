@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Java 21](https://img.shields.io/badge/Java-21-blue.svg)](https://openjdk.org/projects/jdk/21/)
 
-A Kotlin pipeline that turns inbound job opportunities into tailored resume + cover letter packets, end-to-end. It reads from Gmail or the JSearch API, scores each role against your candidate profile, and — for jobs above the fit threshold — rewrites your resume, generates a cover letter, renders a PDF, and tracks the application in Supabase.
+A Kotlin pipeline that turns inbound job opportunities into tailored resume + cover letter packets, end-to-end. It reads from Gmail or the JSearch API, scores each role against your candidate profile, and — for jobs above the fit threshold — rewrites your resume, generates a cover letter, renders a PDF, and tracks the application in Postgres.
 
 The pipeline is split into two halves connected by the bridge job queue:
 
@@ -17,7 +17,7 @@ The pipeline is split into two halves connected by the bridge job queue:
 - Classifies the email, expands digests into per-job records, and scrapes each job page (HTTP-first + schema.org JSON-LD for most boards; the logged-in host Chrome over CDP for LinkedIn and challenge-prone sites).
 - Submits each ingested job to the bridge queue; `--max-emails` is fire-and-forget while `--email` polls the single job to completion.
 - The processor claims jobs from the queue and runs the processing pipeline: deduplicates, scores fit, runs `ResumeTailoringSubgraph`, renders a tailored HTML preview + PDF (YAML → LaTeX/tectonic), and appends a run record to `output/runs/run_log.jsonl`.
-- Tracks every job in Supabase and, when the source is a recruiter email, drafts a reply grounded in your résumé + `candidate_profile.yaml` — it only answers questions the profile supports, and opens by asking for the client/budget when the recruiter withheld them.
+- Tracks every job in the Postgres `tracks` table and, when the source is a recruiter email, drafts a reply grounded in your résumé + `candidate_profile.yaml` — it only answers questions the profile supports, and opens by asking for the client/budget when the recruiter withheld them.
 
 ## Quick start
 
@@ -31,7 +31,7 @@ Your résumé is authored as structured YAML — see `src/main/resources/resume/
 
 `--init-profile` installs your résumé as `resume.yaml`, scaffolds a slim `config/candidate_profile.yaml` (the preferences + scoring aids a résumé can't supply: visa, comp, work arrangement, target title, core strengths, …), opens `$EDITOR` to fill in the `__TODO__` fields, then renders `generated_resume.html` (deterministically, no LLM).
 
-> You don't need Gmail or Supabase configured to run `--init-profile`. Those layers come in once you want to drive the pipeline from real email or persist scored jobs.
+> You don't need Gmail or a database configured to run `--init-profile`. Those layers come in once you want to drive the pipeline from real email or persist scored jobs.
 
 ## Pipeline
 
@@ -70,7 +70,7 @@ polls the single job to completion and then applies the terminal label.
 flowchart TD
     Claim["bridge.claim()"] --> Dup["CheckDuplicateNode"]
     Dup --> DupQ{"Duplicate?"}
-    DupQ -->|Yes, non-recruiter| Track1["SupabaseTrackNode"]
+    DupQ -->|Yes, non-recruiter| Track1["TrackNode"]
     DupQ -->|No| Score["ScoreFitNode\n(score + JD extraction, one call)"]
 
     Score --> ActionQ{"action == TAILOR?"}
@@ -92,7 +92,7 @@ flowchart TD
     TailorErrQ -->|No| Cover["GenerateCoverLetterNode"]
     Cover --> Pdf["RenderResumePdfNode\n(YAML → LaTeX / tectonic)"]
     Pdf --> Artifact["AddArtifactUrlNode"]
-    Artifact --> Track2["SupabaseTrackNode"]
+    Artifact --> Track2["TrackNode"]
     Track1 --> Post["bridge.postResult()"]
     Track2 --> Post
     Post --> Rec["RunReport → output/runs/run_log.jsonl"]
@@ -216,7 +216,7 @@ Gmail (drives email-sourced runs):
 ./gradlew run --args="--check-token"   # verify token
 ```
 
-Supabase (job tracking): set `SUPABASE_PROJECT_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env`.
+Job tracking (Postgres `tracks` table): set `DATABASE_URL` in `.env` (the compose `db` on the host is `postgresql://jobfit:<password>@localhost:5432/jobfit`; the container gets it from compose). Unset, dedup is in-memory and tracking is skipped.
 
 JSearch (API-driven runs instead of Gmail): set `JSEARCH_API_KEY` and run with `--jsearch`.
 
@@ -432,11 +432,10 @@ Prompt files live in `src/main/resources/skills/` and are loaded at runtime — 
 # Start the processor (drains the bridge job queue continuously)
 ./gradlew run --args="--processor"
 
-# Test modes — useful smoke tests, no Gmail/Supabase required
+# Test modes — useful smoke tests, no Gmail or database required
 ./gradlew run --args="--test"             # end-to-end on a sample JD string
 ./gradlew run --args="--test-resume"      # tailoring subgraph + PDF render with mock state
 ./gradlew run --args="--test-coverletter" # cover letter generation
-./gradlew run --args="--test-supabase"    # Supabase connectivity
 ./gradlew run --args="--test-gmail"       # Gmail auth + fetch
 
 # Render an HTML resume from a résumé YAML deterministically (no JD context, no LLM)
@@ -539,7 +538,7 @@ src/main/kotlin/com/jd/pipeline/
 ├── client/
 │   ├── BridgeClient.kt                # HTTP client for bridge queue API
 │   ├── LlmClient.kt                   # Shared LLM HTTP client
-│   ├── SupabaseClient.kt              # Supabase REST client
+│   ├── PostgresGateway.kt             # JDBC access to the tracks table (TracksGateway)
 │   └── gmail/
 │       ├── GmailTransport.kt          # Gmail API (fetch, label, draft, archive)
 │       └── EmailParser.kt             # MIME parsing
@@ -552,12 +551,12 @@ src/main/kotlin/com/jd/pipeline/
 │   ├── ScanEmailNode.kt               # Email classification and field extraction
 │   ├── ScrapeJdNode.kt                # Job-page scraping (HTTP-first + host CDP Chrome, schema.org JSON-LD)
 │   ├── SaveJobDescriptionNode.kt      # Persist JD text
-│   ├── CheckDuplicateNode.kt          # Supabase-backed dedup
+│   ├── CheckDuplicateNode.kt          # tracks-table dedup
 │   ├── ScoreFitNode.kt                # Combined fit scoring + JD structure extraction
 │   ├── GenerateCoverLetterNode.kt     # Cover letter
 │   ├── RenderResumePdfNode.kt         # tailored_resume.yaml → yaml_to_tex.py → tectonic → PDF
 │   ├── AddArtifactUrlNode.kt          # Attach artifact URL to state
-│   ├── SupabaseTrackNode.kt           # Insert/update job record
+│   ├── TrackNode.kt                   # Insert the job record into tracks
 │   └── tailor/
 │       ├── ResumeTailoringSubgraph.kt # 7-stage subgraph entry
 │       ├── TailorRubric.kt            # Shared rubric loader (prepended to every prompt)

@@ -2,23 +2,20 @@
 -- Applied automatically by the Postgres container on first boot
 -- (this directory is mounted at /docker-entrypoint-initdb.d).
 --
--- The `tracks` DDL never lived in the repo — it was created by hand in the
--- Supabase dashboard. It is reconstructed here from the application code:
---   • writes    → services/job-fit-apply-ai-pipeline/.../nodes/SupabaseTrackNode.kt
+-- It mirrors what the application code writes and reads:
+--   • writes    → services/job-fit-apply-ai-pipeline/.../nodes/TrackNode.kt
 --   • reads     → apps/job-fit-apply-ai-backlog/src/pages/Index.tsx (Track interface + select)
 --   • dedup     → services/job-fit-apply-ai-pipeline/.../nodes/CheckDuplicateNode.kt
---   • tailoring → the Supabase-era migration 001_resume_tailoring.sql, folded in below
---                 (resume_tailoring + tracks.ats_score; the standalone file was removed)
+--   • tailoring → resume_tailoring + tracks.ats_score (below)
 --
--- Row-level security is intentionally dropped: under the direct-Postgres design
--- the browser no longer talks to the database, so access control moves to the
--- bridge API. There is no anon key to defend against here.
+-- No row-level security: nothing but the services talks to the database. The browser
+-- goes through the bridge API, and Postgres is published on host loopback only.
 
 -- ── tracks ─────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS tracks (
     id               SERIAL PRIMARY KEY,
 
-    -- source email (ScanEmailNode → SupabaseTrackNode)
+    -- source email (ScanEmailNode → TrackNode)
     email_id         TEXT,
     email_subject    TEXT,
 
