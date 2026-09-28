@@ -46,7 +46,6 @@ class JobFormatterTest {
             // Should use minimum defaults since actual values are smaller
             assertEquals(10, widths.company, "Company should have minimum 10")
             assertEquals(20, widths.title, "Title should have minimum 20")
-            assertEquals(8, widths.fit, "Fit should have minimum 8 (Fit: N/A)")
             assertEquals(30, widths.artifact, "Artifact should have minimum 30")
         }
 
@@ -69,7 +68,6 @@ class JobFormatterTest {
             // Title is longer than default 20, so it expands
             assertEquals("Senior Software Engineer".length, widths.title)
             // Fit score "Fit: 85" is 7 chars, but default minimum is 8, so stays at 8
-            assertEquals(8, widths.fit)
             // URL is longer than default 30, so it expands
             assertTrue(widths.artifact >= "https://example.com/very/long/path/to/artifact".length)
         }
@@ -89,20 +87,8 @@ class JobFormatterTest {
             // Title expands from default 20 to 21
             assertEquals("Much Longer Job Title".length, widths.title)
             // Both fit scores are less than default 8, so stays at 8
-            assertEquals(8, widths.fit)
         }
 
-        @Test
-        @DisplayName("Test computeColumnWidths handles N/A fit score")
-        fun testFitScoreNA() {
-            val jobs = listOf(
-                createMockJob("Company", "Title", null, "http://example.com")
-            )
-
-            val widths = JobFormatter.computeColumnWidths(jobs)
-
-            assertEquals("Fit: N/A".length, widths.fit)
-        }
     }
 
     @Nested
@@ -257,8 +243,7 @@ class JobFormatterTest {
         @Test
         @DisplayName("Test formatScoredJobsTable shows a long URL in full — the column widens to fit")
         fun testLongUrlIsNotTruncated() {
-            // The artifact column is sized to the longest URL (computeColumnWidths), so
-            // truncateUrl never shortens anything on this — its only — call path. Pinned as-is.
+            // The artifact column is sized to the longest URL (computeColumnWidths).
             val longUrl = "https://example.com/" + "a".repeat(100) + "/report.md"
             val jobs = listOf(createMockJob("Acme", "Engineer", 80.0f, longUrl))
 

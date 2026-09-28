@@ -9,7 +9,6 @@ import com.jd.pipeline.state.isDigest
 data class ColumnWidths(
     val company: Int,
     val title: Int,
-    val fit: Int = 8,       // "Fit: N/A" length
     val artifact: Int
 )
 
@@ -45,30 +44,25 @@ object JobFormatter {
         }
     }
 
-    private const val DEFAULT_URL_MAX_LENGTH = 40
-
     /**
      * Compute column widths based on the maximum length of each field across all jobs.
      */
     fun computeColumnWidths(jobs: List<JDState>): ColumnWidths {
         var maxCompany = 10
         var maxTitle = 20
-        var maxFit = 8
         var maxArtifact = 30
 
         for (job in jobs) {
             val company = job.company.ifBlank { "Unknown Company" }
             val title = job.roleTitle.ifBlank { "Unknown Role" }
-            val fitStr = "Fit: ${job.fitScore?.toInt() ?: "N/A"}"
             val artifact = job.metadataUrl
 
             if (company.length > maxCompany) maxCompany = company.length
             if (title.length > maxTitle) maxTitle = title.length
-            if (fitStr.length > maxFit) maxFit = fitStr.length
             if (artifact.length > maxArtifact) maxArtifact = artifact.length
         }
 
-        return ColumnWidths(maxCompany, maxTitle, maxFit, maxArtifact)
+        return ColumnWidths(maxCompany, maxTitle, maxArtifact)
     }
 
     /**
@@ -126,7 +120,8 @@ object JobFormatter {
                 null -> job.fitScore?.toInt()?.toString() ?: "N/A"
                 else -> code.abbreviation
             }
-            val artifact = truncateUrl(job.metadataUrl, artifactWidth)
+            // The artifact column is sized to the longest URL, so URLs are shown in full.
+            val artifact = job.metadataUrl
             
             lines.add(tableRow(listOf(company, title, fitStr, artifact)))
         }
@@ -134,35 +129,5 @@ object JobFormatter {
         lines.add(hRule('└', '┴', '┘'))
         
         return lines
-    }
-
-    /**
-     * Truncate a URL to the specified maximum length.
-     * If the URL is longer than maxLength, it truncates the middle part and inserts an ellipsis.
-     * 
-     * @param url The URL to truncate
-     * @param maxLength Maximum length of the resulting string
-     * @return Truncated URL or original if within limit
-     */
-    private fun truncateUrl(url: String, maxLength: Int): String {
-        if (url.isEmpty() || url.length <= maxLength) return url
-
-        val effectiveMax = maxLength.coerceAtLeast(DEFAULT_URL_MAX_LENGTH)
-        if (effectiveMax < 10) return url.take(effectiveMax)
-
-        // Need room for ellipsis
-        val ellipsis = "…"
-        val availableForUrl = effectiveMax - ellipsis.length
-
-        if (availableForUrl < 5) return url.take(effectiveMax)
-
-        // Split: keep 1/3 at start, 2/3 at end
-        val startLen = availableForUrl / 3
-        val endLen = availableForUrl - startLen
-
-        val start = url.take(startLen)
-        val end = url.takeLast(endLen)
-
-        return "$start$ellipsis$end"
     }
 }
