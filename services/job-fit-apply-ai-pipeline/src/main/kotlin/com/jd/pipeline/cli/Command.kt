@@ -4,7 +4,6 @@ sealed class Command {
     object Test : Command()
     object TestResume : Command()
     object TestCoverLetter : Command()
-    object TestSupabase : Command()
     /** Smoke-test the persistent Chrome (CDP) scraping setup. Optional probe URL. */
     data class TestChrome(val url: String?) : Command()
     /** Smoke-test the self-hosted Steel Browser backend (session + CDP + debug URL). Optional probe URL. */

@@ -7,7 +7,7 @@ import com.jd.pipeline.nodes.GenerateCoverLetterNode
 import com.jd.pipeline.nodes.DraftReplyComposer
 import com.jd.pipeline.nodes.RenderResumePdfNode
 import com.jd.pipeline.nodes.ScoreFitNode
-import com.jd.pipeline.nodes.SupabaseTrackNode
+import com.jd.pipeline.nodes.TrackNode
 import com.jd.pipeline.nodes.tailor.ResumeTailoringSubgraph
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.source.JdRecord
@@ -21,7 +21,7 @@ import java.io.File
 
 /**
  * Processing half of the pipeline: check_duplicate → score_fit → tailor →
- * generate_cover_letter → render_pdf → add_artifact_url → supabase_track.
+ * generate_cover_letter → render_pdf → add_artifact_url → track.
  *
  * No Gmail calls. Consumed by the Processor via [com.jd.pipeline.cli.commands.ProcessorCommandHandler].
  */
@@ -32,7 +32,7 @@ class ProcessingPipeline(
     private val generateCoverLetter: Node<JDState> = GenerateCoverLetterNode(),
     private val renderResumePdf: Node<JDState>     = RenderResumePdfNode(),
     private val addArtifactUrl: Node<JDState>      = AddArtifactUrlNode(),
-    private val supabaseTrack: Node<JDState>       = SupabaseTrackNode(),
+    private val track: Node<JDState>               = TrackNode(),
     private val draftComposer: DraftReplyComposer  = DraftReplyComposer(),
 ) {
 
@@ -93,7 +93,7 @@ class ProcessingPipeline(
         state = checkDuplicate.process(state)
 
         if (state.isDuplicate && !isRecruiter) {
-            state = supabaseTrack.process(state)
+            state = track.process(state)
             return toResult(state)
         }
 
@@ -106,7 +106,7 @@ class ProcessingPipeline(
         }
 
         if (state.pipelineAction != PipelineAction.TAILOR) {
-            state = supabaseTrack.process(state)
+            state = track.process(state)
             return toResult(state)
         }
 
@@ -114,7 +114,7 @@ class ProcessingPipeline(
         state = tailorSubgraph.process(state)
         if (state.error.isNotEmpty()) {
             System.err.println("[processing_pipeline] tailor failed: ${state.error}")
-            state = supabaseTrack.process(state)
+            state = track.process(state)
             return toResult(state)
         }
 
@@ -131,7 +131,7 @@ class ProcessingPipeline(
         }
 
         MetadataUtils.writeMetadata(state)
-        state = supabaseTrack.process(state)
+        state = track.process(state)
 
         return toResult(state)
     }

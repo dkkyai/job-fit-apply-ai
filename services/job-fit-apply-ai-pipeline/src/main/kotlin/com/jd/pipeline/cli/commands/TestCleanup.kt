@@ -1,16 +1,16 @@
 package com.jd.pipeline.cli.commands
 
-import com.jd.pipeline.client.GatewayProvider
+import com.jd.pipeline.client.PostgresGateway
 import com.jd.pipeline.nodes.CheckDuplicateNode
 
 /**
  * Shared cleanup logic for test handlers that write to the tracks table.
- * Removes the test record from the active backend and resets the
+ * Removes the test record from the tracks table and resets the
  * in-memory duplicate-detection fallback set.
  */
 object TestCleanup {
     fun removeTestRecord(emailId: String) {
-        val gateway = GatewayProvider.active
+        val gateway = PostgresGateway
         if (gateway.isConfigured()) {
             try {
                 gateway.delete("tracks", "email_id", emailId)

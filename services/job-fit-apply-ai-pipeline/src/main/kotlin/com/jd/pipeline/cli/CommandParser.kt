@@ -5,7 +5,6 @@ object CommandParser {
         var test = false
         var testResume = false
         var testCoverLetter = false
-        var testSupabase = false
         var testChrome = false
         var testChromeUrl: String? = null
         var testSteel = false
@@ -28,7 +27,6 @@ object CommandParser {
                 "--test" -> test = true
                 "--test-resume" -> testResume = true
                 "--test-coverletter" -> testCoverLetter = true
-                "--test-supabase" -> testSupabase = true
                 "--test-chrome" -> {
                     testChrome = true
                     if (i + 1 < args.size && !args[i + 1].startsWith("--")) {
@@ -99,7 +97,6 @@ object CommandParser {
             test -> Command.Test
             testResume -> Command.TestResume
             testCoverLetter -> Command.TestCoverLetter
-            testSupabase -> Command.TestSupabase
             testChrome -> Command.TestChrome(testChromeUrl)
             testSteel -> Command.TestSteel(testSteelUrl)
             steelSignin -> Command.SteelSignin(steelSigninUrl)

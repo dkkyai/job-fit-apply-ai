@@ -30,20 +30,17 @@ object Config {
     private val PROJECT_DIR: Path = Paths.get(System.getProperty("user.dir"))
 
     // ── API Keys ────────────────────────────────────────────────────────────────
-    val SUPABASE_PROJECT_URL: String = get("SUPABASE_PROJECT_URL", "")
-    val SUPABASE_SERVICE_ROLE_KEY: String = get("SUPABASE_SERVICE_ROLE_KEY", get("SUPABASE_KEY", ""))
 
     // LLM concurrency gate (per physical resource). Local backends (oMLX + Ollama-local)
     // share ONE permit; cloud backends get a larger pool. See client/LlmGate.kt.
     val LOCAL_LLM_MAX_CONCURRENCY: Int = get("LOCAL_LLM_MAX_CONCURRENCY", "1").toInt()
     val CLOUD_LLM_MAX_CONCURRENCY: Int = get("CLOUD_LLM_MAX_CONCURRENCY", "4").toInt()
 
-    // Database backend selection (Supabase → self-hosted Postgres migration).
-    //   DB_BACKEND=supabase → SupabaseClient (REST/PostgREST, default)
-    //   DB_BACKEND=postgres → PostgresGateway (direct JDBC to the container)
-    val DB_BACKEND: String = get("DB_BACKEND", "supabase")
-    // libpq-style URL; containers use host "db", host apps use "localhost".
-    val DATABASE_URL: String = get("DATABASE_URL", "postgresql://jobfit:jobfit@localhost:5432/jobfit")
+    // The `tracks` database: libpq-style URL; containers use host "db", host apps "localhost".
+    // No default on purpose — unset means "no database" (dedup falls back to memory, tracking
+    // is skipped), so tests and fresh checkouts never write to whatever answers on :5432.
+    // compose sets it for the containers; host runs get it from the pipeline .env.
+    val DATABASE_URL: String = get("DATABASE_URL", "")
     val MINIMAX_API_KEY: String = get("MINIMAX_API_KEY", "")
     val DEEPSEEK_API_KEY: String = get("DEEPSEEK_API_KEY", "")
 
