@@ -31,6 +31,12 @@ class EmailResolutionTest {
     }
 
     @Test
+    fun `an application update is skipped with its own disposition, not as a non-job`() {
+        val s = JDState(isJobPosting = false, isApplicationUpdate = true, intake = email())
+        assertEquals(EmailDisposition.SkipApplicationUpdate, EmailResolution.classify(s))
+    }
+
+    @Test
     fun `a failed scan is an Error, not a clean non-job skip`() {
         // ScanEmailNode catches a transient LLM error (e.g. oMLX 507) and returns
         // isJobPosting=false WITH error set. That must NOT be labeled JD_Not_Found.

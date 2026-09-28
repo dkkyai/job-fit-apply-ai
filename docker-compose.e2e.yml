@@ -89,6 +89,9 @@ services:
       db:
         condition: service_healthy
     environment:
+      # Pinned like the notifier's below: the base stack interpolates FIT_THRESHOLD from the
+      # repo-root .env, and the canned fit_score (72) must tailor regardless of a dev's value.
+      FIT_THRESHOLD: "50"
       # The in-process fake LLM in the e2e test JVM (host side).
       #
       # The default is 21436, NOT the production oMLX port 11436 that docker-compose.yml
@@ -137,8 +140,8 @@ services:
       # Default 20s poll would dominate the test's wall clock.
       NOTIFIER_POLL_INTERVAL_MS: "2000"
       # Pinned, not inherited from the repo-root .env: the canned fit_score is 72, and a
-      # dev with NOTIFICATION_FIT_THRESHOLD=90 would otherwise see the high-fit Telegram
+      # dev with FIT_THRESHOLD=90 would otherwise see the high-fit Telegram
       # assertions fail with no hint that their private .env is the cause.
-      NOTIFICATION_FIT_THRESHOLD: "50"
+      FIT_THRESHOLD: "50"
     volumes:
       - ${E2E_STATE_DIR:-./.e2e}/notifier-state:/state

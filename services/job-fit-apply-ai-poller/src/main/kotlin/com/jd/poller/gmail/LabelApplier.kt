@@ -8,6 +8,7 @@ object TerminalLabels {
     const val JD_PROCESSED_DIGEST = "JD_Processed_Digest"
     const val JD_NOT_FOUND        = "JD_Not_Found"
     const val JD_PROCESSED        = "JD_Processed"
+    const val APPLICATION_UPDATE  = "JD_Application_Update"
     const val PROCESSING          = "Processing"      // in-flight, applied at intake (before we know it's a JD), cleared here
 }
 
@@ -45,6 +46,13 @@ object LabelApplier {
             }
             TerminalLabels.JD_NOT_FOUND -> {
                 label(client, messageId, TerminalLabels.JD_NOT_FOUND)
+                client.markUnread(messageId)
+                clearErrorLabel(client, messageId)
+            }
+            // Interview / status mail for a role in progress: needs the user's attention, so it stays
+            // in the inbox, unread — but it is not a posting and gets no resume.
+            TerminalLabels.APPLICATION_UPDATE -> {
+                label(client, messageId, TerminalLabels.APPLICATION_UPDATE)
                 client.markUnread(messageId)
                 clearErrorLabel(client, messageId)
             }

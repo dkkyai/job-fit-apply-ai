@@ -255,6 +255,9 @@ services:
       JD_BRIDGE_URL: "http://bridge:8765"
       DB_BACKEND: "postgres"
       DATABASE_URL: "postgresql://${POSTGRES_USER:-jobfit}:${POSTGRES_PASSWORD:-jobfit}@db:5432/${POSTGRES_DB:-jobfit}"
+      # THE fit threshold: tailor at or above it, and the notifier's high-fit ping uses the same
+      # value. Set it once in the repo-root .env; it beats any FIT_THRESHOLD in the pipeline .env.
+      FIT_THRESHOLD: "${FIT_THRESHOLD:-50}"
       # Host-loopback services, reached directly via host.docker.internal (verified working on
       # Docker Desktop 29.x — no socat shim needed). The entrypoint rewrites the CDP endpoint's
       # hostname to an IP because Chrome DevTools rejects non-IP/localhost Host headers.
@@ -324,7 +327,8 @@ services:
       NOTIFIER_TELEGRAM_CHAT_ID: "${NOTIFIER_TELEGRAM_CHAT_ID:-}"
       TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
-      NOTIFICATION_FIT_THRESHOLD: "${NOTIFICATION_FIT_THRESHOLD:-50}"
+      # Same FIT_THRESHOLD as the processor (see there) — one number for tailoring and the ping.
+      FIT_THRESHOLD: "${FIT_THRESHOLD:-50}"
     volumes:
       # Persisted consumer cursor (max completed_seq notified) — survives restarts.
       - "${JD_NOTIFIER_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/notifier-state}:/state"

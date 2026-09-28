@@ -192,6 +192,13 @@ object Config {
     // (proactive — for sites that soft-block or challenge plain HTTP, e.g. Glassdoor's Cloudflare).
     // Suffix match (a domain also matches its subdomains). Requires the debug Chrome to be up.
     val CDP_FORCE_DOMAINS: String = get("CDP_FORCE_DOMAINS", "")
+    // How long a site stays skipped after a site-wide block (403 / 429 / bot check) or an auth wall.
+    // The Processor is one long-lived loop, so without a lapse a single block used to skip that site
+    // until the next restart (Dice was skipped for 12 days in September). Default 30 min.
+    val SCRAPE_DOMAIN_SKIP_TTL_MS: Long = get("SCRAPE_DOMAIN_SKIP_TTL_MS", "1800000").toLong()
+    // An alert with a dedup key (e.g. "Sign-in required: LinkedIn") repeats at most this often while
+    // the condition persists. It used to fire once per process lifetime. Default 6 h.
+    val ALERT_REPEAT_AFTER_MS: Long = get("ALERT_REPEAT_AFTER_MS", "21600000").toLong()
     // When true, sites blocked by HTTP (403, CAPTCHA, Cloudflare) are retried with a clean Playwright session.
     val PLAYWRIGHT_FALLBACK_ON_CAPTCHA: Boolean = get("PLAYWRIGHT_FALLBACK_ON_CAPTCHA", "true").toBoolean()
     // When true, pages that return fewer than PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH chars via HTTP

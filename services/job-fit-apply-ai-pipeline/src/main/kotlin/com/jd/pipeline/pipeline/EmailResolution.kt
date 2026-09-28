@@ -22,6 +22,9 @@ sealed interface EmailDisposition {
     /** Not a job posting — complete the item with no further processing. */
     object SkipNotJob : EmailDisposition
 
+    /** Interview / status mail about a role already in progress — label it and skip. */
+    object SkipApplicationUpdate : EmailDisposition
+
     /** A single job posting — hand off to the ProcessingPipeline. */
     object Process : EmailDisposition
 }
@@ -41,6 +44,7 @@ object EmailResolution {
             ingested.error.isNotEmpty() -> EmailDisposition.Error(ingested.error)
             ingested.isDigest || ingested.isInlineDigest ->
                 EmailDisposition.ReEnqueueChildren(ingested.digestJobs.filter { it.isJobPosting })
+            ingested.isApplicationUpdate -> EmailDisposition.SkipApplicationUpdate
             !ingested.isJobPosting -> EmailDisposition.SkipNotJob
             else                   -> EmailDisposition.Process
         }

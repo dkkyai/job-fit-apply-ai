@@ -23,7 +23,9 @@ internal fun isEligibleJobUrl(url: String?, senderDomain: String): Boolean {
     val group = BoardRegistry.groupFor(host.takeIf { it.isNotBlank() } ?: senderDomain)
     return when (group?.key) {
         "linkedin" -> lower.contains("/jobs/view/") || lower.contains("/comm/jobs/view/")
-        "jobright" -> lower.contains("/job") || lower.contains("/jobs/") || lower.contains("jobright.ai")
+        // Only posting pages. The old `contains("jobright.ai")` also admitted the email's generic
+        // "open Jobright" (`/?retarget=jobalert`) and `/jobs/recommend` links as jobs.
+        "jobright" -> lower.contains("/jobs/info/")
         "wellfound" -> lower.contains("/jobs/")
         "monster" -> lower.contains("/job-openings/") || lower.contains("/job/")
         "workday" -> lower.contains("/job/") || lower.contains("myworkdayjobs.com") || lower.contains("/en-us/")
