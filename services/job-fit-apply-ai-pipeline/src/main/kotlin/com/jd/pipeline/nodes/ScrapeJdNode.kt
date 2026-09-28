@@ -9,6 +9,7 @@ import com.jd.pipeline.client.LlmClient
 import com.jd.pipeline.client.SigninServer
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.state.JDState
+import com.jd.pipeline.utils.ExpiringHostSet
 import com.microsoft.playwright.Page
 import com.microsoft.playwright.options.LoadState
 import com.microsoft.playwright.options.WaitForSelectorState
@@ -36,6 +37,9 @@ class ScrapeJdNode(
     // (plain-HTTP scraping is unaffected). No in-process Chromium is ever launched.
     private val cdpBrowser: CdpBrowser = BrowserFactory.create(),
     private val alerts: AlertService = AlertService(),
+    domainSkipTtlMs: Long = Config.SCRAPE_DOMAIN_SKIP_TTL_MS,
+    // Monotonic clock seam (nanos) for the skip lists' expiry.
+    nanoTime: () -> Long = System::nanoTime,
 ) : Node<JDState> {
 
     /** Set to false to suppress verbose progress logging (e.g. during tuner runs). */
@@ -44,16 +48,14 @@ class ScrapeJdNode(
     private fun log(msg: String) { if (verbose) println(msg) }
 
     // ── Batch-level state ────────────────────────────────────────────────────
-    // Tracks domains that blocked this batch so we don't hammer them repeatedly.
-    // The same ScrapeJdNode instance is reused across all jobs in a single pipeline
-    // invocation — one attempt per domain, then skip with a clear reason.
-    val batchBlockedDomains: MutableSet<String> = mutableSetOf()
-    // Hosts that hit an auth wall (login/challenge) via a CDP scrape this batch — skipped on
-    // re-attempt, and each fires one phone re-auth alert. Generalizes the old LinkedIn-only flag so
-    // every authenticated CDP-scraped board (Glassdoor, Jobright, …) gets the same treatment.
-    val batchAuthExpiredDomains: MutableSet<String> = mutableSetOf()
-    // Fire the "debug Chrome unreachable" alert at most once per batch.
-    var batchCdpUnavailableAlerted: Boolean = false
+    // Sites that blocked us as a whole (403 / 429 / bot check), so we don't hammer them. One instance
+    // lives for the Processor's whole run and nothing resets it between emails, so entries lapse after
+    // [domainSkipTtlMs] — before that, one block skipped the site until the next restart.
+    val batchBlockedDomains: MutableSet<String> = ExpiringHostSet(domainSkipTtlMs, nanoTime)
+    // Hosts that hit an auth wall (login/challenge) via a CDP scrape — skipped until the entry lapses,
+    // and each fires a phone re-auth alert (repeat-limited by AlertService). Generalizes the old
+    // LinkedIn-only flag so every authenticated CDP-scraped board (Glassdoor, Jobright, …) is covered.
+    val batchAuthExpiredDomains: MutableSet<String> = ExpiringHostSet(domainSkipTtlMs, nanoTime)
 
     /** Back-compat accessor for the LinkedIn-specific console warning (see CliOutput). */
     val batchLinkedInSessionExpired: Boolean
@@ -62,7 +64,6 @@ class ScrapeJdNode(
     fun resetBatch() {
         batchBlockedDomains.clear()
         batchAuthExpiredDomains.clear()
-        batchCdpUnavailableAlerted = false
     }
 
     /** True if [host] already hit an auth wall this batch (exact or parent-domain match). */
@@ -79,7 +80,14 @@ class ScrapeJdNode(
         .followRedirects(HttpClient.Redirect.NORMAL)
         .build()
 
-    data class PageContent(val rawHtml: String, val cleanedText: String, val blockReason: String = "", val isCaptchaBlock: Boolean = false, val isBotBlock: Boolean = false, val scrapePath: String = "")
+    data class PageContent(val rawHtml: String, val cleanedText: String, val blockReason: String = "", val isCaptchaBlock: Boolean = false, val isBotBlock: Boolean = false, val scrapePath: String = "", val isRateLimited: Boolean = false) {
+        /**
+         * Whether the block is about the whole site (bot wall, CAPTCHA, rate limit) rather than this
+         * one URL (404 for an expired posting, a redirect to search results). Only a site-wide block
+         * skips the site's other jobs — one dead Dice link used to take every Dice job down with it.
+         */
+        val blocksDomain: Boolean get() = isBotBlock || isCaptchaBlock || isRateLimited
+    }
 
     companion object {
         // Site-agnostic auth-wall markers (see detectAuthWall). URL redirects to these paths are the
@@ -157,7 +165,7 @@ class ScrapeJdNode(
 
             if (page.blockReason.isNotEmpty()) {
                 log("[scrape_jd] Blocked for $jobUrl: ${page.blockReason}")
-                batchBlockedDomains.add(host)
+                if (page.blocksDomain) batchBlockedDomains.add(host)
                 return input.copy(error = "scrape_jd: ${page.blockReason}", scrapePath = "blocked")
             }
 
@@ -244,7 +252,7 @@ class ScrapeJdNode(
                 }
                 429 -> {
                     log("[scrape_jd] HTTP 429 (rate-limited) for $url")
-                    return PageContent("", "", "HTTP 429 — rate-limited")
+                    return PageContent("", "", "HTTP 429 — rate-limited", isRateLimited = true)
                 }
                 503 -> {
                     val body = response.body()
@@ -329,7 +337,7 @@ class ScrapeJdNode(
      * Returns a human-readable block reason if the HTML looks like a CAPTCHA or bot-check page,
      * or null if the page appears normal.
      */
-    private fun detectCaptchaInHtml(html: String): String? {
+    internal fun detectCaptchaInHtml(html: String): String? {
         if (html.isBlank()) return null
         val lower = html.lowercase()
 
@@ -339,6 +347,13 @@ class ScrapeJdNode(
             lower.contains("checking your browser") ||
             lower.contains("please wait while we check your browser")) {
             return "Cloudflare browser challenge"
+        }
+
+        // DataDome challenge (Monster). Match the CAPTCHA page only: normal Monster pages also load
+        // DataDome's tag script and an auto-passing `/interstitial/` frame from the same domain.
+        if ((lower.contains("geo.captcha-delivery.com/captcha") || lower.contains("title=\"datadome captcha\"")) &&
+            Jsoup.parse(html).text().length < AUTH_WALL_MAX_BODY_CHARS) {
+            return "DataDome CAPTCHA"
         }
 
         // Generic CAPTCHA widget markers
@@ -434,8 +449,8 @@ class ScrapeJdNode(
     /** Fire the "browser backend unreachable" alert once per batch, only when a backend is configured. */
     private fun alertCdpUnavailable() {
         val endpoint = activeBackendEndpoint()
-        if (endpoint.isNotBlank() && !batchCdpUnavailableAlerted) {
-            batchCdpUnavailableAlerted = true
+        // AlertService repeat-limits this (dedup key "cdp-down"), so no per-run flag is needed.
+        if (endpoint.isNotBlank()) {
             alerts.chromeDebugUnavailable(endpoint)
         }
     }
@@ -1421,7 +1436,7 @@ class ScrapeJdNode(
                 throw AuthRequiredException(site, "$site blocked — $captchaReason at ${page.url()}")
             }
             log("[scrape_jd] Playwright fetch still blocked: $captchaReason")
-            return PageContent(rawHtml, "", "Playwright: $captchaReason")
+            return PageContent(rawHtml, "", "Playwright: $captchaReason", isCaptchaBlock = true)
         }
 
         // Prefer innerText for SPA-rendered content (cleaner than Jsoup on a hydrated DOM), but
