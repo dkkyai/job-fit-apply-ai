@@ -3,6 +3,7 @@ package com.jd.poller.gmail
 import com.google.api.services.gmail.model.Message
 import com.google.api.services.gmail.model.MessagePart
 import org.jsoup.Jsoup
+import org.jsoup.parser.Parser
 import org.jsoup.safety.Safelist
 import java.nio.charset.StandardCharsets
 import java.util.Base64
@@ -44,8 +45,10 @@ object EmailParser {
                 val bytes = Base64.getUrlDecoder().decode(payload.body.data)
                 val html = String(bytes, StandardCharsets.UTF_8)
                 val cleanedHtml = html.replace(Regex("<a\\b[^>]*\\bhref=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>"), "$2 $1")
-                val text = Jsoup.clean(cleanedHtml, Safelist.none())
-                return text.replace(Regex("\\s+"), " ").trim()
+                // Jsoup.clean returns HTML: its text is entity-escaped (&amp;, &lt;, &nbsp;).
+                // Decode it so an HTML-only email reads like its text/plain twin would.
+                val text = Parser.unescapeEntities(Jsoup.clean(cleanedHtml, Safelist.none()), false)
+                return text.replace(Regex("[\\s\u00A0]+"), " ").trim()
             }
         }
 

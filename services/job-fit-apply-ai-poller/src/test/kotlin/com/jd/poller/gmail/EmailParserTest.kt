@@ -155,6 +155,14 @@ class EmailParserTest {
     }
 
     @Test
+    @DisplayName("HTML entities decode to the characters a text/plain part would carry")
+    fun htmlEntitiesDecode() {
+        val html = "<p>R&amp;D team, &lt;5 yrs&gt;,&nbsp;caf&eacute; &quot;quoted&quot;</p>"
+        val parsed = EmailParser.parse(message(part("text/html", html)))
+        assertEquals("R&D team, <5 yrs>, café \"quoted\"", parsed.plainText)
+    }
+
+    @Test
     @DisplayName("consumed fields: nested multipart with an attachment and scripted HTML")
     fun consumedFieldsForNestedMultipartWithAttachment() {
         val attachment = MessagePart().setMimeType("application/pdf").setFilename("jd.pdf")
@@ -176,8 +184,7 @@ class EmailParserTest {
     }
 
     private companion object {
-        // Script bodies never reach the text; the anchor's href is surfaced; entities stay
-        // HTML-escaped (Jsoup.clean output) — current behaviour, pinned as-is.
-        const val EXPECTED_SCRIPTED_PLAIN = "Staff SDET at Acme https://jobs.example.com/42 Remote &amp; hybrid"
+        // Script bodies never reach the text; the anchor's href is surfaced; entities decode.
+        const val EXPECTED_SCRIPTED_PLAIN = "Staff SDET at Acme https://jobs.example.com/42 Remote & hybrid"
     }
 }
