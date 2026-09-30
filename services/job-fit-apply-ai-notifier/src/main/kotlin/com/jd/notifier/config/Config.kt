@@ -44,6 +44,20 @@ object Config {
         get("NOTIFIER_TELEGRAM_BUTTONS", "false").equals("true", ignoreCase = true)
 
     /**
+     * Split the link buttons from the Apply button.
+     *
+     * They carry very different risk: View Report / View Resume are inert URLs, while Apply
+     * commits to an agent workflow. Gating them together would force anyone who wants the links
+     * to also accept the action button, so links are the default and Apply is separate opt-in.
+     */
+    val TELEGRAM_LINK_BUTTONS_ENABLED: Boolean =
+        get("NOTIFIER_TELEGRAM_LINK_BUTTONS", TELEGRAM_BUTTONS_ENABLED.toString())
+            .equals("true", ignoreCase = true)
+
+    val TELEGRAM_APPLY_BUTTON_ENABLED: Boolean =
+        get("NOTIFIER_TELEGRAM_APPLY_BUTTON", "false").equals("true", ignoreCase = true)
+
+    /**
      * Looking up `tailored_resume_url` needs one fetch of the job's metadata.json. On when
      * buttons are on; disable separately to send link buttons without that round-trip.
      */

@@ -55,6 +55,10 @@ class NotifierButtonsTest {
         client = c,
         fitThreshold = 50,
         buttonsEnabled = buttons,
+        // These tests exercise the full keyboard, so both groups are on; the independent
+        // gating matrix lives in NotifierGatingTest.
+        linkButtonsEnabled = buttons,
+        applyButtonEnabled = buttons,
         links = ArtifactLinks(enabled = false, timeoutMs = 100, bridgeBase = "http://bridge:8765"),
         registrar = ApplyRegistrar(
             enabled = true,

@@ -43,6 +43,8 @@ class Notifier(
     private val client: NotificationClient = NotificationClient(),
     private val fitThreshold: Int = Config.FIT_THRESHOLD,
     private val buttonsEnabled: Boolean = Config.TELEGRAM_BUTTONS_ENABLED,
+    private val linkButtonsEnabled: Boolean = Config.TELEGRAM_LINK_BUTTONS_ENABLED,
+    private val applyButtonEnabled: Boolean = Config.TELEGRAM_APPLY_BUTTON_ENABLED,
     private val links: ArtifactLinks = ArtifactLinks(),
     private val registrar: ApplyRegistrar = ApplyRegistrar(),
 ) {
@@ -89,24 +91,36 @@ class Notifier(
     /**
      * View Report / View Resume / Apply for one event.
      *
+     * The two groups are independently gated: links are inert URLs, Apply commits to an agent
+     * workflow. The Apply label only gets built (and registered) when that button is actually
+     * being sent — registering a label for a button no one can tap would leave dead entries in
+     * the agent's pending state.
+     *
      * The Apply label is registered with the agent **before** the message is sent: a tap can
      * arrive the instant the keyboard renders, and a tap for an unregistered label does nothing.
      * Registration failure still sends the message — the links are independently useful.
      */
     private fun buttonsFor(event: CompletedEvent): List<List<TelegramButtons.Button>> {
-        val dirName = event.dirName()
-        val label = if (dirName != null) {
-            TelegramButtons.applyLabelUnique(
-                event.company,
-                event.roleTitle,
-                TelegramButtons.discriminator(dirName),
-            ).also {
-                registrar.register(it, dirName, event.company, event.roleTitle, event.jobUrl)
+        val label = if (applyButtonEnabled) {
+            event.dirName()?.let { dirName ->
+                TelegramButtons.applyLabelUnique(
+                    event.company,
+                    event.roleTitle,
+                    TelegramButtons.discriminator(dirName),
+                ).also {
+                    registrar.register(it, dirName, event.company, event.roleTitle, event.jobUrl)
+                }
             }
         } else {
             null
         }
-        val resolved = links.resolve(event.artifactUrl, event.artifacts?.resumePdf)
+
+        val resolved = if (linkButtonsEnabled) {
+            links.resolve(event.artifactUrl, event.artifacts?.resumePdf)
+        } else {
+            ArtifactLinks.Links(null, null)
+        }
+
         return TelegramButtons.forHighFit(
             reportUrl = resolved.reportUrl,
             resumeUrl = resolved.resumeUrl,
