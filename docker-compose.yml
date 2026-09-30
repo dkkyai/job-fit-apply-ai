@@ -329,9 +329,33 @@ services:
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
       # Same FIT_THRESHOLD as the processor (see there) — one number for tailoring and the ping.
       FIT_THRESHOLD: "${FIT_THRESHOLD:-50}"
+      # Inline buttons on the high-fit ping. Link buttons and the Apply button are gated
+      # independently: links are inert URLs, while Apply hands work to the JobBot agent
+      # workflow. Enabling Apply additionally needs a mount for the agent's pending-actions
+      # file (JOBBOT_PENDING_ACTIONS below) — without it the Apply button renders but a tap
+      # resolves to nothing.
+      NOTIFIER_TELEGRAM_BUTTONS: "${NOTIFIER_TELEGRAM_BUTTONS:-false}"
+      # Empty falls back to NOTIFIER_TELEGRAM_BUTTONS inside the notifier, so the two cannot
+      # silently disagree.
+      NOTIFIER_TELEGRAM_LINK_BUTTONS: "${NOTIFIER_TELEGRAM_LINK_BUTTONS:-}"
+      NOTIFIER_TELEGRAM_APPLY_BUTTON: "${NOTIFIER_TELEGRAM_APPLY_BUTTON:-false}"
+      NOTIFIER_APPLY_REGISTRAR: "${NOTIFIER_APPLY_REGISTRAR:-false}"
+      # Where Apply labels are registered. Must be a path mounted into this container; blank
+      # disables registration. See the volume note below.
+      JOBBOT_PENDING_ACTIONS: "${JOBBOT_PENDING_ACTIONS:-}"
+      # Absolute base for bridge-relative artifact links — Telegram needs an absolute URL for a
+      # link button, and the bridge serves the same resume bytes the artifacts carry.
+      BRIDGE_PUBLIC_URL: "${BRIDGE_PUBLIC_URL:-}"
+      # How long the resume lookup may take when a job's metadata.json must be read.
+      NOTIFIER_ARTIFACT_TIMEOUT_MS: "${NOTIFIER_ARTIFACT_TIMEOUT_MS:-4000}"
     volumes:
       # Persisted consumer cursor (max completed_seq notified) — survives restarts.
       - "${JD_NOTIFIER_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/notifier-state}:/state"
+      # Deliberately NOT mounted: the JobBot agent's state dir. Apply registration would need it,
+      # but the agent runs as a host PM2 process (~/.nanobot-jobbot), not a container, so there
+      # is no container-shared volume to mount. Adding a host path here would couple this
+      # container to that process's on-disk layout; containerizing the agent first is cleaner.
+      # Until then keep NOTIFIER_APPLY_REGISTRAR=false — link buttons need no volume.
     # No ports — a completed-feed event consumer. Healthcheck (exec --health) baked into the image.
 
 volumes:

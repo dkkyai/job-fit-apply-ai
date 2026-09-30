@@ -138,5 +138,20 @@ services:
       # dev with FIT_THRESHOLD=90 would otherwise see the high-fit Telegram
       # assertions fail with no hint that their private .env is the cause.
       FIT_THRESHOLD: "50"
+      # Inline buttons. The link buttons are enabled here so the suite verifies they actually
+      # reach the wire; the Apply button stays OFF deliberately — it hands work to a real agent
+      # workflow, and E2E has no agent to consume the registration. Pinning both means the
+      # suite cannot silently diverge from these values when a dev's .env differs.
+      NOTIFIER_TELEGRAM_BUTTONS: "true"
+      NOTIFIER_TELEGRAM_LINK_BUTTONS: "true"
+      NOTIFIER_TELEGRAM_APPLY_BUTTON: "false"
+      # Left blank on purpose: with no pending-actions mount, Apply registration is inert, so
+      # the E2E container cannot write into any real agent state directory.
+      JOBBOT_PENDING_ACTIONS: ""
+      NOTIFIER_APPLY_REGISTRAR: "false"
+      # The bridge publishes on the host at E2E_BRIDGE_PORT, so a bridge-relative resume path
+      # needs this base to become a URL a chat client could actually open. Without it the button
+      # would carry a bare "/api/jobs/.../resume.pdf", which is not a URL at all.
+      BRIDGE_PUBLIC_URL: "http://127.0.0.1:${E2E_BRIDGE_PORT:-18765}"
     volumes:
       - ${E2E_STATE_DIR:-./.e2e}/notifier-state:/state

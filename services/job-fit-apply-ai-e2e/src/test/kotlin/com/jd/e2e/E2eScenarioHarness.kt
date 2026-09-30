@@ -44,6 +44,10 @@ data class ScenarioResult(
     val discordMessages: List<String>,
     val telegramMessages: List<String>,
     val llmCalls: List<String>,
+    /** Inline-keyboard rows on delivered Telegram pings, in order. Empty when no buttons. */
+    val telegramButtonRows: List<List<String>> = emptyList(),
+    /** (label, url-or-callback) for every delivered button, so its kind is assertable. */
+    val telegramButtons: List<Pair<String, String>> = emptyList(),
 ) {
     val completedEvent: JsonNode get() = completedEvents.singleOrNull()
         ?: error("expected exactly one completed event for $jobId, got ${completedEvents.size}: $completedEvents")
@@ -250,6 +254,8 @@ class E2eScenarioHarness {
             apiTrack = apiTrack,
             discordMessages = discordMessages,
             telegramMessages = telegramMessages,
+            telegramButtonRows = sink.telegramButtonRows(),
+            telegramButtons = sink.telegramButtons(),
             llmCalls = if (E2eConfig.realLlm) emptyList() else fakeLlm.calls.toList(),
         )
     }
