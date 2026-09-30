@@ -36,6 +36,49 @@ object Config {
     val DISCORD_API_BASE: String  = get("DISCORD_API_BASE", "https://discord.com")
     val TELEGRAM_API_BASE: String = get("TELEGRAM_API_BASE", "https://api.telegram.org")
 
+    /**
+     * Inline buttons on the Telegram high-fit ping (View Report / View Resume / Apply).
+     * Off by default so a rollout is a config flip, not a code change.
+     */
+    val TELEGRAM_BUTTONS_ENABLED: Boolean =
+        get("NOTIFIER_TELEGRAM_BUTTONS", "false").equals("true", ignoreCase = true)
+
+    /**
+     * Looking up `tailored_resume_url` needs one fetch of the job's metadata.json. On when
+     * buttons are on; disable separately to send link buttons without that round-trip.
+     */
+    val ARTIFACT_LINKS_ENABLED: Boolean =
+        get("NOTIFIER_ARTIFACT_LINKS", TELEGRAM_BUTTONS_ENABLED.toString())
+            .equals("true", ignoreCase = true)
+
+    /** Budget for the metadata.json lookup — must not stall the notifier loop. */
+    val ARTIFACT_LINKS_TIMEOUT_MS: Int = get("NOTIFIER_ARTIFACT_TIMEOUT_MS", "4000").toInt()
+
+    /**
+     * Writing Apply registrations into the agent's pending-actions file.
+     *
+     * Off by default and only meaningful when the file is reachable: the notifier runs in a
+     * container, so this path must be a mounted volume. Blank disables it.
+     */
+    val JOBBOT_PENDING_ACTIONS_PATH: String = get("JOBBOT_PENDING_ACTIONS", "")
+
+    val APPLY_REGISTRAR_ENABLED: Boolean =
+        get("NOTIFIER_APPLY_REGISTRAR", "false").equals("true", ignoreCase = true) &&
+            JOBBOT_PENDING_ACTIONS_PATH.isNotBlank()
+
+    /** Apply labels older than this are pruned, matching the agent's 7-day expiry. */
+    val APPLY_LABEL_TTL_SECONDS: Long = get("NOTIFIER_APPLY_TTL_SECONDS", "604800").toLong()
+
+
+    /**
+     * Public base for bridge-relative artifact links. The bridge exposes the same resume bytes
+     * at `/api/jobs/<id>/resume.pdf`, reachable over the tailnet.
+     */
+    val BRIDGE_PUBLIC_URL: String = get(
+        "BRIDGE_PUBLIC_URL",
+        "http://richards-macbook-m1-max.tail02d0e.ts.net:8765",
+    )
+
     /** Telegram high-fit ping fires when fit_score >= this — the processor's tailoring threshold. */
     val FIT_THRESHOLD: Int = get("FIT_THRESHOLD", "50").toFloat().toInt()
 

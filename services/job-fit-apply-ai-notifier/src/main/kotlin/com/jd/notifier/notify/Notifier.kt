@@ -42,6 +42,9 @@ data class NotifyOutcome(
 class Notifier(
     private val client: NotificationClient = NotificationClient(),
     private val fitThreshold: Int = Config.FIT_THRESHOLD,
+    private val buttonsEnabled: Boolean = Config.TELEGRAM_BUTTONS_ENABLED,
+    private val links: ArtifactLinks = ArtifactLinks(),
+    private val registrar: ApplyRegistrar = ApplyRegistrar(),
 ) {
     /**
      * Deliver [event]. [alreadyDelivered] names channels that landed on a previous attempt of this
@@ -71,9 +74,44 @@ class Notifier(
         val telegramResult = when {
             (event.fitScore ?: 0) < fitThreshold -> DeliveryResult.SKIPPED
             "telegram" in alreadyDelivered -> DeliveryResult.DELIVERED
+            buttonsEnabled -> {
+                val rows = buttonsFor(event)
+                client.postTelegramHtmlWithButtons(
+                    "High-fit: ${telegramJobLabel(event)} — ${event.fitScore}",
+                    rows,
+                )
+            }
             else -> client.postTelegramHtml("High-fit: ${telegramJobLabel(event)} — ${event.fitScore}")
         }
         return NotifyOutcome(discord = discordResult, telegram = telegramResult)
+    }
+
+    /**
+     * View Report / View Resume / Apply for one event.
+     *
+     * The Apply label is registered with the agent **before** the message is sent: a tap can
+     * arrive the instant the keyboard renders, and a tap for an unregistered label does nothing.
+     * Registration failure still sends the message — the links are independently useful.
+     */
+    private fun buttonsFor(event: CompletedEvent): List<List<TelegramButtons.Button>> {
+        val dirName = event.dirName()
+        val label = if (dirName != null) {
+            TelegramButtons.applyLabelUnique(
+                event.company,
+                event.roleTitle,
+                TelegramButtons.discriminator(dirName),
+            ).also {
+                registrar.register(it, dirName, event.company, event.roleTitle, event.jobUrl)
+            }
+        } else {
+            null
+        }
+        val resolved = links.resolve(event.artifactUrl, event.artifacts?.resumePdf)
+        return TelegramButtons.forHighFit(
+            reportUrl = resolved.reportUrl,
+            resumeUrl = resolved.resumeUrl,
+            applyLabel = label,
+        )
     }
 
     /** `Company — [Title](artifactUrl)` — the title links to its report when present. */

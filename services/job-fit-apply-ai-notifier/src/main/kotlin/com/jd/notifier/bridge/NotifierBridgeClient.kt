@@ -10,7 +10,9 @@ import org.apache.hc.client5.http.classic.methods.HttpGet
 import org.apache.hc.client5.http.impl.classic.HttpClients
 import org.apache.hc.core5.http.io.entity.EntityUtils
 
-/** A completed-job event from the bridge stream (the fields a Notifier needs). */
+/**
+ * A completed-job event from the bridge stream (the fields a Notifier needs).
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class CompletedEvent(
     val jobId: String,
@@ -22,7 +24,25 @@ data class CompletedEvent(
     val pipelineAction: String? = null,
     val jobUrl: String? = null,
     val artifactUrl: String? = null,
+    val artifacts: ArtifactUrls? = null,
     val error: String? = null,
+) {
+    /**
+     * The pipeline output directory name, taken from the tail of [artifactUrl].
+     *
+     * The event carries no dirname field, and the agent's Apply records are keyed by it, so it
+     * is derived here. Null when the pipeline produced no artifacts.
+     */
+    fun dirName(): String? =
+        artifactUrl?.trim()?.trimEnd('/')?.takeIf { it.isNotBlank() }?.substringAfterLast('/')
+            ?.takeIf { it.isNotBlank() }
+}
+
+/** Artifact URLs the bridge exposes for one job (relative to the bridge base). */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class ArtifactUrls(
+    val resumePdf: String? = null,
+    val coverLetterTxt: String? = null,
 )
 
 /**

@@ -79,6 +79,34 @@ open class NotificationClient(
         }.worst()
     }
 
+    /**
+     * The same ping, with inline buttons under it.
+     *
+     * Buttons ride on the **last** chunk only: the keyboard belongs to the end of the message,
+     * and attaching it to every chunk would stack duplicate keyboards on a long ping. An absent
+     * keyboard degrades to plain text rather than failing the send.
+     */
+    open fun postTelegramHtmlWithButtons(
+        text: String,
+        rows: List<List<TelegramButtons.Button>>,
+    ): DeliveryResult {
+        if (!telegramConfigured) return DeliveryResult.SKIPPED
+        val markup = TelegramButtons.replyMarkupJson(rows)
+        // An empty keyboard is a Telegram error, not an empty keyboard; degrade to plain text.
+        if (markup == null) return postTelegramHtml(text)
+        val chunks = chunkLines(text, 4096)
+        return chunks.mapIndexed { i, chunk ->
+            val fields = mutableMapOf<String, Any?>(
+                "chat_id" to telegramChatId,
+                "text" to chunk,
+                "parse_mode" to "HTML",
+            )
+            if (i == chunks.lastIndex) fields["reply_markup"] = markup
+            val body = mapper.writeValueAsString(fields.filterValues { it != null })
+            send("Telegram", telegramSendMessageUrl(), body) {}
+        }.worst()
+    }
+
     /** One POST, classified. A thrown transport failure is retryable, not fatal to the loop. */
     private fun send(channel: String, url: String, body: String, headers: HttpPost.() -> Unit): DeliveryResult =
         try {
