@@ -101,7 +101,11 @@ open class NotificationClient(
                 "text" to chunk,
                 "parse_mode" to "HTML",
             )
-            if (i == chunks.lastIndex) fields["reply_markup"] = markup
+            // readTree, not the raw string: assigning the JSON text directly makes Jackson emit
+            // reply_markup as a *quoted string*, which Telegram happens to accept but which is not
+            // the documented shape (a nested object). It also hides the keyboard from any consumer
+            // reading the body structurally — including this repo's own E2E sink.
+            if (i == chunks.lastIndex) fields["reply_markup"] = mapper.readTree(markup)
             val body = mapper.writeValueAsString(fields.filterValues { it != null })
             send("Telegram", telegramSendMessageUrl(), body) {}
         }.worst()
