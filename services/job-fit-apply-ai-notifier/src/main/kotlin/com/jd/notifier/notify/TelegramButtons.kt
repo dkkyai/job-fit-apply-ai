@@ -31,7 +31,13 @@ object TelegramButtons {
     )
 
     fun urlButton(text: String, url: String?): Button? =
-        url?.takeIf { it.isNotBlank() }?.let { Button(text = text, url = it.trim()) }
+        url?.takeIf { it.isNotBlank() }?.trim()
+            // A button whose target is not an absolute http(s) URL is unreachable in a chat
+            // client — Telegram rejects it and the sender silently loses a button. Dropping it
+            // here keeps a bad base URL (or an unresolved bridge-relative path) from turning
+            // into a broken button on the user's screen.
+            ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            ?.let { Button(text = text, url = it) }
 
     /**
      * A row is only real if it has buttons. Building rows from absent links would otherwise

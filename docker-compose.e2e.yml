@@ -149,5 +149,9 @@ services:
       # the E2E container cannot write into any real agent state directory.
       JOBBOT_PENDING_ACTIONS: ""
       NOTIFIER_APPLY_REGISTRAR: "false"
+      # The bridge publishes on the host at E2E_BRIDGE_PORT, so a bridge-relative resume path
+      # needs this base to become a URL a chat client could actually open. Without it the button
+      # would carry a bare "/api/jobs/.../resume.pdf", which is not a URL at all.
+      BRIDGE_PUBLIC_URL: "http://127.0.0.1:${E2E_BRIDGE_PORT:-18765}"
     volumes:
       - ${E2E_STATE_DIR:-./.e2e}/notifier-state:/state

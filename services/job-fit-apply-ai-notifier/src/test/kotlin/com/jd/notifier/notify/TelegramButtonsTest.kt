@@ -87,6 +87,38 @@ class TelegramButtonsTest {
     }
 
     @Test
+    @DisplayName("a non-absolute URL is dropped rather than shipped as a broken button")
+    fun relativeUrlDropped() {
+        // A bridge-relative resume path with no BRIDGE_PUBLIC_URL base reaches here unresolved.
+        // Telegram would reject the whole keyboard, so a bad link must cost only its own button.
+        val rows = TelegramButtons.forHighFit(
+            reportUrl = "http://host:8081/job/report.md",
+            resumeUrl = "/api/jobs/abc/resume.pdf",
+            applyLabel = "Apply: A / B #1",
+        )
+        val links = rows[0].map { it.text }
+        assertEquals(listOf("View Report"), links, "the relative link should be dropped, not sent")
+        assertTrue(
+            rows.flatten().none { it.url?.startsWith("/") == true },
+            "no button may carry a relative URL: ${rows.flatten().map { it.url }}",
+        )
+        // The Apply row survives: one bad link must not remove the action button.
+        assertEquals(listOf("Apply"), rows[1].map { it.text })
+    }
+
+    @Test
+    @DisplayName("a blank base URL still yields a usable keyboard, not a broken one")
+    fun blankBaseKeepsApply() {
+        val rows = TelegramButtons.forHighFit(
+            reportUrl = "",
+            resumeUrl = "   ",
+            applyLabel = "Apply: A / B #2",
+        )
+        assertEquals(1, rows.size)
+        assertEquals(listOf("Apply"), rows[0].map { it.text })
+    }
+
+    @Test
     @DisplayName("missing links drop only that button")
     fun missingLinksDropButtons() {
         // Report absent -> the link row holds Resume only; Apply keeps its own row.
