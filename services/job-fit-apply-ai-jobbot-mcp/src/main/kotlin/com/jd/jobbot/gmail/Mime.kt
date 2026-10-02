@@ -25,12 +25,14 @@ object Mime {
         val to: List<String>,
         val cc: List<String>,
         val subject: String,
+        /** Hidden recipients still receive the mail: they are approved and checked like the rest. */
+        val bcc: List<String> = emptyList(),
         val body: String,
         val attachments: List<String>,
     ) {
         /** What the user approves. Any change to recipients, subject, text or attachments changes it. */
         fun fingerprint(): String {
-            val canonical = listOf(to.sorted().joinToString(","), cc.sorted().joinToString(","), subject, body, attachments.joinToString(","))
+            val canonical = listOf(to.sorted().joinToString(","), cc.sorted().joinToString(","), bcc.sorted().joinToString(","), subject, body, attachments.joinToString(","))
                 .joinToString("\u0000")
             return MessageDigest.getInstance("SHA-256").digest(canonical.toByteArray()).joinToString("") { "%02x".format(it) }
         }
@@ -38,6 +40,7 @@ object Mime {
         fun preview(maxBody: Int = 3000): String = buildString {
             appendLine("To: ${to.joinToString().ifEmpty { "-" }}")
             if (cc.isNotEmpty()) appendLine("Cc: ${cc.joinToString()}")
+            if (bcc.isNotEmpty()) appendLine("Bcc: ${bcc.joinToString()}")
             appendLine("Subject: $subject")
             appendLine("Attachments: ${attachments.joinToString().ifEmpty { "none" }}")
             appendLine("———")
@@ -59,6 +62,7 @@ object Mime {
     fun view(msg: MimeMessage): View = View(
         to = addresses(msg, Message.RecipientType.TO),
         cc = addresses(msg, Message.RecipientType.CC),
+        bcc = addresses(msg, Message.RecipientType.BCC),
         subject = msg.subject.orEmpty(),
         body = textPart(msg)?.let { it.content as? String }.orEmpty().trimEnd(),
         attachments = attachmentNames(msg),

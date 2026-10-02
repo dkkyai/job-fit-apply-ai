@@ -81,6 +81,11 @@ class ReplySupport(
         if (approval.status != Outcomes.AWAITING_APPROVAL) {
             return TapResponse(Outcomes.REFUSED, toast = "This send is already in progress.")
         }
+        // A preview approves the reply as it was then; a stale one must be looked at again.
+        if (Duration.ofMillis(clock.millis() - approval.createdAt) > APPROVAL_TTL) {
+            store.update(approval.id, SUPERSEDED)
+            return TapResponse(Outcomes.EXPIRED, toast = "This preview is more than ${APPROVAL_TTL.toHours()} h old — nothing sent. Tap Reply again.", actionRow = emptyList())
+        }
         if (!sendEnabled) {
             return TapResponse(Outcomes.REFUSED, toast = "Sending is switched off (JOBBOT_SEND_ENABLED). The draft is still in Gmail.")
         }
@@ -111,7 +116,7 @@ class ReplySupport(
             )
         }
         val participants = participants(threadId)
-        val strangers = (current.to + current.cc).filter { it !in participants }
+        val strangers = (current.to + current.cc + current.bcc).filter { it !in participants }
         if (current.to.isEmpty() || strangers.isNotEmpty()) {
             return TapResponse(
                 Outcomes.REFUSED,
@@ -258,6 +263,9 @@ class ReplySupport(
         const val CANCELLED = "cancelled"
         const val SUPERSEDED = "superseded"
         const val RESUME_NAME = "RichardHatcherResume.pdf"
+
+        /** How long a Send preview stays valid. */
+        val APPROVAL_TTL: Duration = Duration.ofHours(24)
         private val JSON = Json { ignoreUnknownKeys = true }
         private val EMAIL = Regex("""[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
 

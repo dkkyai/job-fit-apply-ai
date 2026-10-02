@@ -23,7 +23,13 @@ import kotlin.test.assertTrue
 
 class ReplySupportTest {
     private val now = Instant.parse("2026-10-01T12:00:00Z")
-    private val clock = Clock.fixed(now, ZoneOffset.UTC)
+    private val clock = Moving(now)
+
+    private class Moving(var at: Instant) : Clock() {
+        override fun getZone() = ZoneOffset.UTC
+        override fun withZone(zone: java.time.ZoneId?) = this
+        override fun instant() = at
+    }
     private val user = "8679792351"
     private val self = "dkkytech@gmail.com"
 
@@ -80,7 +86,7 @@ class ReplySupportTest {
         val taps = TapService(Lookup(event(draftText)), store, mapOf("reply" to replies.reply), setOf(user), setOf("reply"), false,
             Duration.ofDays(7), clock, approvals = replies)
 
-        fun tap(verb: String, n: Long = 9) = taps.tap(TapRequest(verb, n, user, user, 5, now.epochSecond))
+        fun tap(verb: String, n: Long = 9) = taps.tap(TapRequest(verb, n, user, user, 5, clock.at.epochSecond))
         fun approvalId(r: TapResponse) = r.replyRow!!.first().callbackData.substringAfter(':').toLong()
     }
 
@@ -200,6 +206,36 @@ class ReplySupportTest {
         val rig = Rig()
         val id = rig.approvalId(rig.tap("reply"))
         assertEquals(Outcomes.REFUSED, rig.taps.tap(TapRequest("send", id, "123", user, 5, now.epochSecond)).outcome)
+        assertTrue(rig.gmail.sent.isEmpty())
+    }
+
+    @Test
+    fun `a stranger hidden in Bcc is caught by both the fingerprint and the recipient check`() {
+        val rig = Rig()
+        val id = rig.approvalId(rig.tap("reply"))
+        val draftId = rig.gmail.drafts.keys.single()
+        val withBcc = Mime.parse(rig.gmail.drafts[draftId]!!).also {
+            it.addRecipients(jakarta.mail.Message.RecipientType.BCC, jakarta.mail.internet.InternetAddress.parse("spy@else.com"))
+        }
+        rig.gmail.drafts[draftId] = Mime.encode(withBcc)
+        assertEquals(Outcomes.REFUSED, rig.tap("send", id).outcome, "fingerprint differs")
+        assertTrue(rig.gmail.sent.isEmpty())
+        // Even a preview that showed the Bcc is refused: spy@else.com is not in the thread.
+        val fresh = rig.replies.requestApproval(9, "k", rig.replies.currentDraft(9)!!, null)
+        assertTrue(rig.replies.approvalPrompt(fresh.id)!!.reply!!.contains("Bcc: spy@else.com"))
+        val r = rig.tap("send", fresh.id)
+        assertEquals(Outcomes.REFUSED, r.outcome)
+        assertTrue(r.toast!!.contains("spy@else.com"), r.toast)
+        assertTrue(rig.gmail.sent.isEmpty())
+    }
+
+    @Test
+    fun `a preview older than a day no longer sends`() {
+        val rig = Rig()
+        val id = rig.approvalId(rig.tap("reply"))
+        clock.at = clock.at.plus(Duration.ofHours(25))
+        val r = rig.tap("send", id)
+        assertEquals(Outcomes.EXPIRED, r.outcome)
         assertTrue(rig.gmail.sent.isEmpty())
     }
 }
