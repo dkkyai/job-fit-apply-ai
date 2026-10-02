@@ -31,6 +31,7 @@ def test_the_mcp_tool_allowlist_matches_jobbot_mcp():
     assert cfg["mcp_servers"]["jfaa"]["tools"]["include"] == [
         "get_job", "list_high_fit", "read_job_file", "list_tracks", "get_profile",
         "get_track_timeline", "add_track_note", "set_track_status", "get_job_email",
+        "get_reply_draft", "write_reply_draft", "request_send_approval",
     ]
 
 

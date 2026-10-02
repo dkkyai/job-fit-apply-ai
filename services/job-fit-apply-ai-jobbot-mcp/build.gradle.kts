@@ -23,6 +23,9 @@ dependencies {
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
 
+    // MIME for reply drafts: parse a Gmail draft, swap its text, keep its attachments byte-exact.
+    implementation("org.eclipse.angus:angus-mail:2.0.4")
+
     // Action table (idempotency, audit, undo records).
     implementation("org.xerial:sqlite-jdbc:3.50.3.0")
 

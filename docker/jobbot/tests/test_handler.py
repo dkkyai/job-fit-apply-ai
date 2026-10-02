@@ -69,6 +69,14 @@ class FakeClient:
         return self.result
 
 
+class FakeBot:
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, **kw):
+        self.sent.append(kw)
+
+
 class FakeAdapter:
     def __init__(self, rec):
         self.rec = rec
@@ -82,6 +90,7 @@ def wire(monkeypatch, client, allowed="8679792351"):
     import jobbot_actions as plugin
     monkeypatch.setenv("JOBBOT_MCP_TOKEN", "tok")
     monkeypatch.setenv("TELEGRAM_ALLOWED_USERS", allowed)
+    monkeypatch.setenv("TELEGRAM_HOME_CHANNEL", "8679792351")
     registered = {}
 
     class Ctx:
@@ -91,11 +100,16 @@ def wire(monkeypatch, client, allowed="8679792351"):
         def register_command(self, name, handler, description=""):
             registered[name] = handler
 
+        def register_hook(self, name, fn):
+            registered["hook:" + name] = fn
+
     plugin.register(Ctx())
     plugin._client = client
     handlers = []
 
     class App:
+        bot = FakeBot()
+
         def add_handler(self, handler, group=0):
             handlers.append((handler, group))
 
@@ -130,7 +144,7 @@ def run(handler, update):
 
 def test_handler_is_scoped_and_runs_before_hermes(monkeypatch):
     handler, group, _, registered = wire(monkeypatch, FakeClient({}))
-    assert handler.pattern == r"^(apply|reply|archive|undo):(\d{1,18})$"
+    assert handler.pattern == r"^(apply|reply|archive|undo|send|cancel):(\d{1,18})$"
     assert group < 0
     assert "jdstatus" in registered
 
@@ -200,3 +214,55 @@ def test_agent_prompt_wakes_the_agent_as_a_reply_to_the_card(monkeypatch):
     assert "#J7663" in event.reply_to_text
     assert event.allow_gateway_control is False
     assert event.source == {"source": {"chat_id": "8679792351", "chat_type": "dm", "user_id": "8679792351", "user_name": "Richard"}}
+
+
+def test_send_and_cancel_taps_are_forwarded_with_the_approval_id(monkeypatch):
+    client = FakeClient({"outcome": "done", "toast": "Sent.", "reply": "Sent to r@x.com.", "action_row": []})
+    handler, _, rec, _ = wire(monkeypatch, client)
+    with pytest.raises(ApplicationHandlerStop):
+        run(handler, tap(rec, data="send:12"))
+    assert client.payloads[0]["verb"] == "send" and client.payloads[0]["seq"] == 12
+
+
+def test_a_reply_with_buttons_carries_its_own_keyboard(monkeypatch):
+    result = {"outcome": "awaiting_approval", "reply": "Reply draft for #J7663 …",
+              "reply_row": [{"text": "✅ Send", "callback_data": "send:4"}, {"text": "✖ Cancel", "callback_data": "cancel:4"}]}
+    handler, _, rec, _ = wire(monkeypatch, FakeClient(result))
+    with pytest.raises(ApplicationHandlerStop):
+        run(handler, tap(rec, data="reply:7663"))
+    (_, args, kwargs), = [c for c in rec.calls if c[0] == "reply_text"]
+    assert args == ("Reply draft for #J7663 …",)
+    assert [b.callback_data for b in kwargs["reply_markup"].inline_keyboard[0]] == ["send:4", "cancel:4"]
+
+
+def test_request_send_approval_posts_the_preview_with_send_and_cancel(monkeypatch):
+    import threading
+    import jobbot_actions as plugin
+
+    class Approvals(FakeClient):
+        def approval(self, approval_id):
+            assert approval_id == 7
+            return {"reply": "Reply draft for #J1 — tap ✅ Send", "reply_row": [{"text": "✅ Send", "callback_data": "send:7"}]}
+
+    _, _, _, registered = wire(monkeypatch, Approvals({}))
+    loop = asyncio.new_event_loop()
+    t = threading.Thread(target=loop.run_forever, daemon=True)
+    t.start()
+    plugin._loop = loop
+    try:
+        hook = registered["hook:post_tool_call"]
+        hook(tool_name="mcp__jfaa__get_job", args={}, result='{"approval_id": 7}', task_id="t")
+        hook(tool_name="mcp__jfaa__request_send_approval", args={"ref": "#J1"},
+             result='{"approval_id": 7, "status": "awaiting"}', task_id="t")
+        import time
+        for _ in range(50):
+            if plugin._bot.sent:
+                break
+            time.sleep(0.02)
+        (sent,) = plugin._bot.sent
+        assert sent["chat_id"] == 8679792351
+        assert sent["text"].startswith("Reply draft for #J1")
+        assert [b.callback_data for b in sent["reply_markup"].inline_keyboard[0]] == ["send:7"]
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+

@@ -108,6 +108,14 @@ class ActionStore(dbPath: String, private val clock: Clock = Clock.systemUTC()) 
             ps.executeQuery().use { rs -> generateSequence { if (rs.next()) rs.toAction() else null }.toList() }
         }
 
+    /** How many [verb] actions reached [status] since [sinceMillis] (the daily send cap). */
+    @Synchronized
+    fun countSince(verb: String, status: String, sinceMillis: Long): Int =
+        conn.prepareStatement("SELECT COUNT(*) FROM actions WHERE verb = ? AND status = ? AND updated_at >= ?").use { ps ->
+            ps.setString(1, verb); ps.setString(2, status); ps.setLong(3, sinceMillis)
+            ps.executeQuery().use { rs -> rs.next(); rs.getInt(1) }
+        }
+
     /** Actions still waiting on the user (or on JobBot), by status. */
     @Synchronized
     fun pendingCounts(): Map<String, Int> =

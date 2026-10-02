@@ -2,6 +2,8 @@ package com.jd.jobbot.cli
 
 import com.jd.jobbot.actions.ActionStore
 import com.jd.jobbot.actions.ArchiveSupport
+import com.jd.jobbot.actions.ReplySupport
+import com.jd.jobbot.jobs.JobIdentity
 import com.jd.jobbot.actions.VerbHandler
 import com.jd.jobbot.bridge.TrackWriter
 import com.jd.jobbot.gmail.GmailAuth
@@ -38,6 +40,7 @@ fun main() {
         null
     }
     val gmail = gmailAuth?.let { GmailClient(it) }
+    val replies = gmail?.let { ReplySupport(it, lookup, bridge, tracks, store, Config.SEND_ENABLED, Config.MAX_SENDS_PER_DAY) }
     val handlers = buildMap<String, VerbHandler> {
         put("apply", ApplyNotImplemented)
         gmail?.let {
@@ -45,6 +48,7 @@ fun main() {
             put("archive", archive.archive)
             put("undo", archive.undo)
         }
+        replies?.let { put("reply", it.reply) }
     }
     val taps = TapService(
         lookup = lookup,
@@ -54,6 +58,7 @@ fun main() {
         handledVerbs = Config.HANDLED_VERBS,
         dryRun = Config.DRY_RUN,
         cardTtl = Duration.ofDays(Config.CARD_TTL_DAYS),
+        approvals = replies,
     )
     val status = StatusReport(bridge, store, Config.HANDLED_VERBS, Config.DRY_RUN, gmailAuth)
     val tools = JobbotTools(
@@ -65,9 +70,11 @@ fun main() {
         highFitScan = Config.HIGH_FIT_SCAN,
         tracks = tracks,
         gmail = gmail,
+        replies = replies,
+        jobKeyOf = { seq -> lookup.event(seq)?.let { JobIdentity.of(it) } },
     )
     log.info("jobbot-mcp on :{} (dry_run={}, verbs={})", Config.PORT, Config.DRY_RUN, Config.HANDLED_VERBS)
     embeddedServer(CIO, port = Config.PORT) {
-        jobbotModule(Config.API_TOKEN, Config.ALLOWED_HOSTS, taps, status, tools)
+        jobbotModule(Config.API_TOKEN, Config.ALLOWED_HOSTS, taps, status, tools) { id -> replies?.approvalPrompt(id) }
     }.start(wait = true)
 }
