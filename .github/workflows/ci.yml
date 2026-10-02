@@ -393,69 +393,6 @@ jobs:
           flags: notifier
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  # ── 4e. JobBot: jobbot-mcp (Kotlin MCP server) + the Hermes plugin/seed (pytest) ──
-  jobbot-mcp:
-    name: JobBot MCP — Kotlin JUnit 5
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: services/job-fit-apply-ai-jobbot-mcp
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: Cache Gradle
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-jobbot-mcp-${{ hashFiles('services/job-fit-apply-ai-jobbot-mcp/**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: ${{ runner.os }}-gradle-jobbot-mcp-
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Run tests
-        run: ./gradlew test
-
-      - name: JaCoCo coverage report
-        if: always()
-        run: ./gradlew jacocoTestReport
-
-      - name: Upload JUnit XML results
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: junit-results-jobbot-mcp
-          path: services/job-fit-apply-ai-jobbot-mcp/build/test-results/test
-
-  jobbot-agent:
-    name: JobBot agent — pytest (plugin + seed)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docker/jobbot
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'   # the Hermes image's interpreter
-
-      # The plugin's Telegram/Hermes imports are stubbed in the tests; only these are needed.
-      - name: Install test deps
-        run: python -m pip install pytest==8.4.2 pyyaml==6.0.3
-
-      - name: Plugin + seed tests
-        run: python -m pytest -v tests
-
   # ── 4d. Compose data-root mount contract (docker only — no JVM, no build) ──
   # Its own job: the contract is pure `docker compose config`, so it should report in seconds
   # rather than waiting behind the e2e job's three upstream Kotlin builds.
@@ -486,6 +423,24 @@ jobs:
 
       # No third-party deps — the analyzer and its tests are stdlib-only.
       - name: Unit + integration tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+  env-llm-tuner:
+    name: Env-llm-tuner — unittest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/job-fit-apply-ai-pipeline/tuner/env-llm-tuner
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      # Stdlib-only and offline: the llm-stats fetch is stubbed in the tests.
+      - name: Unit tests
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v
 
   # ── 5. E2E — Bridge → Processor → Notifier against the compose slice ────────
