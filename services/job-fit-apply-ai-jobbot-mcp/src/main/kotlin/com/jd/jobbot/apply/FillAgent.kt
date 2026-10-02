@@ -199,7 +199,8 @@ class FillAgent(
                     is GoogleWindow.Popup -> googlePopup(w.page, job)
                     is GoogleWindow.FedCm -> fedCm(w, job)
                 }
-                if (site != null && !result.startsWith("handoff:")) credentials.recordGoogle(site, page.url, job.ref)
+                // Only a sign-in that went through (or a same-tab redirect to Google) is a Google account — never an error or a hand-off.
+                if (site != null && result.startsWith("ok")) credentials.recordGoogle(site, page.url, job.ref)
                 result
             }
             else -> "error: unknown action ${a.text("do")}"

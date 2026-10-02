@@ -379,6 +379,19 @@ class FillAgentTest {
     }
 
     @Test
+    fun `a Google popup that cannot be read is not recorded as a Google account`() {
+        val unreadable = object : ApplyPage by FakePage(Snapshot("https://accounts.google.com/gsi/select")) {
+            override fun snapshot(): Snapshot = throw IllegalStateException("Target crashed")
+        }
+        val page = FakePage(signIn())
+        page.onClickGoogle = { GoogleWindow.Popup(unreadable) }
+        val llm = Script("""{"status":"continue","actions":[{"do":"google_sign_in","id":"e110"}]}""", """{"status":"need_human","note":"Google failed"}""")
+        agent(llm).run(page, jobright, startFresh = false)
+        assertTrue(llm.prompts.last().contains("error: Target crashed"), llm.prompts.last())
+        assertEquals(null, Credentials(dir.resolve("c.json"), "dkkytech@gmail.com").get("jobright.ai"))
+    }
+
+    @Test
     fun `a Google popup that never finishes hands off instead of looping`() {
         val popup = FakePage(Snapshot("https://jobright.ai/oauth/callback", elements = emptyList()))
         val page = FakePage(signIn())
