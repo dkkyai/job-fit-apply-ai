@@ -8,6 +8,7 @@ import com.jd.poller.gmail.TerminalLabels
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.eq
@@ -17,6 +18,8 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 @DisplayName("WritebackLoopTest")
 class WritebackLoopTest {
@@ -53,20 +56,28 @@ class WritebackLoopTest {
         verify(bridge).markWritebackDone("job-1")
     }
 
+    private fun recruiterGmail(draft: (List<String>) -> String = { "draft-id" }) = labelStubs().apply {
+        whenever(getMessageMeta("m2")).doReturn(GmailClient.MessageMeta("Jane Recruiter <jane@firm.com>", "Staff SDET role"))
+        whenever(createDraftReply(any(), any(), any(), any(), any())).doAnswer { draft(it.getArgument(4)) }
+    }
+
+    private fun artifactBridge(pdf: File, cl: File) = mock<PollerBridgeClient> {
+        on { fetchCompleted(any(), any()) } doReturn listOf(recruiterJob())
+        on { downloadArtifact(eq("/api/jobs/job-2/resume.pdf"), any()) } doReturn pdf
+        on { downloadArtifact(eq("/api/jobs/job-2/cover_letter.txt"), any()) } doReturn cl
+    }
+
+    private fun tempArtifact(prefix: String, suffix: String) =
+        File.createTempFile(prefix, suffix).apply { writeText("data"); deleteOnExit() }
+
     @Test
     @DisplayName("recruiter job: delivers the draft with downloaded attachments, then marks done")
     fun recruiterJobDeliversDraft() {
-        val pdf = File.createTempFile("resume", ".pdf").apply { deleteOnExit() }
-        val cl = File.createTempFile("cover", ".txt").apply { deleteOnExit() }
-        val gmail = labelStubs().apply {
-            whenever(getMessageMeta("m2")).doReturn(GmailClient.MessageMeta("Jane Recruiter <jane@firm.com>", "Staff SDET role"))
-            whenever(createDraftReply(any(), any(), any(), any(), any())).doReturn("draft-id")
-        }
-        val bridge = mock<PollerBridgeClient> {
-            on { fetchCompleted(any(), any()) } doReturn listOf(recruiterJob())
-            on { downloadArtifact(eq("/api/jobs/job-2/resume.pdf"), any()) } doReturn pdf
-            on { downloadArtifact(eq("/api/jobs/job-2/cover_letter.txt"), any()) } doReturn cl
-        }
+        val pdf = tempArtifact("resume", ".pdf")
+        val cl = tempArtifact("cover", ".txt")
+        var existedDuringDraft = false
+        val gmail = recruiterGmail { paths -> existedDuringDraft = paths.all { File(it).exists() }; "draft-id" }
+        val bridge = artifactBridge(pdf, cl)
 
         val done = WritebackLoop(gmail, bridge).drainOnce()
 
@@ -80,6 +91,44 @@ class WritebackLoopTest {
             eq(listOf(pdf.absolutePath, cl.absolutePath)),
         )
         verify(bridge).markWritebackDone("job-2")
+        assertTrue(existedDuringDraft, "attachments must still exist while the draft is built")
+        assertFalse(pdf.exists(), "resume temp file deleted after the draft is created")
+        assertFalse(cl.exists(), "cover-letter temp file deleted after the draft is created")
+    }
+
+    @Test
+    @DisplayName("draft creation failure still deletes the downloaded temp files and leaves the job for retry")
+    fun draftFailureDeletesTempFiles() {
+        val pdf = tempArtifact("resume", ".pdf")
+        val cl = tempArtifact("cover", ".txt")
+        val gmail = recruiterGmail { throw RuntimeException("gmail 503") }
+        val bridge = artifactBridge(pdf, cl)
+
+        val done = WritebackLoop(gmail, bridge).drainOnce()
+
+        assertEquals(0, done)
+        verify(bridge, never()).markWritebackDone(any())   // stays in the feed for next pass
+        assertFalse(pdf.exists(), "resume temp file deleted even though the draft failed")
+        assertFalse(cl.exists(), "cover-letter temp file deleted even though the draft failed")
+    }
+
+    @Test
+    @DisplayName("a failed cover-letter download still deletes the already-downloaded resume")
+    fun partialDownloadFailureDeletesEarlierTempFile() {
+        val pdf = tempArtifact("resume", ".pdf")
+        val gmail = recruiterGmail()
+        val bridge = mock<PollerBridgeClient> {
+            on { fetchCompleted(any(), any()) } doReturn listOf(recruiterJob())
+            on { downloadArtifact(eq("/api/jobs/job-2/resume.pdf"), any()) } doReturn pdf
+            on { downloadArtifact(eq("/api/jobs/job-2/cover_letter.txt"), any()) } doThrow RuntimeException("bridge reset")
+        }
+
+        val done = WritebackLoop(gmail, bridge).drainOnce()
+
+        assertEquals(0, done)
+        verify(gmail, never()).createDraftReply(any(), any(), any(), any(), any())
+        verify(bridge, never()).markWritebackDone(any())
+        assertFalse(pdf.exists(), "resume temp file deleted when the second download fails")
     }
 
     @Test
