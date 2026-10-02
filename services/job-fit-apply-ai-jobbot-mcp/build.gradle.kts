@@ -26,7 +26,7 @@ dependencies {
     // MIME for reply drafts: parse a Gmail draft, swap its text, keep its attachments byte-exact.
     implementation("org.eclipse.angus:angus-mail:2.0.4")
 
-    // Apply (Phase 4): drive the apply-browser over CDP; registrable domains for credential keys.
+    // Apply (Phase 4): drive jobbot-browser over CDP; registrable domains for credential keys.
     implementation("com.microsoft.playwright:playwright:1.63.0")
     implementation("com.google.guava:guava:33.5.0-jre")
 

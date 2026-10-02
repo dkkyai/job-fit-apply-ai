@@ -28,6 +28,8 @@ def compose_config(*files: Path, environment: dict[str, str]) -> dict:
         "PIPELINE_ENV_FILE",
         "CONTAINER_PREFIX",
         "E2E_STATE_DIR",
+        # The browser's credentials: a developer's shell must not leak into the assertions.
+        "JOBBOT_BROWSER_PASSWORD", "JOBBOT_BROWSER_USER", "APPLY_BROWSER_PASSWORD", "APPLY_BROWSER_USER",
     ):
         env.pop(name, None)
     env.update(environment)
@@ -334,7 +336,7 @@ def test_jobbot_profile_is_isolated() -> None:
     assert set(mounts(config, "jobbot")) == {"/opt/data"}, "the agent container mounts nothing but its own home"
 
     assert set(services["jobbot"]["networks"]) == {"jobbot"}, services["jobbot"]["networks"]
-    assert set(services["jobbot-mcp"]["networks"]) == {"default", "jobbot", "apply"}, services["jobbot-mcp"]["networks"]
+    assert set(services["jobbot-mcp"]["networks"]) == {"default", "jobbot", "jobbot-browser"}, services["jobbot-mcp"]["networks"]
     assert_mount(config, "jobbot-mcp", "/secrets", root / "jobbot-secrets", read_only=False)
     assert_mount(config, "jobbot-mcp", "/templates", root / "jobbot-templates", read_only=False)
     assert_mount(config, "notifier", "/templates", root / "jobbot-templates", read_only=True)
@@ -343,14 +345,26 @@ def test_jobbot_profile_is_isolated() -> None:
 
     plain = compose_config(BASE, environment={"COMPOSE_PROFILES": "intake"})["services"]
     assert "jobbot" not in plain and "jobbot-mcp" not in plain, "jobbot services need the jobbot profile"
-    assert "apply-browser" not in plain, "the apply browser needs the apply profile"
+    assert "jobbot-browser" not in plain, "JobBot's browser needs the jobbot-browser profile"
 
-    applied = compose_config(BASE, environment={"COMPOSE_PROFILES": "jobbot,apply", "JFAA_DATA_ROOT": str(root)})
-    browser = applied["services"]["apply-browser"]
-    assert set(browser["networks"]) == {"apply"}, "CDP must be reachable from jobbot-mcp only — never the agent"
-    assert_mount(applied, "apply-browser", "/config", root / "apply-browser", read_only=False)
+    applied = compose_config(BASE, environment={"COMPOSE_PROFILES": "jobbot,jobbot-browser", "JFAA_DATA_ROOT": str(root)})
+    browser = applied["services"]["jobbot-browser"]
+    assert set(browser["networks"]) == {"jobbot-browser"}, "CDP must be reachable from jobbot-mcp only — never the agent"
+    assert "jobbot-browser" in applied["services"]["jobbot-mcp"]["networks"], "jobbot-mcp drives the browser"
+    assert "jobbot-browser" not in applied["services"]["jobbot"]["networks"], "the agent never reaches CDP"
+    assert_mount(applied, "jobbot-browser", "/config", root / "jobbot-browser", read_only=False)
     published = {(p.get("host_ip"), p["published"], p["target"]) for p in browser["ports"]}
     assert published == {("127.0.0.1", "3200", 3000)}, f"only the viewer, only on loopback: {published}"
+    assert browser["environment"]["PASSWORD"] == "", "no password configured here"
+
+    # The old names still work, so a not-yet-renamed .env keeps its browser and password.
+    legacy = compose_config(BASE, environment={"COMPOSE_PROFILES": "jobbot,apply", "JFAA_DATA_ROOT": str(root),
+                                               "APPLY_BROWSER_PASSWORD": "old-secret", "APPLY_BROWSER_USER": "olduser"})
+    old = legacy["services"]["jobbot-browser"]["environment"]
+    assert (old["PASSWORD"], old["CUSTOM_USER"]) == ("old-secret", "olduser"), old
+    renamed = compose_config(BASE, environment={"COMPOSE_PROFILES": "jobbot-browser", "JFAA_DATA_ROOT": str(root),
+                                                "JOBBOT_BROWSER_PASSWORD": "new-secret", "APPLY_BROWSER_PASSWORD": "old-secret"})
+    assert renamed["services"]["jobbot-browser"]["environment"]["PASSWORD"] == "new-secret", "the new name wins"
 
     e2e = compose_config(BASE, E2E, environment={})["services"]
     assert "jobbot" not in e2e and "jobbot-mcp" not in e2e, "the e2e slice must never start JobBot"

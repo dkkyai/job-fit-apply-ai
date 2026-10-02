@@ -228,13 +228,14 @@ else
   else bad "JOBBOT_TELEGRAM_BOT_TOKEN blank"; fi
   [ "${JOBBOT_DRY_RUN:-false}" = "true" ] && warn "JOBBOT_DRY_RUN=true — taps are only logged"
   if [ "${JOBBOT_APPLY_ENABLED:-false}" = "true" ]; then
-    case "${COMPOSE_PROFILES-}" in *apply*) ;; *) bad "JOBBOT_APPLY_ENABLED=true but COMPOSE_PROFILES has no 'apply' (no apply browser)";; esac
-    [ -n "${APPLY_BROWSER_PASSWORD:-}" ] && ok "APPLY_BROWSER_PASSWORD set" || bad "APPLY_BROWSER_PASSWORD blank — the apply browser refuses to start"
-    if running "$P-apply-browser"; then
-      if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-apply-browser" 2>/dev/null)" = "healthy" ]; then
-        ok "apply-browser healthy (Chromium DevTools answering)"
-      else warn "apply-browser up but not healthy  →  docker logs $P-apply-browser"; fi
-    else bad "apply-browser not running  →  docker compose --profile apply up -d apply-browser"; fi
+    case ",${COMPOSE_PROFILES-}," in *,jobbot-browser,*|*,apply,*) ;; *) bad "JOBBOT_APPLY_ENABLED=true but COMPOSE_PROFILES has no 'jobbot-browser' (no browser to fill in)";; esac
+    [ -n "${JOBBOT_BROWSER_PASSWORD:-${APPLY_BROWSER_PASSWORD:-}}" ] && ok "JOBBOT_BROWSER_PASSWORD set" || bad "JOBBOT_BROWSER_PASSWORD blank — jobbot-browser refuses to start"
+    [ -n "${APPLY_BROWSER_PASSWORD:-}${APPLY_BROWSER_USER:-}${JOBBOT_APPLY_VIEWER_URL:-}" ] && warn "old APPLY_BROWSER_* / JOBBOT_APPLY_VIEWER_URL names in .env — rename to JOBBOT_BROWSER_*"
+    if running "$P-jobbot-browser"; then
+      if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-jobbot-browser" 2>/dev/null)" = "healthy" ]; then
+        ok "jobbot-browser healthy (Chromium DevTools answering)"
+      else warn "jobbot-browser up but not healthy  →  docker logs $P-jobbot-browser"; fi
+    else bad "jobbot-browser not running  →  docker compose --profile jobbot-browser up -d jobbot-browser"; fi
   else ok "Apply not enabled — an Apply tap answers \"Not implemented yet\""; fi
   # Telegram allows one getUpdates reader per token: the retired PM2 bot would fight the container (HTTP 409).
   if command -v pm2 >/dev/null 2>&1 && pm2 jlist 2>/dev/null | python3 -c 'import json,sys; sys.exit(0 if any(p.get("name")=="nanobot-jobbot" and p.get("pm2_env",{}).get("status")=="online" for p in json.load(sys.stdin)) else 1)' 2>/dev/null; then

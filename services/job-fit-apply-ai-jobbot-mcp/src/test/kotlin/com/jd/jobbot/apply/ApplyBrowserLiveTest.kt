@@ -29,10 +29,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * End to end against the REAL apply-browser container (headed Chromium over CDP) and a local
+ * End to end against the REAL jobbot-browser container (headed Chromium over CDP) and a local
  * fixture job site, with a scripted model. Opt-in, because it needs the container:
  *
- *   APPLY_BROWSER_CDP_URL=http://127.0.0.1:19223 FIXTURE_HOST=host.docker.internal ./gradlew test --tests '*ApplyBrowserLiveTest*'
+ *   JOBBOT_BROWSER_CDP_URL=http://127.0.0.1:19223 FIXTURE_HOST=host.docker.internal ./gradlew test --tests '*ApplyBrowserLiveTest*'
  *
  * Proves: CDP attach (IP-resolved), the snapshot script on real Chromium, the navigation guard at
  * the network layer, account creation with a generated password the model never sees, the fill
@@ -41,7 +41,7 @@ import kotlin.test.assertTrue
  * iframe opens the popup, the popup is followed until it closes, and a popup that opens somewhere
  * forbidden is closed at once. (The fixture stands in for Google, so no real account is touched.)
  */
-@EnabledIfEnvironmentVariable(named = "APPLY_BROWSER_CDP_URL", matches = ".+")
+@EnabledIfEnvironmentVariable(named = "JOBBOT_BROWSER_CDP_URL", matches = ".+")
 class ApplyBrowserLiveTest {
     @TempDir lateinit var dir: Path
     private lateinit var site: HttpServer
@@ -133,7 +133,7 @@ class ApplyBrowserLiveTest {
         val creds = Credentials(dir.resolve("site-credentials.json"), "dkkytech@gmail.com")
         val model = ScriptedModel()
         val service = ApplyService(
-            browser = PlaywrightApplyBrowser(System.getenv("APPLY_BROWSER_CDP_URL")),
+            browser = PlaywrightApplyBrowser(System.getenv("JOBBOT_BROWSER_CDP_URL")),
             fill = FillAgent(model, creds, null)::run,
             lookup = lookup,
             contextFor = { JobContext("#J9", "Acme", "Staff SDET", "$base/job", "dkkytech@gmail.com", "years: 15+", null, null, "%PDF-1.4 fixture".toByteArray()) },
@@ -169,7 +169,7 @@ class ApplyBrowserLiveTest {
 
     @Test
     fun `the snapshot sees Google's embedded button and a site's own Google button`() {
-        val page = PlaywrightApplyBrowser(System.getenv("APPLY_BROWSER_CDP_URL")).open { true }
+        val page = PlaywrightApplyBrowser(System.getenv("JOBBOT_BROWSER_CDP_URL")).open { true }
         try {
             page.goto("$base/login")
             val snap = page.snapshot()
@@ -201,7 +201,7 @@ class ApplyBrowserLiveTest {
             }
         }
         val job = JobContext("#J9", "Acme", "Staff SDET", "$base/login", "dkkytech@gmail.com", null, null, null, null)
-        val page = PlaywrightApplyBrowser(System.getenv("APPLY_BROWSER_CDP_URL")).open { SitePolicy.navigationAllowed(it, job.jobUrl, job.company) }
+        val page = PlaywrightApplyBrowser(System.getenv("JOBBOT_BROWSER_CDP_URL")).open { SitePolicy.navigationAllowed(it, job.jobUrl, job.company) }
         try {
             val r = FillAgent(model, creds, null).run(page, job)
             assertTrue(r is FillResult.Ready, r.toString())
@@ -217,7 +217,7 @@ class ApplyBrowserLiveTest {
 
     @Test
     fun `a Google popup that opens somewhere forbidden is closed at once`() {
-        val cdp = System.getenv("APPLY_BROWSER_CDP_URL")
+        val cdp = System.getenv("JOBBOT_BROWSER_CDP_URL")
         val page = PlaywrightApplyBrowser(cdp).open { SitePolicy.navigationAllowed(it, "$base/login3", "Acme") }
         try {
             page.goto("$base/login3")

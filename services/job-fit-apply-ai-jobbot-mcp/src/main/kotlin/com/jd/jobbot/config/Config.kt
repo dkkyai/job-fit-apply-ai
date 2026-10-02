@@ -62,9 +62,10 @@ object Config {
     // ── Apply (Phase 4) ─────────────────────────────────────────────────────────
     /** Off = an Apply tap answers "Not implemented yet" (Q4). */
     val APPLY_ENABLED: Boolean = get("JOBBOT_APPLY_ENABLED", "false").equals("true", ignoreCase = true)
-    val APPLY_CDP_URL: String = get("JOBBOT_APPLY_CDP_URL", "http://apply-browser:9223")
-    /** Where Richard watches and takes over (tailnet URL of the apply-browser viewer). */
-    val APPLY_VIEWER_URL: String = get("JOBBOT_APPLY_VIEWER_URL", "")
+    /** JobBot's browser (the jobbot-browser container) over CDP. The JOBBOT_APPLY_* names are the old ones. */
+    val BROWSER_CDP_URL: String = get("JOBBOT_BROWSER_CDP_URL", get("JOBBOT_APPLY_CDP_URL", "http://jobbot-browser:9223"))
+    /** Where Richard watches and takes over (tailnet URL of the jobbot-browser viewer). */
+    val BROWSER_VIEWER_URL: String = get("JOBBOT_BROWSER_VIEWER_URL", get("JOBBOT_APPLY_VIEWER_URL", ""))
     val APPLY_REVIEW_TTL_HOURS: Long = get("JOBBOT_APPLY_REVIEW_TTL_HOURS", "4").toLong()
     val APPLY_REMINDER_HOURS: Long = get("JOBBOT_APPLY_REMINDER_HOURS", "3").toLong()
     /** The identity every site account uses. */

@@ -61,14 +61,14 @@ fun main() {
     val credentials = Credentials(Paths.get(Config.CREDENTIALS_FILE), Config.ACCOUNT_EMAIL)
     val applyService = if (Config.APPLY_ENABLED) {
         ApplyService(
-            browser = PlaywrightApplyBrowser(Config.APPLY_CDP_URL),
+            browser = PlaywrightApplyBrowser(Config.BROWSER_CDP_URL),
             fill = FillAgent(OpenAiCompatibleLlm(Config.LLM_URL, Config.FILL_MODEL), credentials, gmail?.let { Verifier(it) })::run,
             lookup = lookup,
             contextFor = { seq -> jobContext(seq, lookup, bridge, files, profile) },
             store = store,
             outbox = outbox,
             tracks = tracks,
-            viewerUrl = Config.APPLY_VIEWER_URL.ifBlank { null },
+            viewerUrl = Config.BROWSER_VIEWER_URL.ifBlank { null },
             credentials = credentials,
             reviewTtl = Duration.ofHours(Config.APPLY_REVIEW_TTL_HOURS),
             reminderAfter = Duration.ofHours(Config.APPLY_REMINDER_HOURS),

@@ -33,14 +33,14 @@ env_port() { # env_port <VAR> <default> — read VAR from ENV_FILE (env var wins
 MARKSERV_PORT="$(env_port MARKSERV_PORT 8081)"
 BRIDGE_PORT="$(env_port JD_BRIDGE_PORT 8765)"
 FRONTEND_PORT="$(env_port FRONTEND_PORT 3030)"
-APPLY_VIEWER_PORT="$(env_port APPLY_VIEWER_PORT 3200)"
+JOBBOT_BROWSER_VIEWER_PORT="$(env_port JOBBOT_BROWSER_VIEWER_PORT "$(env_port APPLY_VIEWER_PORT 3200)")"
 
 # One line per tailnet-exposed service: "<tailnet-port>|<local-target>|<label>".
 SERVICES="
 $MARKSERV_PORT|http://127.0.0.1:$MARKSERV_PORT|markserv
 $BRIDGE_PORT|http://127.0.0.1:$BRIDGE_PORT|bridge
 $FRONTEND_PORT|http://127.0.0.1:$FRONTEND_PORT|frontend
-$APPLY_VIEWER_PORT|http://127.0.0.1:$APPLY_VIEWER_PORT|apply-viewer
+$JOBBOT_BROWSER_VIEWER_PORT|http://127.0.0.1:$JOBBOT_BROWSER_VIEWER_PORT|jobbot-browser-viewer
 "
 
 # TCP connect check on the host loopback (bash /dev/tcp).

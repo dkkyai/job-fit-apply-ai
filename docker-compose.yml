@@ -369,7 +369,7 @@ services:
     depends_on:
       bridge:
         condition: service_healthy
-    networks: [default, jobbot, apply]
+    networks: [default, jobbot, jobbot-browser]
     extra_hosts:
       # The fill loop's model (Ollama route on the host), same as the agent's.
       - "host.docker.internal:host-gateway"
@@ -392,8 +392,8 @@ services:
       JOBBOT_MAX_SENDS_PER_DAY: "${JOBBOT_MAX_SENDS_PER_DAY:-10}"
       # Apply (Phase 4): off = an Apply tap answers "Not implemented yet". Needs the `apply` profile.
       JOBBOT_APPLY_ENABLED: "${JOBBOT_APPLY_ENABLED:-false}"
-      JOBBOT_APPLY_CDP_URL: "http://apply-browser:9223"
-      JOBBOT_APPLY_VIEWER_URL: "${JOBBOT_APPLY_VIEWER_URL:-}"
+      JOBBOT_BROWSER_CDP_URL: "http://jobbot-browser:9223"
+      JOBBOT_BROWSER_VIEWER_URL: "${JOBBOT_BROWSER_VIEWER_URL:-${JOBBOT_APPLY_VIEWER_URL:-}}"
       JOBBOT_ACCOUNT_EMAIL: "${JOBBOT_ACCOUNT_EMAIL:-dkkytech@gmail.com}"
       JOBBOT_CREDENTIALS_FILE: "/secrets/site-credentials.json"
       JOBBOT_LLM_URL: "http://host.docker.internal:11434/v1"
@@ -444,16 +444,17 @@ services:
       - "${JD_JOBBOT_HOME_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/jobbot}:/opt/data"
     # No ports.
 
-  # The browser JobBot fills applications in (profile: apply). Headed Chromium with a persistent
+  # The browser JobBot fills applications in (profile: jobbot-browser). Headed Chromium with a persistent
   # profile (site logins + the dkkytech@ Google session); CDP is reachable only on the private
-  # `apply` network, from jobbot-mcp; the web viewer is published on host loopback for
-  # `tailscale serve`, behind APPLY_BROWSER_PASSWORD. See docs/jobbot.md (Apply).
-  apply-browser:
-    build: ./docker/apply-browser
-    container_name: ${CONTAINER_PREFIX:-jobfit}-apply-browser
-    profiles: ["apply"]
+  # `jobbot-browser` network, from jobbot-mcp; the web viewer is published on host loopback for
+  # `tailscale serve`, behind JOBBOT_BROWSER_PASSWORD. See docs/jobbot.md (Apply).
+  jobbot-browser:
+    build: ./docker/jobbot-browser
+    container_name: ${CONTAINER_PREFIX:-jobfit}-jobbot-browser
+    # "apply" is the profile's old name, kept so an older COMPOSE_PROFILES still starts it.
+    profiles: ["jobbot-browser", "apply"]
     restart: unless-stopped
-    networks: [apply]
+    networks: [jobbot-browser]
     shm_size: "1gb"
     security_opt:
       - seccomp:unconfined
@@ -461,13 +462,14 @@ services:
       PUID: "1000"
       PGID: "1000"
       TZ: "America/Los_Angeles"
-      CUSTOM_USER: "${APPLY_BROWSER_USER:-richard}"
+      # The old APPLY_BROWSER_* names still work.
+      CUSTOM_USER: "${JOBBOT_BROWSER_USER:-${APPLY_BROWSER_USER:-richard}}"
       # Required: the container refuses to start without it (the viewer is a browser signed in to Google).
-      PASSWORD: "${APPLY_BROWSER_PASSWORD:-}"
+      PASSWORD: "${JOBBOT_BROWSER_PASSWORD:-${APPLY_BROWSER_PASSWORD:-}}"
     volumes:
-      - "${JD_APPLY_BROWSER_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/apply-browser}:/config"
+      - "${JD_JOBBOT_BROWSER_HOST:-${JD_APPLY_BROWSER_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/jobbot-browser}}:/config"
     ports:
-      - "127.0.0.1:${APPLY_VIEWER_PORT:-3200}:3000"
+      - "127.0.0.1:${JOBBOT_BROWSER_VIEWER_PORT:-${APPLY_VIEWER_PORT:-3200}}:3000"
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:9222/json/version"]
       interval: 30s
@@ -483,8 +485,8 @@ networks:
   # The agent's network: jobbot and jobbot-mcp only. Outbound internet still works (Telegram,
   # web research); JFAA's own services are not on it.
   jobbot:
-  # The apply browser's network: apply-browser and jobbot-mcp only — the agent cannot reach CDP.
-  apply:
+  # JobBot's browser network: jobbot-browser and jobbot-mcp only — the agent cannot reach CDP.
+  jobbot-browser:
 
 volumes:
   jobfit-db-data:

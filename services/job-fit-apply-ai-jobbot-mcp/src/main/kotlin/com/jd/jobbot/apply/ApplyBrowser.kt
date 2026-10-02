@@ -84,7 +84,7 @@ fun interface ApplyBrowser {
 }
 
 /**
- * The real apply browser: the long-lived headed Chromium in the `apply-browser` container, over
+ * The real apply browser: the long-lived headed Chromium in the `jobbot-browser` container, over
  * CDP. Tabs open in its default (persistent) context, so site logins and the Google session
  * carry over. Every main-frame navigation passes [guard] first — a refused one is aborted at the
  * network layer, so neither the model nor a page script can reach a forbidden site.
