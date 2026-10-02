@@ -40,8 +40,10 @@ class ReplySupportTest {
         val sent = mutableListOf<String>()
         var nextId = 1
 
+        var onUpdate: () -> Unit = {}
+
         fun msg(id: String, from: String, to: String, subject: String = "Re: Staff SDET role", labels: List<String> = listOf("INBOX")) =
-            Message(id, "t1", labels, from, to, null, subject, "Wed, 1 Oct 2026", null, "body")
+            Message(id, "t1", labels, from, to, null, subject, "Wed, 1 Oct 2026", null, "body", internalDate = clock.at.toEpochMilli())
 
         override fun message(messageId: String) = thread.first { it.id == messageId }
         override fun thread(threadId: String) = thread.toList()
@@ -49,7 +51,7 @@ class ReplySupportTest {
         override fun drafts() = drafts.keys.map { it to "t1" }
         override fun draftRaw(draftId: String) = drafts[draftId] ?: throw GmailException(404, "gone")
         override fun createDraft(raw: String, threadId: String?) = "d${nextId++}".also { drafts[it] = raw }
-        override fun updateDraft(draftId: String, raw: String, threadId: String?) = draftId.also { drafts[it] = raw }
+        override fun updateDraft(draftId: String, raw: String, threadId: String?) = draftId.also { onUpdate(); drafts[it] = raw }
         override fun headers(messageId: String) = mapOf("from" to "Rec <rec@agency.com>", "subject" to "Staff SDET role", "message-id" to "<m1@agency.com>")
         override fun sendDraft(draftId: String): String {
             val raw = drafts.remove(draftId)!!
@@ -241,14 +243,26 @@ class ReplySupportTest {
 
     @Test
     fun `an interrupted send is recovered, never stuck`() {
-        // Process died after Gmail sent: the draft is gone → recorded as sent, nothing re-sent.
+        // Process died after Gmail sent: our message is in the thread → recorded as sent, nothing re-sent.
         val sent = Rig()
         val a = sent.approvalId(sent.tap("reply"))
         sent.store.update(a, ReplySupport.SENDING)
         sent.gmail.drafts.clear()
+        sent.gmail.thread += sent.gmail.msg("s1", "Richard <$self>", "rec@agency.com", labels = listOf("SENT"))
         clock.at = clock.at.plus(Duration.ofMinutes(5))
         assertEquals(Outcomes.ALREADY, sent.tap("send", a).outcome)
         assertEquals(Outcomes.DONE, sent.store.byId(a)!!.status)
+
+        // The draft was deleted by hand and nothing was sent → cancelled, never "Already sent".
+        val deleted = Rig()
+        val c = deleted.approvalId(deleted.tap("reply"))
+        deleted.store.update(c, ReplySupport.SENDING)
+        deleted.gmail.drafts.clear()
+        clock.at = clock.at.plus(Duration.ofMinutes(5))
+        val r = deleted.tap("send", c)
+        assertEquals(Outcomes.REFUSED, r.outcome)
+        assertTrue(r.toast!!.contains("nothing was sent"), r.toast)
+        assertEquals(ReplySupport.CANCELLED, deleted.store.byId(c)!!.status)
 
         // Process died before Gmail sent: the draft is still there → the tap sends it.
         val unsent = Rig()
@@ -265,6 +279,25 @@ class ReplySupportTest {
         val a = rig.approvalId(rig.tap("reply"))
         rig.store.update(a, ReplySupport.SENDING)
         assertEquals(Outcomes.REFUSED, rig.tap("send", a).outcome)
+        assertTrue(rig.gmail.sent.isEmpty())
+    }
+
+    @Test
+    fun `a draft edit racing a Send tap can never be sent unseen`() {
+        val rig = Rig()
+        val id = rig.approvalId(rig.tap("reply"))
+        val editing = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        rig.gmail.onUpdate = { editing.countDown(); release.await() }
+        val writer = Thread { rig.replies.writeDraft(9, "Edited by the model") }.apply { start() }
+        editing.await()
+        var result: TapResponse? = null
+        val tapper = Thread { result = rig.tap("send", id) }.apply { start() }
+        Thread.sleep(200)
+        assertTrue(rig.gmail.sent.isEmpty(), "Send must wait for the edit in progress")
+        release.countDown()
+        writer.join(); tapper.join()
+        assertEquals(Outcomes.REFUSED, result!!.outcome, "the edited draft no longer matches the preview")
         assertTrue(rig.gmail.sent.isEmpty())
     }
 }

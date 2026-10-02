@@ -38,6 +38,12 @@ class ReplySupport(
 ) : ApprovalHandler {
     private val log = LoggerFactory.getLogger(ReplySupport::class.java)
 
+    /**
+     * One lock for everything that reads or writes a reply draft from inside JobBot: the model's
+     * write_reply_draft (MCP thread) can never land between Send's fingerprint check and the send.
+     */
+    private val draftLock = Any()
+
     data class Draft(val id: String, val threadId: String, val view: Mime.View)
 
     /** The card's Reply tap: show the draft (creating it from JFAA's text if needed) with Send/Cancel. */
@@ -71,7 +77,9 @@ class ReplySupport(
     }
 
     /** ✅ Send under a preview. [id] is the approval action's id. */
-    override fun send(id: Long, req: TapRequest): TapResponse {
+    override fun send(id: Long, req: TapRequest): TapResponse = synchronized(draftLock) { sendLocked(id) }
+
+    private fun sendLocked(id: Long): TapResponse {
         val approval = store.byId(id)?.takeIf { it.verb == SEND }
             ?: return TapResponse(Outcomes.REFUSED, toast = "Unknown approval.", actionRow = emptyList())
         when (approval.status) {
@@ -148,8 +156,9 @@ class ReplySupport(
 
     /**
      * An approval left SENDING (the process stopped mid-send). Recent: genuinely in progress.
-     * Older: if Gmail no longer has the draft, the send went through — record it; if it still
-     * does, the send never happened — the tap may proceed.
+     * Older: proof of sending is our own message in the thread after the approval — not a missing
+     * draft, which could also mean someone deleted it. Sent ⇒ record it; draft still there ⇒ the
+     * tap may proceed; neither ⇒ nothing was sent and the approval is cancelled.
      */
     private fun recoverInterruptedSend(approval: ActionStore.Action): TapResponse? {
         if (Duration.ofMillis(clock.millis() - approval.updatedAt) < SEND_STALL) {
@@ -162,9 +171,18 @@ class ReplySupport(
             if (e.status == 404) false else throw e
         }
         if (!stillThere) {
-            store.update(approval.id, Outcomes.DONE)
-            recordTrackEvent(approval.seq, "email_sent", "Reply sent from Telegram (recovered after an interrupted send)")
-            return TapResponse(Outcomes.ALREADY, toast = "Already sent.", actionRow = emptyList())
+            val threadId = JSON.parseToJsonElement(approval.details ?: "{}").jsonObject["thread_id"]!!.jsonPrimitive.content
+            val self = gmail.selfAddress()
+            val sentSince = gmail.thread(threadId).any { m ->
+                addresses(m.from.orEmpty()).any { it.equals(self, ignoreCase = true) } && (m.internalDate ?: 0) >= approval.createdAt - 60_000
+            }
+            if (sentSince) {
+                store.update(approval.id, Outcomes.DONE)
+                recordTrackEvent(approval.seq, "email_sent", "Reply sent from Telegram (recovered after an interrupted send)")
+                return TapResponse(Outcomes.ALREADY, toast = "Already sent.", actionRow = emptyList())
+            }
+            store.update(approval.id, CANCELLED)
+            return TapResponse(Outcomes.REFUSED, toast = "The draft is gone and nothing was sent. Tap Reply to start again.", actionRow = emptyList())
         }
         store.update(approval.id, Outcomes.AWAITING_APPROVAL)
         return null
@@ -188,7 +206,9 @@ class ReplySupport(
     }
 
     /** Replace the draft's text (or create the draft) — never sends. */
-    fun writeDraft(seq: Long, body: String): Draft {
+    fun writeDraft(seq: Long, body: String): Draft = synchronized(draftLock) { writeDraftLocked(seq, body) }
+
+    private fun writeDraftLocked(seq: Long, body: String): Draft {
         val event = lookup.event(seq) ?: error("No JFAA job ${JobRef.format(seq)}.")
         val sourceId = event.str("message_id") ?: error("${JobRef.format(seq)} did not come from an email.")
         val threadId = gmail.message(sourceId).threadId ?: error("source email has no thread")

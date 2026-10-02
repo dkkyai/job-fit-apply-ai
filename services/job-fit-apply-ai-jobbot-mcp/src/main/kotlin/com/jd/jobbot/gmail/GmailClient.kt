@@ -40,6 +40,8 @@ open class GmailClient(
         val date: String?,
         val snippet: String?,
         val body: String,
+        /** Gmail's receive time, epoch millis. */
+        val internalDate: Long? = null,
     )
 
     open fun labels(messageId: String): List<String> =
@@ -140,6 +142,7 @@ open class GmailClient(
             from = headers["from"], to = headers["to"], cc = headers["cc"], subject = headers["subject"], date = headers["date"],
             snippet = m["snippet"]?.jsonPrimitive?.content,
             body = payload?.let { textOf(it) }.orEmpty(),
+            internalDate = m["internalDate"]?.jsonPrimitive?.content?.toLongOrNull(),
         )
     }
 
