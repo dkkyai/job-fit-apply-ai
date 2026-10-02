@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
 import java.util.concurrent.TimeUnit
+import java.nio.file.Files
+import kotlin.test.assertNotNull
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -80,6 +82,49 @@ class ExistingProductPathsE2ETest {
         assertTrue(result.discordMessages.single().contains("(SKIP)"))
         assertTrue(result.telegramMessages.isEmpty(), "low-fit SKIP must not emit a high-fit Telegram alert")
         assertEquals(listOf("score_fit"), result.llmCalls, "no post-score tailoring LLM call may run for SKIP")
+    }
+
+    @Test
+    @DisplayName("a pay-gated high fit is skipped, but its card says why and links the scoring notes; no resume, no Apply")
+    fun payGatedHighFitCardSaysWhy() {
+        val nonce = System.currentTimeMillis().toString()
+        val company = "E2E PayGate $nonce"
+        val result = harness.runScenario(
+            company = company,
+            // Scores 72 (over the threshold), but posts at most $90K against the profile's $150K target.
+            responses = mapOf("score_fit" to listOf(ok(harness.fixture("llm/score_fit_pay_gated.json")))),
+        ) {
+            submitScrapedJob(
+                company = company,
+                roleTitle = "Staff Software Engineer in Test",
+                jdText = """
+                    $company is hiring a Staff Software Engineer in Test to own Kotlin test infrastructure,
+                    mobile automation with Espresso and XCUITest, and CI/CD pipelines. Salary $80,000-$90,000.
+                """.trimIndent(),
+                idempotencyKey = "e2e-paygate-$nonce",
+            )
+        }
+
+        val reason = "Posted pay (max \$90K) is below the \$150K target"
+        assertEquals("SKIP", result.finalStatus.path("pipeline_action").asText())
+        assertEquals(72, result.finalStatus.path("fit_score").asInt())
+        assertEquals(reason, result.completedEvent.path("skip_reason").asText())
+        assertEquals(listOf("score_fit"), result.llmCalls, "a skipped job is never tailored")
+        assertEquals(404, harness.statusOf("${E2eConfig.bridgeUrl}/api/jobs/${result.jobId}/resume.pdf"))
+
+        // The scoring notes: report.md with the reason, published at artifact_url, on the track too.
+        val artifactUrl = assertNotNull(result.artifactUrl, "a pay-gated high fit publishes its scoring notes")
+        val report = Files.readString(assertNotNull(result.outputDir).resolve("report.md"))
+        assertTrue(report.contains(reason), "report.md says why: $report")
+        assertEquals(artifactUrl, result.track.artifactUrl)
+
+        val card = result.telegramMessages.single()
+        assertTrue(card.lines().any { it == "Skipped: Posted pay (max \$90K) is below the \$150K target" }, card)
+        assertEquals(
+            listOf("View Report" to artifactUrl.trimEnd('/') + "/report.md"),
+            result.telegramButtons,
+            "View Report only: no resume, and no Apply (there is nothing to upload)",
+        )
     }
 
     @Test

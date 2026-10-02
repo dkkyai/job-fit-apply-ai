@@ -67,6 +67,8 @@ class FakeBridge(
             recruiter: Boolean = false,
             terminalLabel: String? = null,
             artifactUrl: String? = "http://markserv:8081/20261001_000000_acme_$seq/",
+            action: String = "TAILOR",
+            skipReason: String? = null,
         ): JsonObject = buildJsonObject {
             put("job_id", "job-$seq")
             put("completed_seq", seq)
@@ -74,7 +76,8 @@ class FakeBridge(
             put("company", company)
             put("role_title", title)
             put("fit_score", fit)
-            put("pipeline_action", "TAILOR")
+            put("pipeline_action", action)
+            skipReason?.let { put("skip_reason", it) }
             put("job_url", jobUrl)
             put("message_id", messageId)
             put("is_recruiter", recruiter)

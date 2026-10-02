@@ -321,6 +321,68 @@ class ProcessingPipelineTest {
     }
 
     @Test
+    @DisplayName("a pay-gated high fit gets scoring notes (report.md + artifact URL) beside score_fit.txt, no tailoring")
+    fun gatedHighFitGetsScoringNotes(@TempDir tempDir: Path) {
+        val pipeline = ProcessingPipeline()
+        injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
+        injectNode(pipeline, "scoreFit", Node { state ->
+            state.copy(
+                pipelineAction = PipelineAction.SKIP,
+                fitScore = 90f,
+                company = "Sparksoft",
+                roleTitle = "Automation Engineer",
+                hardGateViolations = listOf("Posted pay (max \$85K) is below the \$145K target"),
+                skippedReason = "Hard gate: Posted pay (max \$85K) is below the \$145K target",
+                scoreOutputPath = tempDir.toString(),
+            )
+        })
+        injectNode(pipeline, "tailorSubgraph", Node { _ -> error("a skipped job is never tailored") })
+        injectNode(pipeline, "addArtifactUrl", Node { state -> state.copy(artifactUrl = "https://markserv.example/${state.outputPath.substringAfterLast('/')}/") })
+        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+
+        val result = pipeline.invoke(minimalRecord())
+
+        assertEquals("SKIP", result.pipelineAction)
+        assertEquals(tempDir.toString(), result.outputPath)
+        assertEquals("https://markserv.example/${tempDir.fileName}/", result.artifactUrl)
+        assertEquals("Posted pay (max \$85K) is below the \$145K target", result.skipReason)
+        val report = Files.readString(tempDir.resolve("report.md"))
+        assertTrue(report.contains("Posted pay (max \$85K) is below the \$145K target"), "the report says why it was skipped")
+        assertTrue(Files.exists(tempDir.resolve("metadata.json")))
+    }
+
+    @Test
+    @DisplayName("a gated job below the threshold gets no notes (no card goes out for it)")
+    fun gatedLowFitGetsNoNotes(@TempDir tempDir: Path) {
+        val pipeline = ProcessingPipeline()
+        injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
+        injectNode(pipeline, "scoreFit", Node { state ->
+            state.copy(pipelineAction = PipelineAction.SKIP, fitScore = 20f,
+                hardGateViolations = listOf("Pure manual QA"), scoreOutputPath = tempDir.toString())
+        })
+        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+
+        val result = pipeline.invoke(minimalRecord())
+
+        assertEquals(null, result.outputPath)
+        assertEquals(null, result.artifactUrl)
+        assertEquals("Pure manual QA", result.skipReason)
+        assertFalse(Files.exists(tempDir.resolve("report.md")))
+    }
+
+    @Test
+    @DisplayName("skip_reason: the threshold reason for an ungated skip, nothing for a tailored job")
+    fun skipReasonOnlyForSkips() {
+        val pipeline = ProcessingPipeline()
+        injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
+        injectNode(pipeline, "scoreFit", Node { state ->
+            state.copy(pipelineAction = PipelineAction.SKIP, fitScore = 30f, skippedReason = "Fit score below threshold")
+        })
+        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+        assertEquals("Fit score below threshold", pipeline.invoke(minimalRecord()).skipReason)
+    }
+
+    @Test
     @DisplayName("invoke writes metadata with correct pipeline action in result")
     fun invokeWritesMetadataWithCorrectPipelineAction(@TempDir tempDir: Path) {
         val pipeline = ProcessingPipeline()

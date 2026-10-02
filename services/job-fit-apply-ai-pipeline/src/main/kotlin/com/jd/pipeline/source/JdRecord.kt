@@ -64,4 +64,6 @@ data class ProcessingResult(
     // "captured", "blocked", "empty"). Internal-only: carried to the run_log for the analyzer,
     // never posted to the bridge feed (@get:JsonIgnore keeps it out of the completed-event DTO).
     @get:JsonIgnore val scrapePath: String = "",
+    /** Why a scored job was not tailored (serialized → skip_reason); null when tailored. */
+    val skipReason: String? = null,
 )

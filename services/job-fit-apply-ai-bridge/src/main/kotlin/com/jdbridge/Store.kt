@@ -74,6 +74,8 @@ internal object Jobs : Table("jobs") {
     // Postgres `tracks.id` the Processor wrote — links the job to its track_events history.
     // Nullable, so createMissingTablesAndColumns can ALTER it onto an existing queue database.
     val trackId         = integer("track_id").nullable()
+    // Why a scored job was not tailored. Nullable, so it ALTERs onto an existing queue database.
+    val skipReason      = text("skip_reason").nullable()
     val error           = text("error").nullable()
     val retryCount      = integer("retry_count").default(0)
     val nextAttemptAt   = long("next_attempt_at").nullable()
@@ -351,6 +353,7 @@ private suspend fun recordTerminalResult(jobId: String, req: ResultRequest, now:
             req.job_url?.let { row[Jobs.jobUrl] = it }
             req.artifact_url?.let { row[Jobs.artifactUrl] = it }
             req.track_id?.let { row[Jobs.trackId] = it }
+            row[Jobs.skipReason]      = req.skip_reason
             row[Jobs.claimedAt]       = null
             row[Jobs.claimToken]      = null
             row[Jobs.nextAttemptAt]   = null
@@ -404,6 +407,7 @@ suspend fun completedJobs(since: Long, limit: Int = 50, all: Boolean = false): L
                 job_url         = row[Jobs.jobUrl],
                 artifact_url    = row[Jobs.artifactUrl],
                 track_id        = row[Jobs.trackId],
+                skip_reason     = row[Jobs.skipReason],
             )
         }
 }

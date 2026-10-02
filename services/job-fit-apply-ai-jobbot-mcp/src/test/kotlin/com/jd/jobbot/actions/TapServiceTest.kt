@@ -102,6 +102,21 @@ class TapServiceTest {
     }
 
     @Test
+    fun `Apply on an older card for a skipped job says why and does nothing`() {
+        val gated = FakeBridge.event(7708, action = "SKIP", skipReason = "Posted pay (max \$85K) is below the \$145K target")
+        val r = service(events = mapOf(7708L to gated)).tap(tap(seq = 7708))
+        assertEquals(Outcomes.REFUSED, r.outcome)
+        assertEquals("Not applying: this job was skipped (Posted pay (max \$85K) is below the \$145K target), so there's no tailored resume.", r.toast)
+        assertEquals(0, calls.get())
+    }
+
+    @Test
+    fun `the refusal fits Telegram's 200-character toast`() {
+        val gated = FakeBridge.event(7708, action = "SKIP", skipReason = "x".repeat(400))
+        assertTrue(service(events = mapOf(7708L to gated)).tap(tap(seq = 7708)).toast!!.length <= 200)
+    }
+
+    @Test
     fun `an ineligible job is refused (the dead-button guard on the receiving side)`() {
         val r = service(events = mapOf(7663L to FakeBridge.event(7663, jobUrl = null))).tap(tap())
         assertEquals(Outcomes.REFUSED, r.outcome)

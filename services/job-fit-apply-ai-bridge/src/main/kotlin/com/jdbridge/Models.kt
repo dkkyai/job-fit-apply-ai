@@ -115,6 +115,7 @@ data class ResultRequest(
     val job_url: String?          = null,
     val artifact_url: String?     = null,          // markserv report URL (was previously dropped)
     val track_id: Int?            = null,          // the `tracks` row the Processor wrote (Postgres id)
+    val skip_reason: String?      = null,          // why a scored job was not tailored (e.g. pay below target)
     // Gmail write-back payload (Poller acts on these via the completed feed):
     val terminal_label: String?   = null,          // label the Poller should apply to message_id
     val draft_text: String?       = null,          // LLM-generated recruiter reply (Processor makes it)
@@ -168,6 +169,8 @@ data class CompletedJob(
     val artifact_url: String?    = null,
     // The job's `tracks` row — key for /api/tracks/{id}/events (JobBot records lifecycle events).
     val track_id: Int?           = null,
+    // Why a scored job was not tailored — the Telegram card says it ("Skipped: …"). Null when tailored.
+    val skip_reason: String?     = null,
 )
 
 @Serializable

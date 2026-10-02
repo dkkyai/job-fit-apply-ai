@@ -34,7 +34,12 @@ data class CompletedEvent(
     val isRecruiter: Boolean = false,
     /** The Gmail label the poller writes back — tells whether the email is still in the inbox. */
     val terminalLabel: String? = null,
+    /** Why a scored job was not tailored (e.g. "Pay $85K is below your $145K target"); null when tailored. */
+    val skipReason: String? = null,
 ) {
+    /** Scored but not tailored (e.g. pay-gated): no resume exists, so no resume button and no Apply. */
+    fun skipped(): Boolean = pipelineAction.equals("SKIP", ignoreCase = true)
+
     /**
      * The pipeline output directory name, taken from the tail of [artifactUrl].
      *

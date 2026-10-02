@@ -173,6 +173,19 @@ class ScoreFitNodeProcessTest {
             val result = node.process(baseInput())
             assertTrue(result.skippedReason.contains("Hard gate"))
         }
+
+        @Test
+        @DisplayName("skippedReason lists every hard gate, and the score dir is kept for the notes")
+        fun skippedReasonListsAllGates() {
+            val node = ScoreFitNode(llm = LlmCaller { scoreJson(
+                score = 90,
+                hardGates = listOf("Requires active security clearance", "Pure manual QA")
+            ) })
+            val result = node.process(baseInput())
+            assertEquals("Hard gate: Requires active security clearance; Pure manual QA", result.skippedReason)
+            assertTrue(result.scoreOutputPath.isNotBlank(), "score_fit.txt's dir is kept in state")
+            assertTrue(java.nio.file.Files.exists(java.nio.file.Path.of(result.scoreOutputPath, "score_fit.txt")))
+        }
     }
 
     // ── Error handling ────────────────────────────────────────────────────────

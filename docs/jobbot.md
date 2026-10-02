@@ -34,7 +34,7 @@ The notifier sends a verb only when it is listed in `NOTIFIER_TELEGRAM_ACTIONS` 
 
 | Verb | Shown when | Tap does |
 |---|---|---|
-| `apply` | the job has a `job_url` | with `JOBBOT_APPLY_ENABLED`: fills the application in the apply browser and posts it under **✅ Submit / ✖ Discard** (see Apply below). Otherwise it replies "Not implemented yet" |
+| `apply` | the job has a `job_url` and was tailored (`pipeline_action` TAILOR). A skipped job, e.g. pay-gated, has no tailored resume to upload | with `JOBBOT_APPLY_ENABLED`: fills the application in the apply browser and posts it under **✅ Submit / ✖ Discard** (see Apply below). Otherwise it replies "Not implemented yet" |
 | `reply` | `is_recruiter` and a source `message_id` | posts the reply draft (the poller's, or one built from JFAA's `draft_text`, with the resume attached) under **✅ Send / ✖ Cancel**. If neither exists, the agent writes one |
 | `archive` | a source `message_id` the poller left in the inbox | removes `INBOX` from that email only; the button becomes **↩ Undo archive** (`undo:<seq>`), which restores exactly the labels it removed. Mail already out of the inbox, archived by Muse for example, gets "Already out of the inbox." |
 
@@ -51,6 +51,13 @@ The notifier sends a verb only when it is listed in `NOTIFIER_TELEGRAM_ACTIONS` 
 Then the verb's handler runs. With `JOBBOT_DRY_RUN=true`, it stops after the checks, logs the tap, and toasts `[dry run] Would …`.
 
 `/jdstatus` shows the mode, the handled verbs, the latest job, pending actions, recent actions and recent errors. Inbox sweeps are not JobBot's: Muse still does them.
+
+## Skipped high fits (e.g. pay-gated)
+
+A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate: posted pay below the profile's target, or an onsite or hybrid office outside Washington. It still gets a card, with three differences:
+- The card adds a **Skipped:** line, e.g. "Skipped: Posted pay (max $85K) is below the $145K target". The text comes from the completed feed's `skip_reason`. The line also appears under an edited card template.
+- **View Report** opens the scoring notes: `report.md` beside `score_fit.txt`, published at `artifact_url`. There is no **View Resume**, because nothing was tailored.
+- There is no **Apply**. An Apply tap on an older card is refused, with the reason.
 
 ## Apply: filled by code, submitted only by ✅ Submit
 

@@ -1,5 +1,6 @@
 package com.jd.jobbot.actions
 
+import com.jd.jobbot.bridge.str
 import com.jd.jobbot.jobs.Eligibility
 import com.jd.jobbot.jobs.JobIdentity
 import com.jd.jobbot.jobs.JobLookup
@@ -65,7 +66,14 @@ class TapService(
             return TapResponse(Outcomes.ERROR, toast = "Couldn't reach JFAA. Try again in a minute.")
         } ?: return refused("Unknown job $ref.")
 
-        if (!Eligibility.eligible(baseVerb, event)) return refused("${baseVerb.replaceFirstChar { it.uppercase() }} isn't available for this job.")
+        if (!Eligibility.eligible(baseVerb, event)) {
+            // An Apply on an older card for a skipped (e.g. pay-gated) job: there is no tailored resume.
+            if (baseVerb == "apply" && event.str("job_url") != null) {
+                val why = event.str("skip_reason")?.let { " ($it)" } ?: ""
+                return refused("Not applying: this job was skipped$why, so there's no tailored resume.".take(TOAST_MAX))
+            }
+            return refused("${baseVerb.replaceFirstChar { it.uppercase() }} isn't available for this job.")
+        }
 
         val jobKey = JobIdentity.of(event)
         if (dryRun) {
@@ -106,6 +114,8 @@ class TapService(
     private fun refused(toast: String) = TapResponse(Outcomes.REFUSED, toast = toast)
 
     companion object {
+        /** Telegram's answerCallbackQuery text limit. */
+        private const val TOAST_MAX = 200
         val ID_VERBS = setOf("send", "cancel", "submit", "discard", "resume")
         val KNOWN_VERBS = setOf("apply", "reply", "archive", "undo") + ID_VERBS
 

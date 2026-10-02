@@ -62,10 +62,11 @@ class ScoreFitNode(
             val prompt = "${loadSkillPrompt(input.candidateProfile)}\n\n${postingDetails(input)}JOB DESCRIPTION:\n$jdText"
             val response = llm.call(prompt)
             val result = parseLlmResponse(input, response)
-            try { saveScoreToFile(result) } catch (e: Exception) {
+            val dir = try { saveScoreToFile(result) } catch (e: Exception) {
                 System.err.println("[score_fit] WARN: failed to save score_fit.txt: ${e.message}")
+                null
             }
-            result
+            dir?.let { result.copy(scoreOutputPath = it.toString()) } ?: result
         } catch (e: com.jd.pipeline.client.TransientLlmFailure) {
             // Re-propagate so the processor handler's retry classification can act on it
             // instead of swallowing into a terminal JD_Error.
@@ -140,7 +141,7 @@ class ScoreFitNode(
                 else -> PipelineAction.SKIP
             }
             val skippedReason = when {
-                allHardGates.isNotEmpty() -> "Hard gate: ${allHardGates.first()}"
+                allHardGates.isNotEmpty() -> "Hard gate: ${allHardGates.joinToString("; ")}"
                 action == PipelineAction.SKIP -> "Fit score below threshold"
                 else -> ""
             }
@@ -255,7 +256,7 @@ class ScoreFitNode(
         // Compensation: flag when posted max is explicitly below target
         val targetTc = prefs.minimumTotalCompensation?.replace(Regex("[^0-9]"), "")?.toIntOrNull()
         if (targetTc != null && compMax != null && compMax > 0 && compMax < targetTc) {
-            gates.add("Compensation band (\$$compMax) is below target (\$$targetTc)")
+            gates.add("Posted pay (max ${money(compMax)}) is below the ${money(targetTc)} target")
         }
 
         if (!prefs.willingToRelocate) {
@@ -308,7 +309,7 @@ class ScoreFitNode(
         return "$label in $place — outside $homeState (candidate in $homeLocation, no relocation)"
     }
 
-    private fun saveScoreToFile(state: JDState) {
+    private fun saveScoreToFile(state: JDState): java.nio.file.Path {
         val outputDir = com.jd.pipeline.utils.OutputUtils.getOutputDirectory(state)
         Files.createDirectories(outputDir)
         val content = buildString {
@@ -358,9 +359,19 @@ class ScoreFitNode(
         }
         Files.writeString(outputDir.resolve("score_fit.txt"), content, java.nio.charset.StandardCharsets.UTF_8)
         println("[score_fit] Saved scoring results to: ${outputDir.resolve("score_fit.txt")}")
+        return outputDir
     }
 
     companion object {
+        /** Dollars as a card would say them: 85000 → "$85K", 137500 → "$137.5K", 1200000 → "$1.2M". */
+        internal fun money(dollars: Int): String = when {
+            dollars >= 1_000_000 -> "$" + trim(dollars / 1_000_000.0) + "M"
+            dollars >= 1_000 -> "$" + trim(dollars / 1_000.0) + "K"
+            else -> "$$dollars"
+        }
+
+        private fun trim(v: Double): String = "%.1f".format(java.util.Locale.ROOT, v).removeSuffix(".0")
+
         /**
          * Shortest JD a digest-derived job may be scored on. Below this it is the digest email's
          * one-line summary rather than a real posting, so the scrape that should have replaced it
