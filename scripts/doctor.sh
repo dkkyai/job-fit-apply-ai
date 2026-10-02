@@ -31,6 +31,11 @@ case "${COMPOSE_PROFILES-intake}" in
   *intake*) INTAKE=1 ;;
   *)        INTAKE=0 ;;
 esac
+# JobBot (the Telegram agent) runs only where COMPOSE_PROFILES activates `jobbot`.
+case "${COMPOSE_PROFILES-}" in
+  *jobbot*) JOBBOT=1 ;;
+  *)        JOBBOT=0 ;;
+esac
 
 FAILS=0
 WARNS=0
@@ -184,6 +189,34 @@ else
       warn "Gmail token >6 days old — refresh soon: docker compose run --rm poller --reauth"
     else ok "Gmail token present in poller secrets  ($POLLER_SECRETS)"; fi
   else bad "Gmail token missing in $POLLER_SECRETS/tokens  →  docker compose run --rm poller --reauth"; fi
+fi
+
+hdr "JobBot (Telegram agent for the JobBot bot — docs/jobbot.md)"
+if [ "$JOBBOT" != "1" ]; then
+  ok "skipped — COMPOSE_PROFILES has no 'jobbot'"
+else
+  for svc in jobbot-mcp jobbot; do
+    if running "$P-$svc"; then
+      if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-$svc" 2>/dev/null)" = "healthy" ]; then
+        ok "$svc ($P-$svc) healthy"
+      else warn "$svc container up but not healthy  →  docker logs $P-$svc"; fi
+    else bad "$svc ($P-$svc) not running  →  docker compose --profile jobbot up -d $svc"; fi
+  done
+  [ -n "${JOBBOT_MCP_TOKEN:-}" ] && ok "JOBBOT_MCP_TOKEN set" || bad "JOBBOT_MCP_TOKEN blank — jobbot-mcp refuses every request (openssl rand -hex 32)"
+  [ -n "${JOBBOT_TELEGRAM_ALLOWED_USERS:-}" ] && ok "JOBBOT_TELEGRAM_ALLOWED_USERS set" || bad "JOBBOT_TELEGRAM_ALLOWED_USERS blank — every tap is refused"
+  if [ -n "${JOBBOT_TELEGRAM_BOT_TOKEN:-}" ]; then
+    if curl -fsS -m 10 "https://api.telegram.org/bot${JOBBOT_TELEGRAM_BOT_TOKEN}/getMe" >/dev/null 2>&1; then
+      ok "JobBot token valid (getMe)"
+    else warn "JobBot token getMe failed (offline, or token revoked)"; fi
+    if [ -n "${NOTIFIER_TELEGRAM_BOT_TOKEN:-}" ] && [ "$JOBBOT_TELEGRAM_BOT_TOKEN" != "$NOTIFIER_TELEGRAM_BOT_TOKEN" ]; then
+      warn "JOBBOT_TELEGRAM_BOT_TOKEN differs from NOTIFIER_TELEGRAM_BOT_TOKEN — cards and taps would be on different bots"
+    fi
+  else bad "JOBBOT_TELEGRAM_BOT_TOKEN blank"; fi
+  [ "${JOBBOT_DRY_RUN:-false}" = "true" ] && warn "JOBBOT_DRY_RUN=true — taps are only logged"
+  # Telegram allows one getUpdates reader per token: the retired PM2 bot would fight the container (HTTP 409).
+  if command -v pm2 >/dev/null 2>&1 && pm2 jlist 2>/dev/null | python3 -c 'import json,sys; sys.exit(0 if any(p.get("name")=="nanobot-jobbot" and p.get("pm2_env",{}).get("status")=="online" for p in json.load(sys.stdin)) else 1)' 2>/dev/null; then
+    bad "pm2 nanobot-jobbot is online — it reads the same bot token as the jobbot container  →  pm2 stop nanobot-jobbot"
+  else ok "no competing update reader (pm2 nanobot-jobbot not online)"; fi
 fi
 
 hdr "PM2 (fully retired — everything is Compose now)"
