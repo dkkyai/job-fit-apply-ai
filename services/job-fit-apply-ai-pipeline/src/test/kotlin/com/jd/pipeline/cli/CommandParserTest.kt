@@ -24,8 +24,6 @@ class CommandParserTest {
     @Test
     fun testCoverLetterFlag() = assertEquals(Command.TestCoverLetter, parse("--test-coverletter"))
     @Test
-    fun testSupabaseFlag() = assertEquals(Command.TestSupabase, parse("--test-supabase"))
-    @Test
     fun signedInFlag() = assertEquals(Command.SignedIn, parse("--signed-in"))
 
     @Test
@@ -96,8 +94,8 @@ class CommandParserTest {
     }
 
     @Test
-    fun priorityOrder_testCoverLetterOverTestSupabase() {
-        assertEquals(Command.TestCoverLetter, parse("--test-supabase", "--test-coverletter"))
+    fun priorityOrder_testCoverLetterOverTestChrome() {
+        assertEquals(Command.TestCoverLetter, parse("--test-chrome", "--test-coverletter"))
     }
 
     @Test

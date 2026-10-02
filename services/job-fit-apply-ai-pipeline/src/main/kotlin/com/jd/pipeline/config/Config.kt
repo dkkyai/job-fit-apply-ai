@@ -30,24 +30,18 @@ object Config {
     private val PROJECT_DIR: Path = Paths.get(System.getProperty("user.dir"))
 
     // ── API Keys ────────────────────────────────────────────────────────────────
-    val ANTHROPIC_API_KEY: String = get("ANTHROPIC_API_KEY", "")
-    val LANGSMITH_API_KEY: String = get("LANGSMITH_API_KEY", "")
-    val SUPABASE_PROJECT_URL: String = get("SUPABASE_PROJECT_URL", "")
-    val SUPABASE_SERVICE_ROLE_KEY: String = get("SUPABASE_SERVICE_ROLE_KEY", get("SUPABASE_KEY", ""))
 
     // LLM concurrency gate (per physical resource). Local backends (oMLX + Ollama-local)
     // share ONE permit; cloud backends get a larger pool. See client/LlmGate.kt.
     val LOCAL_LLM_MAX_CONCURRENCY: Int = get("LOCAL_LLM_MAX_CONCURRENCY", "1").toInt()
     val CLOUD_LLM_MAX_CONCURRENCY: Int = get("CLOUD_LLM_MAX_CONCURRENCY", "4").toInt()
 
-    // Database backend selection (Supabase → self-hosted Postgres migration).
-    //   DB_BACKEND=supabase → SupabaseClient (REST/PostgREST, default)
-    //   DB_BACKEND=postgres → PostgresGateway (direct JDBC to the container)
-    val DB_BACKEND: String = get("DB_BACKEND", "supabase")
-    // libpq-style URL; containers use host "db", host apps use "localhost".
-    val DATABASE_URL: String = get("DATABASE_URL", "postgresql://jobfit:jobfit@localhost:5432/jobfit")
+    // The `tracks` database: libpq-style URL; containers use host "db", host apps "localhost".
+    // No default on purpose — unset means "no database" (dedup falls back to memory, tracking
+    // is skipped), so tests and fresh checkouts never write to whatever answers on :5432.
+    // compose sets it for the containers; host runs get it from the pipeline .env.
+    val DATABASE_URL: String = get("DATABASE_URL", "")
     val MINIMAX_API_KEY: String = get("MINIMAX_API_KEY", "")
-    val GOOGLE_API_KEY: String = get("GOOGLE_API_KEY", "")
     val DEEPSEEK_API_KEY: String = get("DEEPSEEK_API_KEY", "")
 
     // ── oMLX (local MLX inference, OpenAI-compatible) ──────────────────────────────
@@ -137,11 +131,6 @@ object Config {
     val SKILLS_RESTRUCTURE_SKILL: Path = TAILOR_SKILLS_DIR.resolve("SKILLS_RESTRUCTURE_SKILL.md")
     val ATS_VALIDATION_SKILL: Path = TAILOR_SKILLS_DIR.resolve("ATS_VALIDATION_SKILL.md")
 
-    // ── ScanEmailTuner assets ────────────────────────────────────────────────
-    val SCAN_EMAIL_TUNER_DIR: Path = PROJECT_DIR.resolve("tuner").resolve("scan-email-tuner")
-    val SCAN_EMAIL_TUNER_DATASET_DIR: Path = SCAN_EMAIL_TUNER_DIR.resolve("data-set")
-    val SCAN_EMAIL_TUNER_SKILL: Path = SCAN_EMAIL_TUNER_DIR.resolve("SCAN_EMAIL_TUNER_SKILL.md")
-
     // ── ScrapeJdUrlTuner assets ──────────────────────────────────────────────
     val SCRAPE_JD_URL_TUNER_DIR: Path = PROJECT_DIR.resolve("tuner").resolve("scrape-jd-url-tuner")
     val SCRAPE_JD_URL_TUNER_DATASET_DIR: Path = SCRAPE_JD_URL_TUNER_DIR.resolve("data-set")
@@ -156,8 +145,6 @@ object Config {
             get("RESUME_YAML_PATH", ""),
             PROJECT_DIR.resolve("src/main/resources/resume").resolve("resume.yaml"),
         )
-    /** Committed example résumé YAML — reference + `--init-profile` starting point. */
-    val RESUME_YAML_TEMPLATE_PATH: Path = PROJECT_DIR.resolve("src/main/resources/resume").resolve("resume.template.yaml")
     /** Committed HTML head+CSS skeleton (with a `<!-- RESUME_BODY -->` sentinel) the deterministic renderer fills in. */
     val BASE_RESUME_TEMPLATE_PATH: Path = PROJECT_DIR.resolve("src/main/resources/resume").resolve("base_resume.template.html")
     /** Personal HTML résumé rendered from resume.yaml. Gitignored — produced by `--init-profile` / `--resume-gen`. */
@@ -189,14 +176,6 @@ object Config {
 
     // ── Playwright / Chrome ──────────────────────────────────────────────────────
     val PLAYWRIGHT_TIMEOUT_MS: Double = get("PLAYWRIGHT_TIMEOUT_MS", "45000").toDouble()
-    val CHROME_EXECUTABLE_PATH: String = get(
-        "CHROME_EXECUTABLE_PATH",
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-    )
-    val CHROME_USER_DATA_DIR: String = get(
-        "CHROME_USER_DATA_DIR",
-        Paths.get(System.getProperty("user.home"), "Library", "Application Support", "Google", "Chrome").toString()
-    )
     val CHROME_PROFILE_DIRECTORY: String = get("CHROME_PROFILE_DIRECTORY", "Default")
     // CDP (Chrome DevTools Protocol) connection to a long-lived, user-launched Chrome.
     // When set (e.g. http://localhost:9222), the scraper connects to that already-running
@@ -206,14 +185,6 @@ object Config {
     val CHROME_CDP_ENDPOINT: String = get("CHROME_CDP_ENDPOINT", "")
     // Remote-debugging port the launch script opens; also used to surface a helpful endpoint hint.
     val CHROME_DEBUG_PORT: String = get("CHROME_DEBUG_PORT", "9222")
-    // Dedicated user-data-dir for the CDP debug Chrome (used by scripts/launch-chrome-cdp.sh).
-    // Must NOT be the Default profile — current Chrome refuses remote debugging on the default dir
-    // ("DevTools remote debugging requires a non-default data directory"). This profile can run
-    // alongside your everyday Chrome; sign into the job boards in it once (the login persists here).
-    val CHROME_CDP_USER_DATA_DIR: String = get(
-        "CHROME_CDP_USER_DATA_DIR",
-        Paths.get(System.getProperty("user.home"), "Library", "Application Support", "Google", "Chrome-CDP").toString()
-    )
     // Comma-separated domains that skip the HTTP fetch and scrape via the CDP browser directly
     // (proactive — for sites that soft-block or challenge plain HTTP, e.g. Glassdoor's Cloudflare).
     // Suffix match (a domain also matches its subdomains). Requires the debug Chrome to be up.
@@ -225,7 +196,6 @@ object Config {
     // An alert with a dedup key (e.g. "Sign-in required: LinkedIn") repeats at most this often while
     // the condition persists. It used to fire once per process lifetime. Default 6 h.
     val ALERT_REPEAT_AFTER_MS: Long = get("ALERT_REPEAT_AFTER_MS", "21600000").toLong()
-    val PLAYWRIGHT_HEADLESS: Boolean = get("PLAYWRIGHT_HEADLESS", "false").toBoolean()
     // When true, sites blocked by HTTP (403, CAPTCHA, Cloudflare) are retried with a clean Playwright session.
     val PLAYWRIGHT_FALLBACK_ON_CAPTCHA: Boolean = get("PLAYWRIGHT_FALLBACK_ON_CAPTCHA", "true").toBoolean()
     // When true, pages that return fewer than PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH chars via HTTP

@@ -128,7 +128,7 @@ def main():
     # Deterministic detectors (Phase B): rule findings for the unambiguous problem classes,
     # computed with no LLM so they survive a model outage and don't cost tokens.
     try:
-        det_findings = detectors.detect(recs, metrics, base)
+        det_findings = detectors.detect(recs)
     except Exception as e:  # noqa: BLE001
         print(f"[analyze] detectors failed (non-fatal): {e}", file=sys.stderr)
         det_findings = []

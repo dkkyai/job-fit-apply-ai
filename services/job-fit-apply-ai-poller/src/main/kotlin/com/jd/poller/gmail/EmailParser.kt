@@ -3,17 +3,14 @@ package com.jd.poller.gmail
 import com.google.api.services.gmail.model.Message
 import com.google.api.services.gmail.model.MessagePart
 import org.jsoup.Jsoup
+import org.jsoup.parser.Parser
 import org.jsoup.safety.Safelist
 import java.nio.charset.StandardCharsets
 import java.util.Base64
-import java.util.regex.Pattern
 
 data class ParsedEmail(
     val plainText: String,
     val htmlBodies: List<String>,
-    val inlineScripts: List<String>,
-    val scriptUrls: List<String>,
-    val partSummary: String,
 )
 
 /** Pure MIME decoding of a Gmail API [Message]. No auth, no network. */
@@ -25,20 +22,9 @@ object EmailParser {
         val htmlBodies = mutableListOf<String>()
         collectHtmlBodies(payload, htmlBodies)
 
-        val inlineScripts = mutableListOf<String>()
-        val scriptUrls = mutableListOf<String>()
-        for (html in htmlBodies) {
-            collectScripts(html, inlineScripts, scriptUrls)
-        }
-
-        val partSummary = buildPartSummary(payload)
-
         return ParsedEmail(
             plainText = plainText,
             htmlBodies = htmlBodies,
-            inlineScripts = inlineScripts,
-            scriptUrls = scriptUrls,
-            partSummary = partSummary
         )
     }
 
@@ -59,8 +45,10 @@ object EmailParser {
                 val bytes = Base64.getUrlDecoder().decode(payload.body.data)
                 val html = String(bytes, StandardCharsets.UTF_8)
                 val cleanedHtml = html.replace(Regex("<a\\b[^>]*\\bhref=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>"), "$2 $1")
-                val text = Jsoup.clean(cleanedHtml, Safelist.none())
-                return text.replace(Regex("\\s+"), " ").trim()
+                // Jsoup.clean returns HTML: its text is entity-escaped (&amp;, &lt;, &nbsp;).
+                // Decode it so an HTML-only email reads like its text/plain twin would.
+                val text = Parser.unescapeEntities(Jsoup.clean(cleanedHtml, Safelist.none()), false)
+                return text.replace(Regex("[\\s\u00A0]+"), " ").trim()
             }
         }
 
@@ -92,45 +80,6 @@ object EmailParser {
         part.parts?.forEach { child ->
             collectHtmlBodies(child, htmlBodies)
         }
-    }
-
-    private fun collectScripts(html: String, inlineScripts: MutableList<String>, scriptUrls: MutableList<String>) {
-        val scriptTagPattern = Pattern.compile("(?is)<script\\b([^>]*)>(.*?)</script>")
-        val matcher = scriptTagPattern.matcher(html)
-        while (matcher.find()) {
-            val attrs = matcher.group(1) ?: ""
-            val body = matcher.group(2)?.trim().orEmpty()
-            val srcMatcher = Pattern.compile("src=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE).matcher(attrs)
-            if (srcMatcher.find()) {
-                scriptUrls.add(srcMatcher.group(1))
-            }
-            if (body.isNotEmpty()) {
-                inlineScripts.add(body)
-            }
-        }
-    }
-
-    private fun buildPartSummary(part: MessagePart?, depth: Int = 0): String {
-        if (part == null) return ""
-
-        val indent = "  ".repeat(depth)
-        val current = buildString {
-            append(indent)
-            append("- mimeType=")
-            append(part.mimeType ?: "unknown")
-            val filename = part.filename ?: ""
-            if (filename.isNotBlank()) {
-                append(" filename=")
-                append(filename)
-            }
-            val size = part.body?.size ?: 0
-            append(" size=")
-            append(size)
-            append('\n')
-        }
-
-        val children = part.parts?.joinToString("") { buildPartSummary(it, depth + 1) }.orEmpty()
-        return current + children
     }
 
     private fun decodePartData(data: String): String {

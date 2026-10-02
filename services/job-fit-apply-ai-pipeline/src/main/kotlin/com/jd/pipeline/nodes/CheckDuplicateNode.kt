@@ -1,7 +1,7 @@
 package com.jd.pipeline.nodes
 
-import com.jd.pipeline.client.GatewayProvider
-import com.jd.pipeline.client.SupabaseGateway
+import com.jd.pipeline.client.PostgresGateway
+import com.jd.pipeline.client.TracksGateway
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.state.JDState
 import java.time.Instant
@@ -19,18 +19,18 @@ import java.util.concurrent.ConcurrentHashMap
  * Window: a posting seen within DUPLICATE_WINDOW_DAYS is a duplicate; one older than
  * the window is treated as a re-opened position and processed fresh.
  *
- * Primary: Supabase query (persists across process restarts).
- * Fallback: in-memory set (used when Supabase is not configured — local dev / tests).
+ * Primary: the Postgres `tracks` table (persists across process restarts).
+ * Fallback: in-memory set (used when DATABASE_URL is not configured — local dev / tests).
  */
 class CheckDuplicateNode(
-    private val gateway: SupabaseGateway = GatewayProvider.active
+    private val gateway: TracksGateway = PostgresGateway
 ) : Node<JDState> {
 
     override fun process(input: JDState): JDState {
         val key = buildKey(input.company, input.roleTitle, input.location)
 
         val isDuplicate = if (gateway.isConfigured()) {
-            querySupabase(input.company, input.roleTitle, input.location)
+            queryTracks(input.company, input.roleTitle, input.location)
         } else {
             // Offline fallback — in-memory only, resets on restart
             key in PROCESSED_JOBS_FALLBACK
@@ -54,7 +54,7 @@ class CheckDuplicateNode(
      * Query the tracks table for any row matching (company, role_title, location)
      * created within the configured window. Returns true if at least one row exists.
      */
-    private fun querySupabase(company: String, roleTitle: String, location: String): Boolean {
+    private fun queryTracks(company: String, roleTitle: String, location: String): Boolean {
         return try {
             val cutoff = Instant.now()
                 .minus(Config.DUPLICATE_WINDOW_DAYS.toLong(), ChronoUnit.DAYS)
@@ -73,7 +73,7 @@ class CheckDuplicateNode(
             )
             rows.isNotEmpty()
         } catch (e: Exception) {
-            System.err.println("[check_duplicate] Supabase query failed — treating as new: ${e.message}")
+            System.err.println("[check_duplicate] tracks query failed — treating as new: ${e.message}")
             false   // fail-open: on error, allow the job through rather than silently dropping it
         }
     }

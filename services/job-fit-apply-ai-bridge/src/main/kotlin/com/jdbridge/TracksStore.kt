@@ -29,13 +29,22 @@ object TracksStore {
 
     private data class Dsn(val jdbcUrl: String, val user: String, val password: String)
 
-    private val dsn: Dsn by lazy {
-        val uri = URI(getEnv("DATABASE_URL", "postgresql://jobfit:jobfit@localhost:5432/jobfit"))
+    /**
+     * Test seam: when set, wins over DATABASE_URL. TracksApiTest points it at an isolated
+     * database — a system property can't do that, because getEnv ranks an exported
+     * DATABASE_URL above it.
+     */
+    @Volatile internal var databaseUrlOverride: String? = null
+
+    // Resolved per call (connection-per-call anyway), so an override applies no matter which
+    // test touched the store first.
+    private fun dsn(): Dsn {
+        val uri = URI(databaseUrlOverride ?: getEnv("DATABASE_URL", "postgresql://jobfit:jobfit@localhost:5432/jobfit"))
         val creds = uri.userInfo?.split(":", limit = 2) ?: emptyList()
         val port = if (uri.port > 0) uri.port else 5432
         val db = uri.path.trimStart('/')
         // stringtype=unspecified → string params get type-inferred by Postgres.
-        Dsn(
+        return Dsn(
             "jdbc:postgresql://${uri.host}:$port/$db?stringtype=unspecified",
             creds.getOrElse(0) { "" },
             creds.getOrElse(1) { "" },
@@ -44,6 +53,7 @@ object TracksStore {
 
     private suspend fun <T> withConnection(block: (Connection) -> T): T =
         withContext(Dispatchers.IO) {
+            val dsn = dsn()
             DriverManager.getConnection(dsn.jdbcUrl, dsn.user, dsn.password).use(block)
         }
 

@@ -50,12 +50,11 @@ class BridgeClient:
         head = self.head_seq()
         return self.fetch_completed(max(0, head - int(n)), limit=int(n))
 
-    def drain(self, since: int, on_page=None, page_size: int = MAX_LIMIT):
+    def drain(self, since: int, page_size: int = MAX_LIMIT):
         """Page from `since` to head. Returns (records, last_seq).
 
-        `on_page(last_seq)` is invoked after each non-empty page so the caller can
-        persist the cursor incrementally (at-least-once, mirroring NotifierLoop.drainOnce).
-        Stops when a page returns fewer than `page_size` rows.
+        Stops when a page returns fewer than `page_size` rows. The caller persists the
+        cursor once, after the whole window is analyzed.
         """
         cur = int(since)
         out = []
@@ -65,8 +64,6 @@ class BridgeClient:
                 break
             out.extend(page)
             cur = max(int(r.get("completed_seq", cur)) for r in page)
-            if on_page:
-                on_page(cur)
             if len(page) < page_size:
                 break
         return out, cur

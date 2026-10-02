@@ -34,7 +34,6 @@ object Main {
             Command.Test -> TestCommandHandler.run()
             Command.TestResume -> TestResumeCommandHandler.run()
             Command.TestCoverLetter -> TestCoverLetterCommandHandler.run()
-            Command.TestSupabase -> TestSupabaseCommandHandler.run()
             is Command.TestChrome -> TestChromeCommandHandler.run(command)
             is Command.TestSteel -> TestSteelCommandHandler.run(command)
             is Command.SteelSignin -> SteelSigninCommandHandler.run(command)
@@ -64,7 +63,7 @@ object Main {
               --init-profile <path>    Scaffold a candidate profile
               --scrapetuner [file]     Tune the JD scraper
               --signed-in              Report signed-in scraping status
-              --test, --test-resume, --test-coverletter, --test-supabase, --test-chrome [url], --test-steel [url]
+              --test, --test-resume, --test-coverletter, --test-chrome [url], --test-steel [url]
               --steel-signin [site]    Open a Steel session parked on <site>'s login page, print the phone
                                        debug URL, and capture cookies automatically until you're signed in.
                                        Accepts a site name (linkedin), a host, or a full URL. No TTY needed.

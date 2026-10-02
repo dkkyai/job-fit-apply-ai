@@ -18,7 +18,6 @@ tokens/
 
 # Not needed in the image
 output/
-models/
 tuner/
 
 # ── Personal-file protection (load-bearing) ─────────────────────────────────

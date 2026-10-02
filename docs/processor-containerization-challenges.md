@@ -20,7 +20,7 @@ real risk to PDF quality). Only worth it if "retire the last PM2 process" is a g
 - **Ingestion (EMAIL_RAW only):** `ScanEmail` (LLM) → `ScrapeJd` (Playwright + logged-in CDP Chrome).
 - **Processing (every job):** `CheckDuplicate` (Postgres) → `ScoreFit` (LLM) → `ResumeTailoring`
   (6 LLM nodes) → `GenerateCoverLetter` (LLM) → `RenderResumePdf` (Playwright headless Chromium) →
-  `AddArtifactUrl` → `DraftReplyComposer` (LLM) → `writeMetadata` (fs) → `SupabaseTrack` (Postgres).
+  `AddArtifactUrl` → `DraftReplyComposer` (LLM) → `writeMetadata` (fs) → `Track` (Postgres).
 
 It's a single synchronous, stateful computation (one `JDState` flowing through). Unlike the
 poller/jsearch/notifier (async edge concerns with independent lifecycles), these steps share one

@@ -210,4 +210,35 @@ class JSearchClientTest {
         assertEquals(listOf("a", "c"), listings.map { it.jobId })
         assertEquals(2, client.callCount)
     }
+
+    @Test
+    @DisplayName("the standing DEFAULT_LIST search sends exactly these four requests")
+    fun defaultListRequestsArePinned() {
+        // Byte-for-byte: every query param the RapidAPI quota is spent on. A JSearchConfig field
+        // that is not listed here never reaches the API, whatever its value.
+        val http = mock<HttpClient>()
+        val empty = mockResponse(200, dataJson())
+        stubResponses(http, empty, empty, empty, empty)
+        val captor = argumentCaptor<HttpRequest>()
+
+        clientWith(http).search(JSearchConfig.DEFAULT_LIST)
+
+        verify(http, times(4)).send(captor.capture(), any<HttpResponse.BodyHandler<String>>())
+        val mobile = "query=SDET+OR+%22test+engineer%22+OR+%22QE%22+OR+%22QA+engineer%22+mobile+OR+iOS+OR+Android"
+        val nonMobile = "query=SDET+OR+%22test+engineer%22+OR+%22QE%22+OR+%22QA+engineer%22+-mobile+-iOS+-Android"
+        val base = "https://jsearch.p.rapidapi.com/search?"
+        val common = "&page=1&num_pages=1&date_posted=today&country=us"
+        assertEquals(
+            listOf(
+                "$base$mobile$common&job_city=Seattle&job_state=WA",
+                "$base$nonMobile$common&job_city=Seattle&job_state=WA",
+                "$base$mobile$common&remote_jobs_only=true",
+                "$base$nonMobile$common&remote_jobs_only=true",
+            ),
+            captor.allValues.map { it.uri().toString() },
+        )
+        captor.allValues.forEach {
+            assertEquals("jsearch.p.rapidapi.com", it.headers().firstValue("X-RapidAPI-Host").orElse(null))
+        }
+    }
 }

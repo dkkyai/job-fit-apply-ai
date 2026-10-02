@@ -21,7 +21,7 @@ data class Alert(
 
 /**
  * Project-wide operational alerting (Telegram + Discord), distinct from the per-job result
- * notifications in [com.jd.pipeline.cli.BatchNotificationService]. Use it anywhere the system
+ * notifications the Notifier service sends. Use it anywhere the system
  * needs the user's attention: a site needs re-authentication, the debug Chrome is down, a
  * pipeline timed out, and so on.
  *

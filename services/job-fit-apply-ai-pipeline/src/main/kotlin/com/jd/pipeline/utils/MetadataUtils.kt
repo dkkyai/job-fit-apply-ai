@@ -101,7 +101,7 @@ object MetadataUtils {
             putNullable("output_directory_url", outputDirUrl)
             putNullable("tailored_resume_url", resumeUrl)
             putNullable("tailored_cover_letter_url", coverLetterUrl)
-            if (state.trackId != null) put("supabase_track_id", state.trackId) else putNull("supabase_track_id")
+            if (state.trackId != null) put("track_id", state.trackId) else putNull("track_id")
             put("is_duplicate", state.isDuplicate)
             putNullable("email_subject", state.emailIntake?.subject?.ifEmpty { null })
             putNullable("email_from", state.emailIntake?.from?.ifEmpty { null })

@@ -63,7 +63,7 @@ class FakeBridge:
     def head_seq(self):
         return FakeBridge.head
 
-    def drain(self, since, on_page=None):
+    def drain(self, since):
         recs = [r for r in FakeBridge.records if r["completed_seq"] > since]
         last = max([r["completed_seq"] for r in recs], default=since)
         return recs, last

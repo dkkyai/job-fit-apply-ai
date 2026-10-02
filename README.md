@@ -144,7 +144,7 @@ The `--max-emails` cron run is protected against re-entrant overlap at two level
 - Node.js 20+ (only needed for local dashboard dev; the container build handles production)
 - JDK 21 (only needed for local bridge dev / running the test suite)
 
-> **No Supabase.** The `tracks` / `resume_tailoring` schema is created automatically by the Postgres container from `db/init/001_schema.sql` on first boot.
+> The `tracks` / `resume_tailoring` schema is created automatically by the Postgres container from `db/init/001_schema.sql` on first boot.
 
 ---
 
@@ -160,8 +160,6 @@ make doctor                   # verify the whole stack (read-only)
 ```
 
 `make up` starts `db`, `bridge`, `frontend`, and `markserv`, then configures Tailscale Serve for `:8765`, `:3030`, and `:8081`. Config lives in the root `.env` (see `.env.example`); the `DATABASE_URL` the containers use is derived from `POSTGRES_*` and points at the compose service `db`.
-
-Migrating existing rows from a previous Supabase project? See `scripts/migrate_supabase_to_postgres.py` (idempotent REST → Postgres copy).
 
 ### 2. Host worker — `services/job-fit-apply-ai-pipeline`
 
@@ -187,7 +185,7 @@ make up            # docker compose up -d + Tailscale Serve
 # (scripts/launch-chrome-cdp.sh + its launchd watchdog) and the local model servers.
 ```
 
-The `processor` service sets `DB_BACKEND=postgres` and `DATABASE_URL=postgresql://…@db:5432/…` in `docker-compose.yml`, writing `tracks` directly over JDBC to the `jobfit-db` container. Its personal inputs (`.env`, `resume.yaml`, `config/candidate_profile.yaml`) are bind-mounted read-only from `services/job-fit-apply-ai-pipeline/`.
+The `processor` service sets `DATABASE_URL=postgresql://…@db:5432/…` in `docker-compose.yml`, writing `tracks` directly over JDBC to the `jobfit-db` container. Its personal inputs (`.env`, `resume.yaml`, `config/candidate_profile.yaml`) are bind-mounted read-only from `services/job-fit-apply-ai-pipeline/`.
 
 ### 3. Chrome Extension
 
@@ -388,8 +386,8 @@ cd services/job-fit-apply-ai-bridge && ./gradlew test
 # Dashboard — unit tests
 cd apps/job-fit-apply-ai-backlog && npm run test:unit
 
-# Dashboard — E2E (Playwright, requires the running app)
-cd apps/job-fit-apply-ai-backlog && npm run test:e2e
+# Dashboard — browser tests (Playwright against the built bundle; the bridge API is mocked)
+cd apps/job-fit-apply-ai-backlog && npm run build && npm run test:e2e
 
 # Extension
 cd apps/job-fit-apply-ai-extension && npm test
@@ -397,9 +395,41 @@ cd apps/job-fit-apply-ai-extension && npm test
 # Black-box E2E: Bridge → Processor → Notifier on an isolated compose slice
 make e2e
 
+# Every level at once, recorded per test (see "Whole-repo verification" below)
+make verify
+
 # Whole-stack health (read-only)
 make doctor
 ```
+
+### Whole-repo verification (`make verify`)
+
+`make verify` (`scripts/verify-all.sh`) runs every test level in order and records each
+test's outcome in `.verify/<sha>/results.tsv`:
+
+| Level | What runs |
+|---|---|
+| `static` | Kotlin compile (main + test) for all six modules, dashboard `tsc` typecheck, ESLint (dashboard + extension), Python byte-compile |
+| `unit` | Every module's suite: Kotlin (DB tests against a throwaway Postgres), Vitest, Jest, run-analyzer, compose contract |
+| `build` | Dashboard `vite build` and a Docker image for every first-party service |
+| `browser` | Playwright against the built dashboard |
+| `e2e` | `make e2e` |
+
+`LEVELS=static,unit` runs a subset. It is built for proving a refactor changes no behaviour:
+run it on the base commit and on the branch, then
+
+```bash
+python3 scripts/verify_results.py compare .verify/<base-sha> .verify/<branch-sha> --expect-removed removed.txt
+```
+
+fails the comparison if any shared test changes status other than *to* passed (passed→skipped
+counts — a test that stops running proves nothing), any test disappears without matching a
+`<module>::<test>` glob in `--expect-removed`, any added test fails, or any step's exit code gets
+worse. It never touches the live stack or a checkout's real settings: DB tests get their own
+Postgres container on a random loopback port, JVM tests are pointed at a nonexistent `.env`, the
+run-analyzer's live contract tests are pointed at nothing (they skip), Playwright refuses to reuse
+a server already on :8080, images are tagged `jfaa-verify/*`, and the e2e slice runs under its
+own project. `python3 scripts/test_verify_results.py` tests the comparator itself.
 
 ### Black-box E2E (`services/job-fit-apply-ai-e2e`)
 

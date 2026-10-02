@@ -103,6 +103,11 @@ services:
       MLX_LOCAL_BASE_URL: "http://host.docker.internal:${E2E_FAKE_LLM_PORT:-21436}/v1"
       # Never reach for Steel or a host Chrome in e2e — JD_SCRAPED jobs skip scraping.
       STEEL_BASE_URL: ""
+    # Publish nothing. The base file maps the Steel sign-in endpoint to host 127.0.0.1:3100,
+    # which the production processor already holds on a dev host (and a second slice under
+    # `make e2e-multi` would too), so the slice failed to start next to prod. The suite
+    # never calls the sign-in endpoint.
+    ports: !reset []
     volumes:
       - ${E2E_STATE_DIR:-./.e2e}/output:/app/output
       - ${E2E_STATE_DIR:-./.e2e}/state:/app/state

@@ -1,7 +1,7 @@
 package com.jd.pipeline.client
 
 import com.jd.pipeline.config.Config
-import com.jd.pipeline.nodes.SupabaseTrackNode
+import com.jd.pipeline.nodes.TrackNode
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
@@ -25,8 +25,8 @@ class PostgresGatewayLiveTest {
 
     private val sentinelEmail = "__pg_gateway_selftest__"
 
-    private fun containerReachable(): Boolean = runCatching {
-        // Config.DATABASE_URL defaults to the compose container on localhost:5432.
+    private fun containerReachable(): Boolean = Config.DATABASE_URL.isNotBlank() && runCatching {
+        // DATABASE_URL has no default: unset (CI, a fresh checkout) means skip.
         val uri = java.net.URI(Config.DATABASE_URL)
         val user = uri.userInfo.split(":", limit = 2)
         val port = if (uri.port > 0) uri.port else 5432
@@ -88,11 +88,11 @@ class PostgresGatewayLiveTest {
     }
 
     @Test
-    fun `SupabaseTrackNode writes a full row to Postgres via the gateway`() {
+    fun `TrackNode writes a full row to Postgres via the gateway`() {
         assumeTrue(containerReachable(), "Postgres container not reachable — skipping live test")
         PostgresGateway.delete("tracks", "email_id", sentinelEmail)
 
-        val node = SupabaseTrackNode(PostgresGateway) // exercises buildRecord → insert end-to-end
+        val node = TrackNode(PostgresGateway) // exercises buildRecord → insert end-to-end
         val state = JDState(
             intake = IntakeContext.Email(
                 emailId = sentinelEmail,
@@ -121,7 +121,7 @@ class PostgresGatewayLiveTest {
         )
 
         val result = node.process(state)
-        assertTrue(result.isSupabaseTracked, "node should report tracked: ${result.error}")
+        assertTrue(result.isTracked, "node should report tracked: ${result.error}")
         assertNotNull(result.trackId, "node should parse a generated id")
 
         // confirm the row actually landed with the mapped columns

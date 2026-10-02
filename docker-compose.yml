@@ -253,7 +253,6 @@ services:
       # the tectonic + python PDF-render subprocesses have their own (transient) memory outside it.
       JAVA_TOOL_OPTIONS: "-Xmx640m -XX:MaxMetaspaceSize=160m -XX:+ExitOnOutOfMemoryError"
       JD_BRIDGE_URL: "http://bridge:8765"
-      DB_BACKEND: "postgres"
       DATABASE_URL: "postgresql://${POSTGRES_USER:-jobfit}:${POSTGRES_PASSWORD:-jobfit}@db:5432/${POSTGRES_DB:-jobfit}"
       # THE fit threshold: tailor at or above it, and the notifier's high-fit ping uses the same
       # value. Set it once in the repo-root .env; it beats any FIT_THRESHOLD in the pipeline .env.

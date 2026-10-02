@@ -7,6 +7,7 @@ import io.ktor.http.*
 import io.ktor.server.testing.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
@@ -66,9 +67,17 @@ class TracksApiTest {
                 ?: error("Could not locate db/init/001_schema.sql from ${File(".").absolutePath}")
             conn(TEST_DB).use { c -> c.createStatement().use { it.execute(schema.readText()) } }
 
-            // Point TracksStore at the test database before it is first used.
-            System.setProperty("DATABASE_URL",
-                "postgresql://${creds[0]}:${creds.getOrElse(1) { "" }}@$host:$port/$TEST_DB")
+            // Point TracksStore at the test database. Via the store's override, not a system
+            // property: an exported DATABASE_URL outranks properties in getEnv, which made this
+            // test seed jobfit_test while the store kept reading the admin database.
+            TracksStore.databaseUrlOverride =
+                "postgresql://${creds[0]}:${creds.getOrElse(1) { "" }}@$host:$port/$TEST_DB"
+        }
+
+        @AfterAll
+        @JvmStatic
+        fun release() {
+            TracksStore.databaseUrlOverride = null
         }
     }
 

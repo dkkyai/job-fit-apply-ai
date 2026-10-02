@@ -6,7 +6,7 @@ import com.jd.pipeline.state.isInlineDigest
 
 /**
  * What to do with a raw email after ingestion (scan → scrape). Pure decision, no I/O —
- * the caller ([WorkerCommandHandler.resolveEmail]) performs the bridge writes. Extracted
+ * the caller (`ProcessorCommandHandler.resolveEmail`) performs the bridge writes. Extracted
  * so the digest / not-a-job / process branching is testable without a bridge or Gmail.
  */
 sealed interface EmailDisposition {

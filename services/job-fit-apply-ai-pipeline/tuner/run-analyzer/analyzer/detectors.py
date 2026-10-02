@@ -35,7 +35,7 @@ def _board(rec):
     return rec.get("board") or "unknown"
 
 
-def detect(recs, metrics=None, baseline=None):
+def detect(recs):
     """Return the list of deterministic findings for this window's records."""
     out = []
     for fn in (_oom, _timeouts, _run_log_missing, _tailor_after_error,

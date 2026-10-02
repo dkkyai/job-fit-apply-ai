@@ -4,7 +4,7 @@ import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.fixtures.TestJDStateFactory
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.state.JDState
-import com.jd.pipeline.testutils.MockSupabaseClient
+import com.jd.pipeline.testutils.FakeTracksGateway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -16,42 +16,41 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Unit tests for SupabaseTrackNode.
+ * Unit tests for TrackNode.
  *
- * The node talks to Supabase through the injected [com.jd.pipeline.client.SupabaseGateway],
- * so these tests supply a [MockSupabaseClient] and never touch the real database — no test
- * rows are written to the live `tracks` table, so there is nothing to clean up.
+ * The node writes through the injected [com.jd.pipeline.client.TracksGateway], so these
+ * tests supply a [FakeTracksGateway] and never touch a real database.
  */
-@DisplayName("SupabaseTrackNodeTest")
-class SupabaseTrackNodeTest {
+@DisplayName("TrackNodeTest")
+class TrackNodeTest {
 
-    private lateinit var supabase: MockSupabaseClient
-    private lateinit var node: SupabaseTrackNode
+    private lateinit var gateway: FakeTracksGateway
+    private lateinit var node: TrackNode
 
     @BeforeEach
     fun setUp() {
-        supabase = MockSupabaseClient()
-        node = SupabaseTrackNode(supabase)
+        gateway = FakeTracksGateway()
+        node = TrackNode(gateway)
     }
 
     @Test
-    @DisplayName("Should return error when Supabase is not configured")
+    @DisplayName("Should return error when the database is not configured")
     fun testReturnsErrorWhenNotConfigured() {
-        supabase.configured = false
+        gateway.configured = false
 
         val result = node.process(TestJDStateFactory.createFullJobPostingState())
 
-        assertTrue(result.error.contains("SUPABASE_URL"))
+        assertTrue(result.error.contains("DATABASE_URL"))
         assertTrue(result.error.contains("not configured"))
-        assertFalse(result.isSupabaseTracked)
-        assertEquals(0, supabase.getTrackCount())
+        assertFalse(result.isTracked)
+        assertEquals(0, gateway.getTrackCount())
     }
 
     @Test
     @DisplayName("Should preserve input fields when insert fails")
     fun testPreservesFieldsOnError() {
-        supabase.shouldFailInsert = true
-        supabase.failMessage = "insert blew up"
+        gateway.shouldFailInsert = true
+        gateway.failMessage = "insert blew up"
 
         val input = TestJDStateFactory.createFullJobPostingState().copy(
             company = "ErrorTestCo",
@@ -64,8 +63,8 @@ class SupabaseTrackNodeTest {
         val result = node.process(input)
 
         // Insert failed, so nothing tracked, but core fields are preserved.
-        assertFalse(result.isSupabaseTracked)
-        assertTrue(result.error.contains("supabase_track"))
+        assertFalse(result.isTracked)
+        assertTrue(result.error.startsWith("track: "))
         assertEquals("ErrorTestCo", result.company)
         assertEquals("Senior Engineer", result.roleTitle)
         assertEquals(85.0f, result.fitScore)
@@ -105,12 +104,12 @@ class SupabaseTrackNodeTest {
         val result = node.process(input)
 
         // Tracking succeeded against the mock.
-        assertTrue(result.isSupabaseTracked)
+        assertTrue(result.isTracked)
         assertNotNull(result.trackId)
 
         // The node mapped state fields into a single insert on the tracks table.
-        assertEquals(1, supabase.insertCalls.size)
-        val (table, record) = supabase.insertCalls[0]
+        assertEquals(1, gateway.insertCalls.size)
+        val (table, record) = gateway.insertCalls[0]
         assertEquals("tracks", table)
         assertEquals("track-test-001", record["email_id"])
         assertEquals("TrackTest Co", record["company"])
@@ -140,7 +139,7 @@ class SupabaseTrackNodeTest {
 
         val result = node.process(input)
 
-        assertTrue(result.isSupabaseTracked)
+        assertTrue(result.isTracked)
         assertEquals("MinCo", result.company)
     }
 
@@ -156,8 +155,8 @@ class SupabaseTrackNodeTest {
 
         val result = node.process(input)
 
-        assertTrue(result.isSupabaseTracked)
-        assertEquals(1, supabase.insertCalls.size)
+        assertTrue(result.isTracked)
+        assertEquals(1, gateway.insertCalls.size)
     }
 
     @Test
@@ -184,7 +183,7 @@ class SupabaseTrackNodeTest {
 
         val result = node.process(input)
 
-        assertTrue(result.isSupabaseTracked)
+        assertTrue(result.isTracked)
         assertEquals("PreserveCo", result.company)
         assertEquals("Engineer", result.roleTitle)
     }

@@ -14,9 +14,8 @@ import java.sql.Timestamp
 import java.sql.Types
 
 /**
- * Direct-JDBC implementation of [SupabaseGateway] against the self-hosted Postgres
- * container. The drop-in replacement for [SupabaseClient] under the direct-Postgres
- * design (plan B) — selected by [GatewayProvider] when DB_BACKEND=postgres.
+ * Direct-JDBC implementation of [TracksGateway] against the self-hosted Postgres
+ * container (compose `db`), addressed by DATABASE_URL.
  *
  * Deliberately connection-per-call (no pool): the pipeline is low-concurrency and
  * runs as short-lived jobs, so a pool would add dependencies for no real benefit.
@@ -24,7 +23,7 @@ import java.sql.Types
  * Values are always bound as parameters. Table/column identifiers come from in-repo
  * constants (never user input) but are still validated defensively.
  */
-object PostgresGateway : SupabaseGateway {
+object PostgresGateway : TracksGateway {
 
     private val mapper = ObjectMapper()
     private val identifier = Regex("^[A-Za-z_][A-Za-z0-9_]*$")

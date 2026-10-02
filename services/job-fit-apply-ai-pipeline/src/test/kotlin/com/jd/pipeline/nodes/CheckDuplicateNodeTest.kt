@@ -1,11 +1,9 @@
 package com.jd.pipeline.nodes
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.jd.pipeline.client.SupabaseClient
-import com.jd.pipeline.client.SupabaseGateway
+import com.jd.pipeline.client.TracksGateway
 import com.jd.pipeline.fixtures.TestJDStateFactory
 import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
@@ -22,9 +20,9 @@ import kotlin.test.assertTrue
 /**
  * Unit tests for CheckDuplicateNode.
  * 
- * Note: When Supabase is configured, the node queries Supabase instead of using
- * the in-memory fallback. Tests that rely on the fallback behavior will be skipped
- * when Supabase is configured.
+ * The top-level tests exercise the in-memory fallback through an unconfigured gateway —
+ * never whatever DATABASE_URL the environment happens to hold. [DatabaseBackedPath]
+ * covers the tracks-table path with a mocked gateway.
  */
 @DisplayName("CheckDuplicateNodeTest")
 class CheckDuplicateNodeTest {
@@ -33,7 +31,7 @@ class CheckDuplicateNodeTest {
 
     @BeforeEach
     fun setUp() {
-        node = CheckDuplicateNode()
+        node = CheckDuplicateNode(mock<TracksGateway>().also { whenever(it.isConfigured()).thenReturn(false) })
         // Reset the in-memory fallback set before each test
         CheckDuplicateNode.resetFallback()
     }
@@ -56,8 +54,7 @@ class CheckDuplicateNodeTest {
         val result = node.process(input)
 
         // Then: should not be marked as duplicate
-        // When Supabase is configured, the job won't be found in DB (no prior record)
-        // When Supabase is NOT configured, fallback set starts empty
+        // The fallback set starts empty
         assertFalse(result.isDuplicate)
     }
 
@@ -86,8 +83,6 @@ class CheckDuplicateNodeTest {
     @Test
     @DisplayName("Skip reason should contain company name when duplicate")
     fun testSkipReasonContainsCompany() {
-        // Skip this test when Supabase is configured since fallback won't be used
-        assumeTrue(!SupabaseClient.isConfigured(), "Skipped: Supabase is configured - fallback not used")
         
         // Given: unique company/role
         val input = TestJDStateFactory.createFullJobPostingState().copy(
@@ -111,8 +106,6 @@ class CheckDuplicateNodeTest {
     @Test
     @DisplayName("Different roles should not be duplicates")
     fun testDifferentRolesNotDuplicates() {
-        // Skip this test when Supabase is configured
-        assumeTrue(!SupabaseClient.isConfigured(), "Skipped: Supabase is configured - fallback not used")
         
         // Given: same company, different roles
         val job1 = TestJDStateFactory.createFullJobPostingState().copy(
@@ -137,8 +130,6 @@ class CheckDuplicateNodeTest {
     @Test
     @DisplayName("Different locations should not be duplicates")
     fun testDifferentLocationsNotDuplicates() {
-        // Skip this test when Supabase is configured
-        assumeTrue(!SupabaseClient.isConfigured(), "Skipped: Supabase is configured - fallback not used")
         
         // Given: same company/role, different locations
         val job1 = TestJDStateFactory.createFullJobPostingState().copy(
@@ -163,8 +154,6 @@ class CheckDuplicateNodeTest {
     @Test
     @DisplayName("Fallback set should grow with new jobs")
     fun testFallbackSetGrows() {
-        // Skip this test when Supabase is configured
-        assumeTrue(!SupabaseClient.isConfigured(), "Skipped: Supabase is configured - fallback not used")
         
         // Given: multiple unique jobs
         val job1 = TestJDStateFactory.createFullJobPostingState().copy(
@@ -188,21 +177,21 @@ class CheckDuplicateNodeTest {
     }
 
     @Nested
-    @DisplayName("Supabase-backed path (mocked gateway)")
-    inner class SupabaseBackedPath {
+    @DisplayName("Database-backed path (mocked gateway)")
+    inner class DatabaseBackedPath {
 
         private val mapper = ObjectMapper()
 
         @Test
-        @DisplayName("marks job as duplicate when Supabase returns a matching row")
+        @DisplayName("marks job as duplicate when the tracks table has a matching row")
         fun duplicateWhenRowsFound() {
-            val gateway = mock<SupabaseGateway>()
+            val gateway = mock<TracksGateway>()
             whenever(gateway.isConfigured()).thenReturn(true)
             whenever(gateway.query(any(), any(), any(), any())).thenReturn(listOf(mapper.readTree("""{"id":1}""")))
 
             val node = CheckDuplicateNode(gateway)
             val input = TestJDStateFactory.createFullJobPostingState().copy(
-                company = "SupabaseCo",
+                company = "TrackedCo",
                 roleTitle = "Engineer",
                 location = "Remote",
             )
@@ -210,13 +199,13 @@ class CheckDuplicateNodeTest {
             val result = node.process(input)
 
             assertTrue(result.isDuplicate)
-            assertTrue(result.skippedReason.contains("SupabaseCo"))
+            assertTrue(result.skippedReason.contains("TrackedCo"))
         }
 
         @Test
-        @DisplayName("marks job as new when Supabase returns no rows")
+        @DisplayName("marks job as new when the tracks table has no matching row")
         fun notDuplicateWhenNoRows() {
-            val gateway = mock<SupabaseGateway>()
+            val gateway = mock<TracksGateway>()
             whenever(gateway.isConfigured()).thenReturn(true)
             whenever(gateway.query(any(), any(), any(), any())).thenReturn(emptyList())
 
@@ -233,9 +222,9 @@ class CheckDuplicateNodeTest {
         }
 
         @Test
-        @DisplayName("fails open (treats as new) when the Supabase query throws")
+        @DisplayName("fails open (treats as new) when the tracks query throws")
         fun failsOpenOnQueryException() {
-            val gateway = mock<SupabaseGateway>()
+            val gateway = mock<TracksGateway>()
             whenever(gateway.isConfigured()).thenReturn(true)
             whenever(gateway.query(any(), any(), any(), any())).thenThrow(RuntimeException("connection refused"))
 

@@ -259,4 +259,16 @@ class GmailAuthTest {
         assertEquals(GmailAuth.TokenStatus.EXPIRED, result.status)
         assertContains(result.message, "--reauth")
     }
+
+    @Test
+    @DisplayName("checkTokenStatus reports MISSING when there is no token file, without touching the network")
+    fun checkTokenStatusMissing(@TempDir dir: Path) {
+        val rig = Rig(dir)
+        Files.delete(rig.tokenFile)
+
+        val result = rig.checkTokenStatus(ScriptedTransport({ error("no request expected") }))
+
+        assertEquals(GmailAuth.TokenStatus.MISSING, result.status)
+        assertContains(result.message, "--reauth")
+    }
 }

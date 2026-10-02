@@ -55,31 +55,6 @@ class BridgeClient(
         }
     }
 
-    // ── Status polling ────────────────────────────────────────────────────────
-
-    fun getStatus(jobId: String): JobStatusDto {
-        val req = HttpGet("$baseUrl/api/jobs/$jobId")
-        return http.execute(req) { resp ->
-            val body = EntityUtils.toString(resp.entity, Charsets.UTF_8)
-            check(resp.code == 200) { "GET /api/jobs/$jobId → ${resp.code}: $body" }
-            mapper.readValue(body, JobStatusDto::class.java)
-        }
-    }
-
-    fun pollUntilTerminal(
-        jobId: String,
-        timeoutMs: Long = 600_000L,
-        intervalMs: Long = 3_000L,
-    ): JobStatusDto {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (System.currentTimeMillis() < deadline) {
-            val status = getStatus(jobId)
-            if (status.status in listOf("done", "error")) return status
-            Thread.sleep(intervalMs)
-        }
-        throw RuntimeException("Timed out waiting for job $jobId after ${timeoutMs}ms")
-    }
-
     // ── Worker endpoints ──────────────────────────────────────────────────────
 
     /**
@@ -135,25 +110,9 @@ class BridgeClient(
             check(resp.code == 200) { "POST /api/jobs/$jobId/artifacts → ${resp.code}: $body" }
         }
     }
-
-    fun downloadArtifact(jobId: String, name: String, dest: java.io.File) {
-        val req = HttpGet("$baseUrl/api/jobs/$jobId/$name")
-        http.execute(req) { resp ->
-            check(resp.code == 200) { "GET /api/jobs/$jobId/$name → ${resp.code}" }
-            dest.outputStream().use { out -> resp.entity.writeTo(out) }
-        }
-    }
 }
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
-
-data class JobStatusDto(
-    val job_id: String = "",
-    val status: String = "",
-    val fit_score: Int? = null,
-    val pipeline_action: String? = null,
-    val error: String? = null,
-)
 
 /** Work-item type discriminator (mirrors the bridge's WorkItemType — DTOs duplicated per service). */
 object WorkItemType {

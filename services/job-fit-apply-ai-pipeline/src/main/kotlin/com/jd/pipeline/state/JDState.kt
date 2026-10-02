@@ -85,9 +85,9 @@ data class JDState(
     // ── HTML pipeline output ──────────────────────────────────────────────────
     val resumeHtmlPdf: String = "",
 
-    // ── Supabase tracking output ──────────────────────────────────────────────
+    // ── tracks-table output ───────────────────────────────────────────────────
     val trackId: Int? = null,
-    val isSupabaseTracked: Boolean = false,
+    val isTracked: Boolean = false,
     val isDuplicate: Boolean = false,
     val duplicateId: Int? = null,
 

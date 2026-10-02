@@ -14,7 +14,6 @@ Thumbs.db
 .env
 .env.*
 !.env.example
-!.env.ci.example
 # Committed template for a second (test) instance — copy to gitignored .env.test.
 !.env.test.example
 
@@ -49,3 +48,5 @@ bun.lockb
 /.e2e/
 # Second ("source") e2e slice for the multi-instance scenarios (#56 sc. 9/10)
 /.e2e-src/
+# make verify output (scripts/verify-all.sh)
+/.verify/

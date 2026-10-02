@@ -209,15 +209,6 @@ data class TrackStatusUpdate(val status: String)
 
 // ── Store helpers ─────────────────────────────────────────────────────────────
 
-/** Partial update — only non-null fields are written to the DB. */
-data class JobUpdate(
-    val status: JobStatus?        = null,
-    val fitScore: Int?            = null,
-    val pipelineAction: String?   = null,
-    val artifacts: ArtifactUrls?  = null,
-    val error: String?            = null,
-)
-
 /** Row returned from the DB after deserialization. */
 data class JobRow(
     val id: String,
@@ -234,12 +225,9 @@ data class JobRow(
     val claimedAt: Long?,
     val createdAt: Long,
     val updatedAt: Long,
-    // Gmail write-back fields (set by recordResult)
+    // Set by recordResult on a terminal result. Production reads the completed feed instead;
+    // StoreTest observes retry/fencing/sequencing through these.
     val terminalLabel: String?,
-    val draftText: String?,
-    val isRecruiter: Boolean,
-    val messageId: String?,
-    val writebackDone: Boolean,
     val completedSeq: Long?,
 )
 

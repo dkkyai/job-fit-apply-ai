@@ -1,6 +1,5 @@
 // Data layer for the backlog UI. Talks to the jd-bridge HTTP API (Ktor), which
-// reads/writes the shared `tracks` table in the Postgres container. Replaces the
-// former direct supabase-js access.
+// reads/writes the shared `tracks` table in the Postgres container.
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8765";
 

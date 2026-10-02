@@ -406,6 +406,9 @@ jobs:
       - name: Validate Compose data-root contract
         run: make compose-data-root-test
 
+      - name: make verify comparator self-test
+        run: python3 scripts/test_verify_results.py
+
   # ── 4e. Run-analyzer (Python unittest, stdlib-only) ─────────────────────────
   run-analyzer:
     name: Run-analyzer — unittest

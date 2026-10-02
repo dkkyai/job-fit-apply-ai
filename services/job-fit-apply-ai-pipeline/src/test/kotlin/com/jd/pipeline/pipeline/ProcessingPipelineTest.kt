@@ -3,11 +3,13 @@ package com.jd.pipeline.pipeline
 import com.jd.pipeline.nodes.CheckDuplicateNode
 import com.jd.pipeline.nodes.DraftReplyComposer
 import com.jd.pipeline.nodes.Node
+import com.jd.pipeline.nodes.TrackNode
 import com.jd.pipeline.source.IngestionSource
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.source.JdRecord
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
+import com.jd.pipeline.testutils.FakeTracksGateway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -45,6 +47,13 @@ class ProcessingPipelineTest {
         ),
     )
 
+    /** Default nodes, but dedup and tracking see an unconfigured database — never the
+     *  environment's DATABASE_URL (which on a dev host can be the live one). */
+    private fun offlinePipeline(): ProcessingPipeline {
+        val noDb = FakeTracksGateway().apply { configured = false }
+        return ProcessingPipeline(checkDuplicate = CheckDuplicateNode(noDb), track = TrackNode(noDb))
+    }
+
     private fun injectNode(pipeline: ProcessingPipeline, fieldName: String, node: Node<JDState>) {
         val field = ProcessingPipeline::class.java.getDeclaredField(fieldName)
         field.isAccessible = true
@@ -54,7 +63,7 @@ class ProcessingPipelineTest {
     @Test
     @DisplayName("invoke returns SKIP with error when checkDuplicate throws")
     fun invokeCatchesCheckDuplicateException() {
-        val pipeline = ProcessingPipeline()
+        val pipeline = offlinePipeline()
         injectNode(pipeline, "checkDuplicate", Node { _ ->
             throw RuntimeException("simulated checkDuplicate failure")
         })
@@ -74,7 +83,7 @@ class ProcessingPipelineTest {
         // the ingestion-side value straight through; it previously seeded the JDState default ("")
         // and overwrote it, which is what blanked scrapePath for every logged job. Asserted on a
         // failure path too, because that is exactly where a browser problem shows up.
-        val pipeline = ProcessingPipeline()
+        val pipeline = offlinePipeline()
         injectNode(pipeline, "checkDuplicate", Node { _ -> throw RuntimeException("boom") })
 
         val result = pipeline.invoke(minimalRecord().copy(scrapePath = "cdp_fallback"))
@@ -86,7 +95,7 @@ class ProcessingPipelineTest {
     @Test
     @DisplayName("invoke returns SKIP with error when scoreFit throws")
     fun invokeCatchesScoreFitException() {
-        val pipeline = ProcessingPipeline()
+        val pipeline = offlinePipeline()
         // checkDuplicate must pass first (return non-duplicate state)
         injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
         injectNode(pipeline, "scoreFit", Node { _ ->
@@ -104,11 +113,11 @@ class ProcessingPipelineTest {
     @Test
     @DisplayName("invoke returns SKIP when job is duplicate and not a recruiter email")
     fun invokeSkipsDuplicateNonRecruiter() {
-        val pipeline = ProcessingPipeline()
+        val pipeline = offlinePipeline()
         injectNode(pipeline, "checkDuplicate", Node { state ->
             state.copy(isDuplicate = true)
         })
-        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+        injectNode(pipeline, "track", Node { state -> state })
 
         val result = pipeline.invoke(minimalRecord())
 
@@ -118,7 +127,7 @@ class ProcessingPipelineTest {
     @Test
     @DisplayName("invoke returns error result when tailor subgraph fails")
     fun invokeHandlesTailorSubgraphError() {
-        val pipeline = ProcessingPipeline()
+        val pipeline = offlinePipeline()
         injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
         injectNode(pipeline, "scoreFit", Node { state ->
             state.copy(
@@ -129,7 +138,7 @@ class ProcessingPipelineTest {
         injectNode(pipeline, "tailorSubgraph", Node { state ->
             state.copy(error = "tailor subgraph failed")
         })
-        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+        injectNode(pipeline, "track", Node { state -> state })
 
         val result = pipeline.invoke(minimalRecord())
 
@@ -141,7 +150,7 @@ class ProcessingPipelineTest {
     @Test
     @DisplayName("recruiter email is forced to TAILOR even when scoreFit returns SKIP")
     fun invokeForcesTailorForRecruiterLowScore() {
-        val pipeline = ProcessingPipeline()
+        val pipeline = offlinePipeline()
         var tailorCalled = false
         injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
         injectNode(pipeline, "scoreFit", Node { state ->
@@ -151,7 +160,7 @@ class ProcessingPipelineTest {
             tailorCalled = true
             state.copy(error = "stop after tailor") // short-circuit before LLM cover-letter/PDF nodes
         })
-        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+        injectNode(pipeline, "track", Node { state -> state })
 
         pipeline.invoke(recruiterRecord())
 
@@ -163,7 +172,7 @@ class ProcessingPipelineTest {
     @Test
     @DisplayName("recruiter email is scored + tailored even when it is a duplicate")
     fun invokeDoesNotSkipDuplicateRecruiter() {
-        val pipeline = ProcessingPipeline()
+        val pipeline = offlinePipeline()
         var tailorCalled = false
         injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = true) })
         injectNode(pipeline, "scoreFit", Node { state ->
@@ -173,7 +182,7 @@ class ProcessingPipelineTest {
             tailorCalled = true
             state.copy(error = "stop after tailor")
         })
-        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+        injectNode(pipeline, "track", Node { state -> state })
 
         pipeline.invoke(recruiterRecord())
 
@@ -198,7 +207,7 @@ class ProcessingPipelineTest {
         injectNode(pipeline, "generateCoverLetter", Node { state -> state })
         injectNode(pipeline, "renderResumePdf", Node { state -> state })
         injectNode(pipeline, "addArtifactUrl", Node { state -> state.copy(outputPath = tempDir.toString(), artifactUrl = "https://a/x") })
-        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+        injectNode(pipeline, "track", Node { state -> state })
         return pipeline
     }
 
@@ -232,7 +241,7 @@ class ProcessingPipelineTest {
     @Test
     @DisplayName("invoke calls MetadataUtils.writeMetadata after addArtifactUrl")
     fun invokeCallsWriteMetadataAfterAddArtifactUrl(@TempDir tempDir: Path) {
-        val pipeline = ProcessingPipeline()
+        val pipeline = offlinePipeline()
         injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
         injectNode(pipeline, "scoreFit", Node { state ->
             state.copy(
@@ -252,7 +261,7 @@ class ProcessingPipelineTest {
                 artifactUrl = "https://artifacts.example.com/test-job"
             )
         })
-        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+        injectNode(pipeline, "track", Node { state -> state })
 
         pipeline.invoke(minimalRecord())
 
@@ -275,7 +284,7 @@ class ProcessingPipelineTest {
     @Test
     @DisplayName("invoke does not call writeMetadata when addArtifactUrl produces blank outputPath")
     fun invokeSkipsWriteMetadataWhenOutputPathBlank() {
-        val pipeline = ProcessingPipeline()
+        val pipeline = offlinePipeline()
         injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
         injectNode(pipeline, "scoreFit", Node { state ->
             state.copy(
@@ -283,7 +292,7 @@ class ProcessingPipelineTest {
                 fitScore = 30f,
             )
         })
-        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+        injectNode(pipeline, "track", Node { state -> state })
 
         val result = pipeline.invoke(minimalRecord())
 
@@ -295,7 +304,7 @@ class ProcessingPipelineTest {
     @Test
     @DisplayName("invoke writes metadata with correct pipeline action in result")
     fun invokeWritesMetadataWithCorrectPipelineAction(@TempDir tempDir: Path) {
-        val pipeline = ProcessingPipeline()
+        val pipeline = offlinePipeline()
         injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
         injectNode(pipeline, "scoreFit", Node { state ->
             state.copy(
@@ -317,7 +326,7 @@ class ProcessingPipelineTest {
                 artifactUrl = "https://artifacts.example.com/meta-sdet"
             )
         })
-        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+        injectNode(pipeline, "track", Node { state -> state })
 
         val result = pipeline.invoke(minimalRecord())
 
@@ -333,10 +342,10 @@ class ProcessingPipelineTest {
     }
 
     @Test
-    @DisplayName("MetadataUtils.writeMetadata is called in the correct order — after addArtifactUrl, before supabaseTrack")
+    @DisplayName("MetadataUtils.writeMetadata is called in the correct order — after addArtifactUrl, before track")
     fun writeMetadataCalledInCorrectOrder(@TempDir tempDir: Path) {
         val callOrder = mutableListOf<String>()
-        val pipeline = ProcessingPipeline()
+        val pipeline = offlinePipeline()
 
         injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
         injectNode(pipeline, "scoreFit", Node { state ->
@@ -361,16 +370,16 @@ class ProcessingPipelineTest {
         // We can't easily intercept writeMetadata since it's a static utility call,
         // but we can verify the files exist after the pipeline completes,
         // which proves writeMetadata was called after addArtifactUrl populated the state.
-        injectNode(pipeline, "supabaseTrack", Node { state ->
-            callOrder.add("supabaseTrack")
+        injectNode(pipeline, "track", Node { state ->
+            callOrder.add("track")
             state
         })
 
         pipeline.invoke(minimalRecord())
 
-        // Verify call order: addArtifactUrl must come before supabaseTrack
-        assertEquals(listOf("addArtifactUrl", "supabaseTrack"), callOrder,
-            "addArtifactUrl must be called before supabaseTrack")
+        // Verify call order: addArtifactUrl must come before track
+        assertEquals(listOf("addArtifactUrl", "track"), callOrder,
+            "addArtifactUrl must be called before track")
 
         // And since writeMetadata is between them, the files should exist
         assertTrue(Files.exists(tempDir.resolve("report.md")), "report.md should exist")

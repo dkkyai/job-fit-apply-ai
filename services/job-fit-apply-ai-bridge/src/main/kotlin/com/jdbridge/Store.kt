@@ -464,10 +464,6 @@ private fun ResultRow.toJobRow(): JobRow {
         createdAt      = this[Jobs.createdAt],
         updatedAt      = this[Jobs.updatedAt],
         terminalLabel  = this[Jobs.terminalLabel],
-        draftText      = this[Jobs.draftText],
-        isRecruiter    = this[Jobs.isRecruiter],
-        messageId      = this[Jobs.messageId],
-        writebackDone  = this[Jobs.writebackDone],
         completedSeq   = this[Jobs.completedSeq],
     )
 }

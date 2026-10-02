@@ -15,7 +15,6 @@ data class JobListing(
     @JsonProperty("job_is_remote")   val jobIsRemote: Boolean = false,
     @JsonProperty("job_description") val jobDescription: String? = null,
     @JsonProperty("job_apply_link")  val jobApplyLink: String? = null,
-    @JsonProperty("job_publisher")   val jobPublisher: String? = null,
     // Structured fields the report shows. All optional: JSearch omits or nulls them freely, and
     // older responses use "FULLTIME" where newer ones use "Full-time".
     @JsonProperty("job_employment_type")     val jobEmploymentType: String? = null,

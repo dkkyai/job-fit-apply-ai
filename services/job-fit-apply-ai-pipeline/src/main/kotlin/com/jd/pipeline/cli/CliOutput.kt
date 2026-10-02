@@ -1,11 +1,7 @@
 package com.jd.pipeline.cli
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.state.JDState
-import com.jd.pipeline.state.PipelineAction
-import com.jd.pipeline.state.isDigest
-import com.jd.pipeline.state.isInlineDigest
 import com.jd.pipeline.utils.JobFormatter
 import com.jd.pipeline.utils.NodeTimer
 import java.time.Duration
@@ -31,59 +27,6 @@ object CliOutput {
         println("║  DRAFT_REPLY_MODEL     │ ${Config.DRAFT_REPLY_MODEL} - Recruiter reply.")
         println("╚═══════════════════════════════════════════════════════════╝")
         println()
-    }
-
-    fun printResult(result: JDState) {
-        val action = result.pipelineAction.asDbValue()
-
-        // Digest emails are containers
-        if (result.isDigest || result.isInlineDigest) {
-            val reason = result.skippedReason
-            if (reason.isNotEmpty()) {
-                println("  ↳ $reason")
-            } else {
-                println("  ↳ Digest email processed")
-            }
-            return
-        }
-
-        if (!result.isJobPosting) {
-            println("  ↳ Not a job posting — skipped")
-            return
-        }
-
-        val color = when (action) {
-            "tailor" -> "\u001B[32m"
-            "skip" -> "\u001B[31m"
-            else -> "\u001B[0m"
-        }
-
-        // Use aligned format for single job output
-        val jobLine = JobFormatter.formatSingleJob(result, color)
-        println("  $jobLine")
-
-        if (action == "tailor") {
-            val outputPath = result.outputPath
-            if (outputPath.isNotEmpty()) {
-                println("    → output: $outputPath")
-            }
-            // Note: artifact URL now appears in the job line above
-        }
-
-        val jobUrl = result.jobUrl
-        if (jobUrl.isNotEmpty()) {
-            println("    → job_url: $jobUrl")
-        }
-
-        if (result.isRecruiterResponseRequired) {
-            val draftId = result.draftId
-            println("    → draft reply: ${if (draftId.isNotEmpty()) draftId else "(queued)"}")
-        }
-
-        val skippedReason = result.skippedReason
-        if (skippedReason.isNotEmpty()) {
-            println("    → reason: $skippedReason")
-        }
     }
 
     fun printBatchSummary(
@@ -161,28 +104,6 @@ object CliOutput {
         if (blocked.isNotEmpty()) {
             println("\u001B[33m[WARN] Sites that blocked scraping this batch (falling back to email data): ${blocked.joinToString(", ")}\u001B[0m")
         }
-    }
-
-    fun printJsonSummary(state: Map<String, Any?>) {
-        val obj = LinkedHashMap<String, Any?>()
-        obj["output_path"] = state["output_path"] ?: ""
-        obj["fit_score"] = state["fit_score"] ?: 0
-        obj["pipeline_action"] = state["pipeline_action"] ?: "skip"
-        obj["artifact_url"] = state["artifact_url"] ?: ""
-        obj["error"] = state["error"] ?: ""
-        val mapper = ObjectMapper()
-        println(mapper.writeValueAsString(obj))
-    }
-
-    fun printJsonSummary(state: JDState) {
-        val obj = LinkedHashMap<String, Any?>()
-        obj["output_path"] = state.outputPath
-        obj["fit_score"] = state.fitScore?.toDouble() ?: 0
-        obj["pipeline_action"] = state.pipelineAction.asDbValue()
-        obj["artifact_url"] = state.artifactUrl
-        obj["error"] = state.error
-        val mapper = ObjectMapper()
-        println(mapper.writeValueAsString(obj))
     }
 
     private fun printNodeTimingTable() {

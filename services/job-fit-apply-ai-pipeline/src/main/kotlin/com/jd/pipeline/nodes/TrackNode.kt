@@ -1,44 +1,42 @@
 package com.jd.pipeline.nodes
 
-import com.jd.pipeline.client.GatewayProvider
-import com.jd.pipeline.client.SupabaseGateway
+import com.jd.pipeline.client.PostgresGateway
+import com.jd.pipeline.client.TracksGateway
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.state.emailIntake
 
 /**
- * Node: supabase_track
+ * Node: track
  *
- * Inserts the current job into the Supabase "tracks" table.
- * Uses the shared SupabaseClient (Jackson serialization, no hand-rolled toJson).
- * Parses the real row id from the return=representation response and stores it in
- * trackId for downstream reference.
+ * Inserts the current job into the Postgres `tracks` table and stores the generated
+ * row id in trackId for downstream reference.
  */
-class SupabaseTrackNode(
-    private val supabase: SupabaseGateway = GatewayProvider.active
+class TrackNode(
+    private val gateway: TracksGateway = PostgresGateway
 ) : Node<JDState> {
 
     override fun process(input: JDState): JDState {
-        println("[supabase_track] Tracking: ${input.roleTitle} @ ${input.company}")
+        println("[track] Tracking: ${input.roleTitle} @ ${input.company}")
 
-        if (!supabase.isConfigured()) {
-            return input.copy(error = "SUPABASE_URL not configured in .env")
+        if (!gateway.isConfigured()) {
+            return input.copy(error = "DATABASE_URL not configured")
         }
 
         return try {
             val record = buildRecord(input)
-            val row = supabase.insert("tracks", record)
+            val row = gateway.insert("tracks", record)
             val id = row.path("id").asInt(0).takeIf { it > 0 }
 
-            println("[supabase_track] Tracked successfully (id=${id ?: "unknown"})")
+            println("[track] Tracked successfully (id=${id ?: "unknown"})")
 
             input.copy(
-                isSupabaseTracked = true,
+                isTracked = true,
                 trackId = id
             )
         } catch (e: Exception) {
-            System.err.println("[supabase_track] ERROR: ${e.message}")
-            input.copy(error = "supabase_track: ${e.message}")
+            System.err.println("[track] ERROR: ${e.message}")
+            input.copy(error = "track: ${e.message}")
         }
     }
 
