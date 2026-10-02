@@ -121,6 +121,8 @@ def _wire(application, adapter):
     # Group -1 runs before Hermes' catch-all callback handler (group 0); ApplicationHandlerStop
     # keeps our taps from reaching it, and non-matching callbacks never enter this handler.
     application.add_handler(CallbackQueryHandler(on_button, pattern=core.CALLBACK_PATTERN), group=-1)
+    if _home_chat and _loop is not None:
+        _loop.create_task(_pump_outbox(application.bot))
     logger.info("jobbot_actions: card-button handler registered")
 
 
@@ -158,6 +160,43 @@ def _after_tool(tool_name=None, args=None, result=None, task_id=None, **kwargs):
                                 reply_markup=_markup([row]) if row else None))
 
 
+async def _post_outbox_item(bot, chat_id, item):
+    """One outbox item: a photo (caption if it fits) and/or text, with its buttons on the text."""
+    row = item.get("buttons") or []
+    markup = _markup([row]) if row else None
+    text = item.get("text") or ""
+    if item.get("has_photo"):
+        photo = await asyncio.to_thread(_client.outbox_photo, item["id"])
+        if core.caption_fits(text):
+            await bot.send_photo(chat_id=chat_id, photo=photo, caption=text, reply_markup=markup)
+            return
+        await bot.send_photo(chat_id=chat_id, photo=photo)
+    await bot.send_message(chat_id=chat_id, text=text[:4096], reply_markup=markup)
+
+
+async def _pump_outbox(bot, interval=5.0):
+    """Deliver jobbot-mcp's outbox to the home chat, forever. One bad item never blocks the rest."""
+    while True:
+        try:
+            items = await asyncio.to_thread(_client.outbox)
+            for item in items:
+                try:
+                    await _post_outbox_item(bot, int(_home_chat), item)
+                except Exception as e:
+                    logger.warning("jobbot_actions: outbox item %s not posted: %s", item.get("id"), e)
+                await asyncio.to_thread(_client.outbox_delivered, item["id"])
+        except Exception as e:
+            logger.debug("jobbot_actions: outbox poll failed: %s", e)
+        await asyncio.sleep(interval)
+
+
+async def _jdaccounts(raw_args=""):
+    try:
+        return await asyncio.to_thread(_client.accounts_text)
+    except Exception as e:
+        return f"{core.UNAVAILABLE} ({e.__class__.__name__})"
+
+
 async def _jdstatus(raw_args=""):
     return await asyncio.to_thread(core.safe_status, _client)
 
@@ -173,3 +212,4 @@ def register(ctx):
     ctx.register_telegram_handler(_wire)
     ctx.register_command("jdstatus", handler=_jdstatus, description="JobBot status: recent actions and errors")
     ctx.register_hook("post_tool_call", _after_tool)
+    ctx.register_command("jdaccounts", handler=_jdaccounts, description="Site accounts JobBot created (no passwords)")

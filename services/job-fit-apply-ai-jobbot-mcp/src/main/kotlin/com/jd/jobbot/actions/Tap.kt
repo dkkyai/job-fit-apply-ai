@@ -55,6 +55,13 @@ data class TapContext(
 interface ApprovalHandler {
     fun send(id: Long, req: TapRequest): TapResponse
     fun cancel(id: Long, req: TapRequest): TapResponse
+
+    fun idHandlers(): Map<String, IdVerbHandler> = mapOf("send" to IdVerbHandler(::send), "cancel" to IdVerbHandler(::cancel))
+}
+
+/** A button addressed by an action id (send:7, submit:12) rather than a job seq. */
+fun interface IdVerbHandler {
+    fun handle(id: Long, req: TapRequest): TapResponse
 }
 
 /** One verb's behavior. Handlers run only after the tap passed every shared check. */

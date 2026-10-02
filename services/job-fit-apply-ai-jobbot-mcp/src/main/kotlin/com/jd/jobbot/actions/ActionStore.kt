@@ -121,7 +121,7 @@ class ActionStore(dbPath: String, private val clock: Clock = Clock.systemUTC()) 
     fun pendingCounts(): Map<String, Int> =
         conn.createStatement().use { st ->
             st.executeQuery(
-                "SELECT status, COUNT(*) FROM actions WHERE status IN ('started','awaiting_approval') GROUP BY status",
+                "SELECT status, COUNT(*) FROM actions WHERE status IN ('started','awaiting_approval','queued','filling','needs_human') GROUP BY status",
             ).use { rs -> generateSequence { if (rs.next()) rs.getString(1) to rs.getInt(2) else null }.toMap() }
         }
 

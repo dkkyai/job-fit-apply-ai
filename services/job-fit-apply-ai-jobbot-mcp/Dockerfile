@@ -12,7 +12,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/build/install/job-fit-apply-ai-jobbot-mcp/ /app/
-ENV JOBBOT_STATE_DIR=/state \
+# Playwright attaches to the apply-browser over CDP; it never needs its own browsers.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    JOBBOT_STATE_DIR=/state \
     JOBBOT_OUTPUT_ROOT=/jfaa/pipeline-output \
     JOBBOT_RESUME_YAML=/jfaa/profile/resume.yaml \
     JOBBOT_CANDIDATE_PROFILE_YAML=/jfaa/profile/candidate_profile.yaml

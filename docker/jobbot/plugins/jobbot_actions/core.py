@@ -11,9 +11,9 @@ import urllib.error
 import urllib.request
 
 # <verb>:<completed_seq> on cards; send/cancel:<approval id> under a reply-draft preview.
-CALLBACK_PATTERN = r"^(apply|reply|archive|undo|send|cancel):(\d{1,18})$"
+CALLBACK_PATTERN = r"^(apply|reply|archive|undo|send|cancel|submit|discard|resume):(\d{1,18})$"
 _CALLBACK = re.compile(CALLBACK_PATTERN)
-OUR_VERBS = ("apply", "reply", "archive", "undo", "send", "cancel")
+OUR_VERBS = ("apply", "reply", "archive", "undo", "send", "cancel", "submit", "discard", "resume")
 # Tolerates the escaped quotes of a JSON result nested in another JSON string.
 _APPROVAL_ID = re.compile(r'\\*"approval_id\\*"\s*:\s*(\d{1,18})')
 
@@ -93,6 +93,22 @@ class JobbotMcp:
     def status_text(self):
         return self._request("GET", "/plugin/status").get("text") or "No status."
 
+    def outbox(self):
+        """Messages jobbot-mcp wants posted (fill reviews, hand-offs, reminders)."""
+        return self._request("GET", "/plugin/outbox")
+
+    def outbox_photo(self, item_id):
+        req = urllib.request.Request(f"{self.base_url}/plugin/outbox/{int(item_id)}/photo")
+        req.add_header("Authorization", f"Bearer {self.token}")
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            return resp.read()
+
+    def outbox_delivered(self, item_id):
+        return self._request("POST", f"/plugin/outbox/{int(item_id)}/delivered", {})
+
+    def accounts_text(self):
+        return self._request("GET", "/plugin/accounts").get("text") or "No accounts."
+
     def approval(self, approval_id):
         """The preview text and Send/Cancel row for a pending approval."""
         return self._request("GET", f"/plugin/approval/{int(approval_id)}")
@@ -109,6 +125,11 @@ def is_send_approval_tool(tool_name):
 
 
 UNAVAILABLE = "JobBot's backend is unavailable. Try again in a minute."
+
+
+def caption_fits(text):
+    """Telegram photo captions are capped at 1024 characters; longer text goes as its own message."""
+    return len(text or "") <= 1024
 
 
 def safe_status(client):

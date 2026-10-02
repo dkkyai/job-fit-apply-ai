@@ -14,6 +14,9 @@ from jobbot_actions import core
     ("undo:42", ("undo", 42)),
     ("send:3", ("send", 3)),
     ("cancel:3", ("cancel", 3)),
+    ("submit:4", ("submit", 4)),
+    ("discard:4", ("discard", 4)),
+    ("resume:4", ("resume", 4)),
 ])
 def test_parses_our_callbacks(data, expected):
     assert core.parse_callback(data) == expected

@@ -34,7 +34,7 @@ The notifier sends a verb only when it is listed in `NOTIFIER_TELEGRAM_ACTIONS` 
 
 | Verb | Shown when | Tap does |
 |---|---|---|
-| `apply` | the job has a `job_url` | **Phase 1:** replies "Not implemented yet" |
+| `apply` | the job has a `job_url` | with `JOBBOT_APPLY_ENABLED`: fills the application in the apply browser and posts it under **✅ Submit / ✖ Discard** (see Apply below). Otherwise it replies "Not implemented yet" |
 | `reply` | `is_recruiter` and a source `message_id` | posts the reply draft (the poller's, or one built from JFAA's `draft_text`, with the resume attached) under **✅ Send / ✖ Cancel**. If neither exists, the agent writes one |
 | `archive` | a source `message_id` the poller left in the inbox | removes `INBOX` from that email only; the button becomes **↩ Undo archive** (`undo:<seq>`), which restores exactly the labels it removed. Mail already out of the inbox, archived by Muse for example, gets "Already out of the inbox." |
 
@@ -51,6 +51,47 @@ The notifier sends a verb only when it is listed in `NOTIFIER_TELEGRAM_ACTIONS` 
 Then the verb's handler runs. With `JOBBOT_DRY_RUN=true`, it stops after the checks, logs the tap, and toasts `[dry run] Would …`.
 
 `/jdstatus` shows the mode, the handled verbs, the latest job, pending actions, recent actions and recent errors. Inbox sweeps are not JobBot's: Muse still does them.
+
+## Apply: filled by code, submitted only by ✅ Submit
+
+**How it works**
+- **Tap Apply.** `jobbot-mcp` queues a fill. Fills run one at a time.
+- **Model-planned, code-executed.** The fill loop (`FillAgent`) asks the model (`JOBBOT_MODEL`) for symbolic steps on element ids, and executes them in the **apply browser**: the `apply-browser` container, a headed Chromium 154 with a persistent profile.
+- **Review card.** When the form is ready, JobBot posts a screenshot and every filled field (passwords masked) under ✅ Submit / ✖ Discard.
+- **Submit.** ✅ Submit clicks the site's submit button **only** if the form still matches what the card showed (field fingerprint) and exactly one submit control exists. It then sets the track to `applied` and adds an `application_submitted` event.
+- **Review window.** A filled form waits **4 h** (`JOBBOT_APPLY_REVIEW_TTL_HOURS`), with a reminder at 3 h. After that it expires and nothing is submitted.
+- **Hand-offs.** A CAPTCHA, phone or ID check, a sign-in Google won't auto-complete, or a question the profile can't answer is posted with the viewer link and **▶ Continue**.
+- **No mouse fights.** The loop doesn't touch the page while Richard works in the viewer.
+
+**Hard limits, in code (`SitePolicy`, `FillAgent`)**
+- **Never submits.** A click on any submit-type control is refused.
+- **Navigation is limited.** The page may only go to:
+  - the job's own domain
+  - known ATS and job-board domains
+  - a domain carrying the company's name
+  - Google's sign-in and consent pages
+
+  Gmail, Drive and Google account settings are blocked at the network layer, because the browser holds a live Google session for dkkytech@.
+- **Accounts.** "Sign in with Google" is preferred. Otherwise JobBot creates the account as `JOBBOT_ACCOUNT_EMAIL` with a **per-site generated password**.
+  - The password is saved `pending` in `jobbot-secrets/site-credentials.json` (mode 600, read only by jobbot-mcp) **before** use, and activated once the fill gets through.
+  - The model never sees a password: the snapshot never exposes input values as text, and every prompt is scrubbed of passwords used in the run.
+  - `/jdaccounts` lists the accounts.
+- **Google consent.** Approved automatically only for basic sign-in scopes (name, email, profile). Anything else is handed to Richard.
+- **Verification email.** Codes and links come only from the site's (or its ATS's) own sender, and links must point back at the site.
+- **CAPTCHAs** are never solved. They are handed off.
+
+**The apply browser** (`docker/apply-browser`, profile `apply`)
+- **Image:** `linuxserver/chromium`, pinned by digest. Its Selkies web viewer streams over WebRTC/websockets.
+- **CDP:** socat exposes Chromium's DevTools on `:9223`, reachable only on the private `apply` network (apply-browser + jobbot-mcp). DevTools rejects non-IP Host headers, so jobbot-mcp resolves the address first.
+- **Viewer:** published on `127.0.0.1:3200` behind `APPLY_BROWSER_PASSWORD`. `scripts/setup-tailscale-serve.sh` serves it as `https://<tailnet-name>:3200`. The container **refuses to start** without the password.
+- **Profile lock:** cleared at init. A stale `SingletonLock` from a previous container made Chromium skip DevTools; this was caught in the spike.
+- **Accepted risk:** the image runs Chromium with `--no-sandbox`. The container is the boundary: it has its own network, no host mounts beyond its profile, and a 3 GB memory limit.
+
+**First-time setup (Richard)**
+1. Set `APPLY_BROWSER_PASSWORD` and `JOBBOT_APPLY_VIEWER_URL` in the root `.env`, and add `apply` to `COMPOSE_PROFILES`.
+2. Run `scripts/setup-tailscale-serve.sh`.
+3. Open the viewer and sign in to Google as dkkytech@ once. That also covers 2-step verification.
+4. Set `JOBBOT_APPLY_ENABLED=true`.
 
 ## Sending replies: the ✅ Send tap is the only way
 
@@ -132,6 +173,7 @@ Then set `NOTIFIER_TELEGRAM_ACTIONS=` (blank) and recreate the notifier, so card
 | Notifier unit + contract | `services/job-fit-apply-ai-notifier`: `./gradlew test` |
 | jobbot-mcp unit, fake-bridge HTTP, real MCP client over HTTP | `services/job-fit-apply-ai-jobbot-mcp`: `./gradlew test` |
 | Hermes plugin (stubbed Telegram/Hermes) + seed | `docker/jobbot`: `python -m pytest tests` |
+| **Live apply browser** (opt-in): real Chromium over CDP + a fixture job site + a scripted model | `APPLY_BROWSER_CDP_URL=http://127.0.0.1:19223 FIXTURE_HOST=host.docker.internal ./gradlew test --tests '*ApplyBrowserLiveTest*'` |
 | Compose isolation (networks, mounts, ports, profile) | `make compose-data-root-test` |
 | Buttons at the wire (Bridge → Processor → Notifier) | `make e2e` |
 

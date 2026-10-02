@@ -29,8 +29,10 @@ class TapService(
     private val dryRun: Boolean,
     private val cardTtl: Duration,
     private val clock: Clock = Clock.systemUTC(),
-    private val approvals: ApprovalHandler? = null,
+    approvals: ApprovalHandler? = null,
+    idHandlers: Map<String, IdVerbHandler> = emptyMap(),
 ) {
+    private val idHandlers: Map<String, IdVerbHandler> = (approvals?.idHandlers() ?: emptyMap()) + idHandlers
     private val log = LoggerFactory.getLogger(TapService::class.java)
 
     @Synchronized
@@ -54,7 +56,7 @@ class TapService(
         val baseVerb = BASE_VERB[verb] ?: verb
         if (baseVerb !in handledVerbs) return refused("${verb.replaceFirstChar { it.uppercase() }} isn't available yet.")
 
-        if (verb in APPROVAL_VERBS) return approval(verb, req)
+        if (verb in ID_VERBS) return byId(verb, req)
 
         val event = try {
             lookup.event(req.seq)
@@ -82,30 +84,36 @@ class TapService(
         }
     }
 
-    /** Send/Cancel under a draft preview: no seq or eligibility — the approval record is the authority. */
-    private fun approval(verb: String, req: TapRequest): TapResponse {
-        val handler = approvals ?: return refused("Sending isn't available yet.")
+    /**
+     * Buttons addressed by an action id (Send/Cancel under a draft, Submit/Discard/Continue under a
+     * filled application): no seq or eligibility — the action record is the authority.
+     */
+    private fun byId(verb: String, req: TapRequest): TapResponse {
+        val handler = idHandlers[verb] ?: return refused("${verb.replaceFirstChar { it.uppercase() }} isn't available yet.")
         if (dryRun) {
-            log.info("[dry run] would {} approval {}", verb, req.seq)
+            log.info("[dry run] would {} {}", verb, req.seq)
             return TapResponse(Outcomes.DRY_RUN, toast = "[dry run] Would $verb.")
         }
         return try {
-            if (verb == "send") handler.send(req.seq, req) else handler.cancel(req.seq, req)
+            handler.handle(req.seq, req)
         } catch (e: Exception) {
-            log.error("{} approval {} failed", verb, req.seq, e)
-            store.recordError("$verb approval ${req.seq}", e.message ?: e.javaClass.simpleName)
-            TapResponse(Outcomes.ERROR, toast = "Something went wrong — nothing was sent. It's logged; try again.")
+            log.error("{} {} failed", verb, req.seq, e)
+            store.recordError("$verb ${req.seq}", e.message ?: e.javaClass.simpleName)
+            TapResponse(Outcomes.ERROR, toast = "Something went wrong — nothing was sent or submitted. It's logged; try again.")
         }
     }
 
     private fun refused(toast: String) = TapResponse(Outcomes.REFUSED, toast = toast)
 
     companion object {
-        val KNOWN_VERBS = setOf("apply", "reply", "archive", "undo", "send", "cancel")
-        val APPROVAL_VERBS = setOf("send", "cancel")
+        val ID_VERBS = setOf("send", "cancel", "submit", "discard", "resume")
+        val KNOWN_VERBS = setOf("apply", "reply", "archive", "undo") + ID_VERBS
 
         /** Verbs that ride on another verb's switch in JOBBOT_ACTIONS. */
-        val BASE_VERB = mapOf("undo" to "archive", "send" to "reply", "cancel" to "reply")
+        val BASE_VERB = mapOf(
+            "undo" to "archive", "send" to "reply", "cancel" to "reply",
+            "submit" to "apply", "discard" to "apply", "resume" to "apply",
+        )
     }
 }
 

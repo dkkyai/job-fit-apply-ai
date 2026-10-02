@@ -334,12 +334,21 @@ def test_jobbot_profile_is_isolated() -> None:
     assert set(mounts(config, "jobbot")) == {"/opt/data"}, "the agent container mounts nothing but its own home"
 
     assert set(services["jobbot"]["networks"]) == {"jobbot"}, services["jobbot"]["networks"]
-    assert set(services["jobbot-mcp"]["networks"]) == {"default", "jobbot"}, services["jobbot-mcp"]["networks"]
+    assert set(services["jobbot-mcp"]["networks"]) == {"default", "jobbot", "apply"}, services["jobbot-mcp"]["networks"]
+    assert_mount(config, "jobbot-mcp", "/secrets", root / "jobbot-secrets", read_only=False)
     for name in ("jobbot", "jobbot-mcp"):
         assert not services[name].get("ports"), f"{name} must not publish ports"
 
     plain = compose_config(BASE, environment={"COMPOSE_PROFILES": "intake"})["services"]
     assert "jobbot" not in plain and "jobbot-mcp" not in plain, "jobbot services need the jobbot profile"
+    assert "apply-browser" not in plain, "the apply browser needs the apply profile"
+
+    applied = compose_config(BASE, environment={"COMPOSE_PROFILES": "jobbot,apply", "JFAA_DATA_ROOT": str(root)})
+    browser = applied["services"]["apply-browser"]
+    assert set(browser["networks"]) == {"apply"}, "CDP must be reachable from jobbot-mcp only — never the agent"
+    assert_mount(applied, "apply-browser", "/config", root / "apply-browser", read_only=False)
+    published = {(p.get("host_ip"), p["published"], p["target"]) for p in browser["ports"]}
+    assert published == {("127.0.0.1", "3200", 3000)}, f"only the viewer, only on loopback: {published}"
 
     e2e = compose_config(BASE, E2E, environment={})["services"]
     assert "jobbot" not in e2e and "jobbot-mcp" not in e2e, "the e2e slice must never start JobBot"
