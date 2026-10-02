@@ -136,10 +136,14 @@ fun Routing.configureRoutes() {
             JobStatusResponse(
                 job_id          = jobId,
                 status          = row.status,
+                // Posting identity + track link arrive with the worker's result; null until then.
+                title           = row.roleTitle,
+                company         = row.company,
                 fit_score       = row.fitScore,
                 pipeline_action = row.pipelineAction,
                 artifacts       = artifacts,
                 error           = row.error,
+                track_id        = row.trackId,
             )
         )
     }
@@ -291,10 +295,45 @@ fun Routing.configureRoutes() {
         if (req.status !in TracksStore.ALLOWED_STATUSES) {
             return@post call.respond(HttpStatusCode.UnprocessableEntity, ErrorResponse("Invalid status: ${req.status}"))
         }
+        TracksStore.sourceError(req.source)?.let {
+            return@post call.respond(HttpStatusCode.UnprocessableEntity, ErrorResponse(it))
+        }
 
-        if (!TracksStore.updateStatus(id, req.status)) {
+        // Also appends a status_changed event to the track's history (same transaction).
+        if (!TracksStore.updateStatus(id, req.status, req.source)) {
             return@post call.respond(HttpStatusCode.NotFound, ErrorResponse("Track $id not found"))
         }
         call.respond(HttpStatusCode.OK, mapOf("status" to "ok"))
+    }
+
+    // ── Track events (application history — Postgres `track_events`) ───────────
+
+    get("/api/tracks/{id}/events") {
+        val id = call.parameters["id"]?.toIntOrNull()
+            ?: return@get call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid track id"))
+        val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 500) ?: 100
+
+        val events = TracksStore.listEvents(id, limit)
+            ?: return@get call.respond(HttpStatusCode.NotFound, ErrorResponse("Track $id not found"))
+        call.respond(events)
+    }
+
+    post("/api/tracks/{id}/events") {
+        val id = call.parameters["id"]?.toIntOrNull()
+            ?: return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid track id"))
+
+        // A missing kind/source or malformed JSON is a 400 with the reason, not a bare 500.
+        val req = runCatching { call.receive<TrackEventCreate>() }.getOrElse {
+            return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid event body: ${it.message}"))
+        }
+        val invalid = if (req.kind !in TracksStore.ALLOWED_EVENT_KINDS) "Invalid kind: ${req.kind}"
+                      else TracksStore.sourceError(req.source)
+        if (invalid != null) {
+            return@post call.respond(HttpStatusCode.BadRequest, ErrorResponse(invalid))
+        }
+
+        val event = TracksStore.addEvent(id, req.kind, req.summary, req.source, req.details)
+            ?: return@post call.respond(HttpStatusCode.NotFound, ErrorResponse("Track $id not found"))
+        call.respond(HttpStatusCode.Created, event)
     }
 }

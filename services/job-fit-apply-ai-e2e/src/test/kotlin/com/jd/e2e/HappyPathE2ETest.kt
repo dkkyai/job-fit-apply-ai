@@ -74,6 +74,7 @@ class HappyPathE2ETest {
             Executable { assertEquals(result.company, result.apiTrack.path("company").asText()) },
             Executable { discordMessageDelivered(result) },
             Executable { completedFeedHasJob(result) },
+            Executable { completedEventLinksTrackHistory(result) },
         ),
     )
 
@@ -144,6 +145,21 @@ class HappyPathE2ETest {
         assertEquals(1, result.completedEvents.size)
         assertEquals("done", result.completedEvent.path("status").asText())
         assertTrue(result.completedEvent.path("completed_seq").asLong() > result.completedCursor)
+    }
+
+    /** The feed's track_id is the job's `tracks` row, and that row's event history is writable. */
+    private fun completedEventLinksTrackHistory(result: ScenarioResult) {
+        val trackId = result.apiTrack.path("id").asInt()
+        assertEquals(trackId, result.completedEvent.path("track_id").asInt(-1), "completed event track_id ≠ /api/tracks id")
+        assertEquals(trackId, result.finalStatus.path("track_id").asInt(-1), "job status track_id ≠ /api/tracks id")
+
+        val eventsUrl = "${E2eConfig.bridgeUrl}/api/tracks/$trackId/events"
+        val (code, body) = harness.postForResponse(eventsUrl, """{"kind":"note","summary":"e2e note","source":"e2e"}""")
+        assertEquals(201, code, "POST $eventsUrl → $code: $body")
+        val newest = harness.mapper.readTree(harness.getString(eventsUrl)).first()
+        assertEquals("note", newest.path("kind").asText())
+        assertEquals("e2e note", newest.path("summary").asText())
+        assertEquals(trackId, newest.path("track_id").asInt(-1))
     }
 
     private fun exactCallSequence(result: ScenarioResult) {

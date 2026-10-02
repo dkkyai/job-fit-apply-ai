@@ -154,6 +154,7 @@ class ProcessingPipeline(
             company        = state.company.takeIf { it.isNotBlank() },
             roleTitle      = state.roleTitle.takeIf { it.isNotBlank() },
             jobUrl         = state.jobUrl.takeIf { it.isNotBlank() },
+            trackId        = state.trackId,
             // Gmail write-back — the Poller labels the email and delivers any recruiter draft.
             terminalLabel  = TerminalLabel.forState(state),
             draftText      = state.draftText.takeIf { it.isNotBlank() },

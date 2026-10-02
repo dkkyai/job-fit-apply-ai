@@ -114,6 +114,7 @@ data class ResultRequest(
     val role_title: String?       = null,
     val job_url: String?          = null,
     val artifact_url: String?     = null,          // markserv report URL (was previously dropped)
+    val track_id: Int?            = null,          // the `tracks` row the Processor wrote (Postgres id)
     // Gmail write-back payload (Poller acts on these via the completed feed):
     val terminal_label: String?   = null,          // label the Poller should apply to message_id
     val draft_text: String?       = null,          // LLM-generated recruiter reply (Processor makes it)
@@ -165,6 +166,8 @@ data class CompletedJob(
     val pipeline_action: String? = null,
     val job_url: String?         = null,
     val artifact_url: String?    = null,
+    // The job's `tracks` row — key for /api/tracks/{id}/events (JobBot records lifecycle events).
+    val track_id: Int?           = null,
 )
 
 @Serializable
@@ -183,6 +186,7 @@ data class JobStatusResponse(
     val pipeline_action: String?  = null,
     val artifacts: ArtifactUrls?  = null,
     val error: String?            = null,
+    val track_id: Int?            = null,
 )
 
 // ── Tracks (backlog UI — Postgres `tracks` table) ──────────────────────────────
@@ -205,7 +209,32 @@ data class TrackDto(
 )
 
 @Serializable
-data class TrackStatusUpdate(val status: String)
+data class TrackStatusUpdate(
+    val status: String,
+    /** Who made the change, recorded on the `status_changed` event. The backlog UI omits it. */
+    val source: String = "frontend",
+)
+
+/** A row from `track_events` — one entry in a track's application history. */
+@Serializable
+data class TrackEventDto(
+    val id: Long,
+    val track_id: Int,
+    val occurred_at: String,
+    val kind: String,
+    val summary: String?     = null,
+    val source: String,
+    val details: JsonElement? = null,
+)
+
+/** Body of POST /api/tracks/{id}/events. [kind] must be in TracksStore.ALLOWED_EVENT_KINDS. */
+@Serializable
+data class TrackEventCreate(
+    val kind: String,
+    val summary: String?     = null,
+    val source: String,
+    val details: JsonElement? = null,             // opaque — stored verbatim as JSONB
+)
 
 // ── Store helpers ─────────────────────────────────────────────────────────────
 
@@ -241,6 +270,10 @@ data class JobRow(
     val messageId: String?,
     val writebackDone: Boolean,
     val completedSeq: Long?,
+    // Processed-posting identity (set by recordResult)
+    val company: String?          = null,
+    val roleTitle: String?        = null,
+    val trackId: Int?             = null,
 )
 
 /** Returned by claimNext() — enough for the Processor to act on. */

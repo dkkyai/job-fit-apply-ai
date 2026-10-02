@@ -51,6 +51,9 @@ data class ProcessingResult(
     val company: String? = null,
     val roleTitle: String? = null,
     val jobUrl: String? = null,
+    // The `tracks` row this job wrote (serialized → track_id), so feed consumers can record
+    // lifecycle events against it. Null when tracking failed or never ran.
+    val trackId: Int? = null,
     // Gmail write-back — the Poller acts on these via the bridge completed feed.
     // (serialized snake_case → terminal_label / draft_text / is_recruiter / message_id)
     val terminalLabel: String? = null,

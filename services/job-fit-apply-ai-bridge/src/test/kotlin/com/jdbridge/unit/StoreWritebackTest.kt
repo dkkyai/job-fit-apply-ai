@@ -103,6 +103,7 @@ class StoreWritebackTest {
             pipeline_action = "tailor", fit_score = 88,
             company = "Acme", role_title = "Staff SDET",
             job_url = "https://acme.co/job", artifact_url = "http://markserv/report/report.md",
+            track_id = 314,
         ))
         val job = completedJobs(0).single { it.job_id == id }
         assertEquals("Acme", job.company)
@@ -111,6 +112,14 @@ class StoreWritebackTest {
         assertEquals("tailor", job.pipeline_action)
         assertEquals("https://acme.co/job", job.job_url)
         assertEquals("http://markserv/report/report.md", job.artifact_url)
+        assertEquals(314, job.track_id)
+    }
+
+    @Test
+    fun `a result without track_id surfaces a null track_id`() = runTest {
+        val id = enqueue("{}", null, "ev3")
+        completeSkip(id)
+        assertNull(completedJobs(0).single { it.job_id == id }.track_id)
     }
 
     @Test
