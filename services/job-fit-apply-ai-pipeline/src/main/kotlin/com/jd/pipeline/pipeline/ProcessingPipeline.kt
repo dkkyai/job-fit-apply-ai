@@ -16,7 +16,9 @@ import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.state.emailIntake
 import com.jd.pipeline.state.isRecruiterEmail
+import com.jd.pipeline.config.Config
 import com.jd.pipeline.utils.MetadataUtils
+import com.jd.pipeline.utils.OutputUtils
 import java.io.File
 
 /**
@@ -106,6 +108,7 @@ class ProcessingPipeline(
         }
 
         if (state.pipelineAction != PipelineAction.TAILOR) {
+            if (isGatedHighFit(state)) state = scoringNotes(state)
             state = supabaseTrack.process(state)
             return toResult(state)
         }
@@ -136,6 +139,30 @@ class ProcessingPipeline(
         return toResult(state)
     }
 
+    /**
+     * Scored at or above the threshold, but a hard gate (pay below target, location) skipped it.
+     * Richard still gets the Telegram card, so it needs a report to link to.
+     */
+    private fun isGatedHighFit(state: JDState): Boolean =
+        state.pipelineAction == PipelineAction.SKIP && state.hardGateViolations.isNotEmpty() &&
+            (state.fitScore?.toDouble() ?: 0.0) >= Config.FIT_THRESHOLD
+
+    /**
+     * The skipped job's scoring notes: report.md and metadata.json beside its score_fit.txt, with
+     * an artifact URL so the card's View Report and the backlog can link to them. No resume.
+     */
+    private fun scoringNotes(state: JDState): JDState = try {
+        val dir = state.scoreOutputPath.ifBlank { OutputUtils.getOutputDirectory(state).toString() }
+        java.nio.file.Files.createDirectories(java.nio.file.Path.of(dir))
+        val withDir = addArtifactUrl.process(state.copy(outputPath = dir))
+        MetadataUtils.writeMetadata(withDir)
+        withDir
+    } catch (e: Exception) {
+        // The card goes out without a report link; the job itself is unaffected.
+        System.err.println("[processing_pipeline] WARN: scoring notes for a skipped high fit failed: ${e.message}")
+        state
+    }
+
     private fun toResult(state: JDState): ProcessingResult {
         val outputPath = state.outputPath.takeIf { it.isNotBlank() }
         val hasCoverLetter = outputPath != null &&
@@ -161,6 +188,14 @@ class ProcessingPipeline(
             isRecruiter    = state.isRecruiterEmail,
             messageId      = state.emailIntake?.emailId,
             scrapePath     = state.scrapePath,
+            // Why a scored job was not tailored — the card says it (all gates, not just the first).
+            skipReason     = skipReasonOf(state),
         )
+    }
+
+    private fun skipReasonOf(state: JDState): String? = when {
+        state.pipelineAction == PipelineAction.TAILOR -> null
+        state.hardGateViolations.isNotEmpty() -> state.hardGateViolations.joinToString("; ")
+        else -> state.skippedReason.takeIf { it.isNotBlank() }
     }
 }

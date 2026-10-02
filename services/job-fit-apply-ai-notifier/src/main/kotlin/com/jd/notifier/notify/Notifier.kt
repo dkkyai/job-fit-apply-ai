@@ -73,8 +73,9 @@ class Notifier(
         val score = event.fitScore?.toString() ?: "?"
         val action = event.pipelineAction ?: "?"
         val discordResult = discord("• ${discordJobLabel(event)} — **$score** ($action)")
-        val builtIn = "High-fit: ${telegramJobLabel(event)} — ${event.fitScore}" + jobRefLine(event)
-        val templated = templated(event)
+        val builtIn = "High-fit: ${telegramJobLabel(event)} — ${event.fitScore}" + skipLine(event) + jobRefLine(event)
+        // The skip reason rides under any template too: a card without a resume must say why.
+        val templated = templated(event)?.let { it + skipLine(event) }
         fun send(text: String) = if (buttonsEnabled) client.postTelegramHtmlWithButtons(text, buttonsFor(event)) else client.postTelegramHtml(text)
         val telegramResult = when {
             (event.fitScore ?: 0) < fitThreshold -> DeliveryResult.SKIPPED
@@ -97,10 +98,11 @@ class Notifier(
      * this event — the agent's plugin re-checks the same rules on every tap.
      */
     private fun buttonsFor(event: CompletedEvent): List<List<TelegramButtons.Button>> {
-        val resolved = if (linkButtonsEnabled) {
-            links.resolve(event.artifactUrl, event.artifacts?.resumePdf)
-        } else {
-            ArtifactLinks.Links(null, null)
+        val resolved = when {
+            !linkButtonsEnabled -> ArtifactLinks.Links(null, null)
+            // Skipped: the report is the scoring notes, and there is no resume to look up.
+            event.skipped() -> ArtifactLinks.Links(reportUrlOf(event), null)
+            else -> links.resolve(event.artifactUrl, event.artifacts?.resumePdf)
         }
         return TelegramButtons.forHighFit(
             reportUrl = resolved.reportUrl,
@@ -134,6 +136,13 @@ class Notifier(
             TelegramButtons.Action.entries.filter { it in actions && eligible(it, event) }
         }
 
+    /** "Skipped: <reason>" on its own line for a scored job that was not tailored, else nothing. */
+    private fun skipLine(e: CompletedEvent): String =
+        if (!e.skipped()) "" else "\nSkipped: " + htmlEscape(e.skipReason?.trim()?.ifBlank { null } ?: "not tailored, so there's no resume")
+
+    private fun reportUrlOf(e: CompletedEvent): String? =
+        e.artifactUrl?.takeIf { it.isNotBlank() }?.let { "${it.trimEnd('/')}/report.md" }
+
     /**
      * `#J<completed_seq>` on its own line: the job reference the agent resolves when the user
      * replies to the ping, and a Telegram hashtag that gathers every message about the job.
@@ -165,6 +174,8 @@ class Notifier(
         .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
     companion object {
+        const val TAILOR = "TAILOR"
+
         /**
          * Terminal labels whose email the poller leaves in the inbox (LabelApplier). Everything
          * else — JD_Processed, JD_Processed_Digest — is archived by the poller already, so an
@@ -183,7 +194,8 @@ class Notifier(
          * both sides are pinned by `docker/jobbot/contract/button_eligibility.json`.
          */
         fun eligible(action: TelegramButtons.Action, e: CompletedEvent): Boolean = when (action) {
-            TelegramButtons.Action.APPLY -> !e.jobUrl.isNullOrBlank()
+            // Apply uploads the tailored resume: a skipped (e.g. pay-gated) job has none.
+            TelegramButtons.Action.APPLY -> !e.jobUrl.isNullOrBlank() && e.pipelineAction.equals(TAILOR, ignoreCase = true)
             TelegramButtons.Action.REPLY -> e.isRecruiter && !e.messageId.isNullOrBlank()
             TelegramButtons.Action.ARCHIVE ->
                 !e.messageId.isNullOrBlank() && e.terminalLabel in INBOX_TERMINAL_LABELS

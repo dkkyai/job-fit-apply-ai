@@ -25,7 +25,8 @@ object Eligibility {
     fun eligible(verb: String, event: JsonObject): Boolean {
         if ((event.long("completed_seq") ?: 0) <= 0) return false
         return when (verb) {
-            "apply" -> event.str("job_url") != null
+            // Apply uploads the tailored resume: a skipped (e.g. pay-gated) job has none.
+            "apply" -> event.str("job_url") != null && event.str("pipeline_action").equals("TAILOR", ignoreCase = true)
             "reply" -> event.bool("is_recruiter") && event.str("message_id") != null
             "archive" -> event.str("message_id") != null && event.str("terminal_label") in INBOX_TERMINAL_LABELS
             else -> false

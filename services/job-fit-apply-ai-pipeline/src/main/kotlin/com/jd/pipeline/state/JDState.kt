@@ -76,6 +76,8 @@ data class JDState(
 
     // ── Tailor node output ────────────────────────────────────────────────────
     val outputPath: String = "",
+    /** Where score_fit.txt was written: a skipped high fit's scoring notes go beside it. */
+    val scoreOutputPath: String = "",
     val artifactUrl: String = "",
     val metadataUrl: String = "",
     // Tailoring nodes that failed and fell back to base content (empty = fully generated).

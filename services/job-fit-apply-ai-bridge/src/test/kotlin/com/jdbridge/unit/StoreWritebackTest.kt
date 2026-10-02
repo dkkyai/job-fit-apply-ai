@@ -116,6 +116,22 @@ class StoreWritebackTest {
     }
 
     @Test
+    fun `a skip reason round-trips through the feed, and a tailored job has none`() = runTest {
+        val skipped = enqueue("{}", null, "skip1")
+        recordResult(skipped, ResultRequest(
+            pipeline_action = "SKIP", fit_score = 63, company = "Sparksoft",
+            artifact_url = "http://markserv/20261002_sparksoft/", skip_reason = "Posted pay (max \$85K) is below the \$145K target",
+        ))
+        val job = completedJobs(0, all = true).single { it.job_id == skipped }
+        assertEquals("Posted pay (max \$85K) is below the \$145K target", job.skip_reason)
+        assertEquals("http://markserv/20261002_sparksoft/", job.artifact_url)
+
+        val tailored = enqueue("{}", null, "skip2")
+        recordResult(tailored, ResultRequest(pipeline_action = "TAILOR", fit_score = 80))
+        assertNull(completedJobs(0, all = true).single { it.job_id == tailored }.skip_reason)
+    }
+
+    @Test
     fun `a result without track_id surfaces a null track_id`() = runTest {
         val id = enqueue("{}", null, "ev3")
         completeSkip(id)

@@ -88,7 +88,17 @@ class ScoreFitNodeTest {
                 preferences = sampleProfile().preferences.copy(minimumTotalCompensation = "\$200,000")
             )
             val gates = invokeComputeHardGates(state, compMin = 120_000, compMax = 150_000)
-            assertTrue(gates.any { it.contains("below target") }, "expected gate; got: $gates")
+            // Worded for the Telegram card ("Skipped: …"), money in K.
+            assertEquals(listOf("Posted pay (max \$150K) is below the \$200K target"), gates)
+        }
+
+        @Test
+        @DisplayName("money reads the way a card says it")
+        fun moneyFormatting() {
+            assertEquals("\$85K", ScoreFitNode.money(85_000))
+            assertEquals("\$137.5K", ScoreFitNode.money(137_500))
+            assertEquals("\$1.2M", ScoreFitNode.money(1_200_000))
+            assertEquals("\$950", ScoreFitNode.money(950))
         }
 
         @Test

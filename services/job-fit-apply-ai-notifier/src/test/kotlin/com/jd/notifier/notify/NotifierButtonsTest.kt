@@ -66,6 +66,65 @@ class NotifierButtonsTest {
         return text.firstValue to rows.firstValue
     }
 
+    /** A pay-gated high fit: scored 63, skipped by the pay gate, scoring notes at artifact_url. */
+    private fun gated(reason: String? = "Posted pay (max \$85K) is below the \$145K target") = CompletedEvent(
+        jobId = "j", completedSeq = 7708, status = "done",
+        company = "Sparksoft", roleTitle = "Automation Engineer", fitScore = 63,
+        pipelineAction = "SKIP", jobUrl = "https://jobright.ai/jobs/info/6abf",
+        artifactUrl = "http://host:8081/20261002_132538_sparksoft_automation_engineer/",
+        messageId = "m-digest", isRecruiter = false, terminalLabel = "JD_Processed_Digest",
+        skipReason = reason,
+    )
+
+    /** Fails the test if the resume lookup runs: a skipped job has no resume to find. */
+    private val noLookup = object : ArtifactLinks(enabled = true, timeoutMs = 100, bridgeBase = "http://bridge:8765") {
+        override fun resolve(artifactUrl: String?, resumePdf: String?): Links = error("no resume lookup for a skipped job")
+    }
+
+    @Test
+    @DisplayName("a pay-gated high fit: the card says why, View Report only, no Apply")
+    fun gatedCardSaysWhy() {
+        val c = client()
+        Notifier(client = c, fitThreshold = 55, buttonsEnabled = true, linkButtonsEnabled = true,
+            actions = TelegramButtons.parseActions("apply,reply,archive"), links = noLookup).notify(gated())
+        val (text, rows) = sent(c)
+        val lines = text.lines()
+        assertTrue(lines[0].startsWith("High-fit: ") && lines[0].endsWith("— 63"), text)
+        assertEquals("Skipped: Posted pay (max \$85K) is below the \$145K target", lines[1])
+        assertEquals("#J7708", lines.last())
+        assertEquals(listOf(listOf("View Report")), rows.map { r -> r.map { it.text } }, "no resume, no Apply: $rows")
+        assertEquals("http://host:8081/20261002_132538_sparksoft_automation_engineer/report.md", rows[0][0].url)
+    }
+
+    @Test
+    @DisplayName("a skip with no reason still says it was skipped; the reason is HTML-escaped")
+    fun gatedCardFallbackAndEscaping() {
+        val c1 = client()
+        notifier(c1).notify(gated(reason = null))
+        assertEquals("Skipped: not tailored, so there's no resume", sent(c1).first.lines()[1])
+        val c2 = client()
+        notifier(c2).notify(gated(reason = "Pay <\$85K> & no equity"))
+        assertEquals("Skipped: Pay &lt;\$85K&gt; &amp; no equity", sent(c2).first.lines()[1])
+    }
+
+    @Test
+    @DisplayName("an edited card template still gets the Skipped line")
+    fun gatedCardUnderTemplate(@org.junit.jupiter.api.io.TempDir dir: java.nio.file.Path) {
+        val file = dir.resolve("high-fit.html").also { java.nio.file.Files.writeString(it, "<b>{score}</b> {company}\n{ref}") }
+        val c = client()
+        Notifier(client = c, fitThreshold = 55, buttonsEnabled = true, linkButtonsEnabled = true,
+            actions = TelegramButtons.parseActions("apply"), links = noLookup, template = AlertTemplate(file)).notify(gated())
+        assertEquals(listOf("<b>63</b> Sparksoft", "#J7708", "Skipped: Posted pay (max \$85K) is below the \$145K target"), sent(c).first.lines())
+    }
+
+    @Test
+    @DisplayName("a tailored job's card has no Skipped line")
+    fun tailoredCardHasNoSkipLine() {
+        val c = client()
+        notifier(c).notify(event())
+        assertTrue(sent(c).first.lines().none { it.startsWith("Skipped:") })
+    }
+
     @Test
     @DisplayName("every enabled, eligible action becomes a <verb>:<completed_seq> callback")
     fun actionsCarryVerbAndSeq() {
