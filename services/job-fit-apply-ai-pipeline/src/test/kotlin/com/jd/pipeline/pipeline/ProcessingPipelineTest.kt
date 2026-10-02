@@ -116,6 +116,34 @@ class ProcessingPipelineTest {
     }
 
     @Test
+    @DisplayName("result carries the tracks row id that supabaseTrack wrote")
+    fun resultCarriesTrackId() {
+        // The completed feed hands this id to consumers (JobBot) so they can record lifecycle
+        // events against the job's tracks row.
+        val pipeline = ProcessingPipeline()
+        injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
+        injectNode(pipeline, "scoreFit", Node { state -> state.copy(pipelineAction = PipelineAction.SKIP, fitScore = 30f) })
+        injectNode(pipeline, "supabaseTrack", Node { state -> state.copy(isSupabaseTracked = true, trackId = 42) })
+
+        val result = pipeline.invoke(minimalRecord())
+
+        assertEquals(42, result.trackId)
+    }
+
+    @Test
+    @DisplayName("result trackId is null when no tracks row was written")
+    fun resultTrackIdNullWithoutTrack() {
+        val pipeline = ProcessingPipeline()
+        injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = true) })
+        // Tracking failed: the node records an error and never sets trackId.
+        injectNode(pipeline, "supabaseTrack", Node { state -> state.copy(error = "supabase_track: down") })
+
+        val result = pipeline.invoke(minimalRecord())
+
+        assertNull(result.trackId)
+    }
+
+    @Test
     @DisplayName("invoke returns error result when tailor subgraph fails")
     fun invokeHandlesTailorSubgraphError() {
         val pipeline = ProcessingPipeline()

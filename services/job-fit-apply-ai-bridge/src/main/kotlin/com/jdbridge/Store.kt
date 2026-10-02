@@ -71,6 +71,9 @@ internal object Jobs : Table("jobs") {
     val company         = text("company").nullable()
     val roleTitle       = text("role_title").nullable()
     val artifactUrl     = text("artifact_url").nullable()   // markserv report URL
+    // Postgres `tracks.id` the Processor wrote — links the job to its track_events history.
+    // Nullable, so createMissingTablesAndColumns can ALTER it onto an existing queue database.
+    val trackId         = integer("track_id").nullable()
     val error           = text("error").nullable()
     val retryCount      = integer("retry_count").default(0)
     val nextAttemptAt   = long("next_attempt_at").nullable()
@@ -347,6 +350,7 @@ private suspend fun recordTerminalResult(jobId: String, req: ResultRequest, now:
             req.role_title?.let { row[Jobs.roleTitle] = it }
             req.job_url?.let { row[Jobs.jobUrl] = it }
             req.artifact_url?.let { row[Jobs.artifactUrl] = it }
+            req.track_id?.let { row[Jobs.trackId] = it }
             row[Jobs.claimedAt]       = null
             row[Jobs.claimToken]      = null
             row[Jobs.nextAttemptAt]   = null
@@ -399,6 +403,7 @@ suspend fun completedJobs(since: Long, limit: Int = 50, all: Boolean = false): L
                 pipeline_action = row[Jobs.pipelineAction],
                 job_url         = row[Jobs.jobUrl],
                 artifact_url    = row[Jobs.artifactUrl],
+                track_id        = row[Jobs.trackId],
             )
         }
 }
@@ -469,5 +474,8 @@ private fun ResultRow.toJobRow(): JobRow {
         messageId      = this[Jobs.messageId],
         writebackDone  = this[Jobs.writebackDone],
         completedSeq   = this[Jobs.completedSeq],
+        company        = this[Jobs.company],
+        roleTitle      = this[Jobs.roleTitle],
+        trackId        = this[Jobs.trackId],
     )
 }

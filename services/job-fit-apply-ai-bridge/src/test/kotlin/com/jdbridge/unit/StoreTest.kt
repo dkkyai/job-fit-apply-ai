@@ -73,6 +73,10 @@ class StoreSchemaCompatibilityTest {
         val jobId = enqueue(defaultJdJson(), null, null)
         assertEquals(JobStatus.PENDING.value, getJob(jobId)!!.status)
         assertEquals(0, getJob(jobId)!!.retryCount)
+
+        // track_id is ALTERed on too (the legacy table above predates it) and round-trips.
+        recordResult(jobId, ResultRequest(pipeline_action = "tailor", fit_score = 80, track_id = 17))
+        assertEquals(17, getJob(jobId)!!.trackId)
     }
 }
 

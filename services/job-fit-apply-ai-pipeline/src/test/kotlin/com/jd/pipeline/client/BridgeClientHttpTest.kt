@@ -147,6 +147,13 @@ class BridgeClientHttpTest {
     }
 
     @Test
+    @DisplayName("postResult sends the tracks row id as track_id")
+    fun postResultSendsTrackId() {
+        client.postResult("job-123", sampleResult().copy(trackId = 7))
+        assertEquals(7, mapper.readTree(resultBody).get("track_id").asInt())
+    }
+
+    @Test
     @DisplayName("postResult accepts the bridge's 202 deferred-retry response")
     fun postResultAcceptsRequeued() {
         resultStatus = 202
