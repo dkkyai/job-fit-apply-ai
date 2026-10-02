@@ -41,15 +41,14 @@ class TapService(
             log.warn("refused tap {} {} from non-allowlisted user {}", verb, ref, req.userId)
             return refused("Not authorized.")
         }
-        req.messageDate?.let { sentAt ->
-            val age = Duration.ofSeconds(clock.instant().epochSecond - sentAt)
-            if (age > cardTtl) {
-                return TapResponse(
-                    Outcomes.EXPIRED,
-                    toast = "This card is more than ${cardTtl.toDays()} days old, so its buttons have expired.",
-                    actionRow = emptyList(),
-                )
-            }
+        // Fail closed: a tap whose card age is unknown cannot be shown to be inside the TTL.
+        val sentAt = req.messageDate ?: return refused("Can't tell how old this card is, so its buttons are disabled.")
+        if (Duration.ofSeconds(clock.instant().epochSecond - sentAt) > cardTtl) {
+            return TapResponse(
+                Outcomes.EXPIRED,
+                toast = "This card is more than ${cardTtl.toDays()} days old, so its buttons have expired.",
+                actionRow = emptyList(),
+            )
         }
         val baseVerb = if (verb == "undo") "archive" else verb
         if (baseVerb !in handledVerbs) return refused("${verb.replaceFirstChar { it.uppercase() }} isn't available yet.")

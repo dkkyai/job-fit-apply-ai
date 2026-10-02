@@ -27,7 +27,10 @@ class OutputFiles(root: String, private val maxBytes: Int = 64 * 1024) {
 
     fun available(artifactUrl: String?): List<String> {
         val dir = dirOf(artifactUrl) ?: return emptyList()
-        return ALLOWED.filter { Files.isRegularFile(dir.resolve(it)) }
+        return ALLOWED.filter { name ->
+            val file = dir.resolve(name)
+            Files.isRegularFile(file) && runCatching { file.toRealPath().startsWith(realRoot()) }.getOrDefault(false)
+        }
     }
 
     fun read(artifactUrl: String?, name: String): Result {
@@ -36,19 +39,26 @@ class OutputFiles(root: String, private val maxBytes: Int = 64 * 1024) {
         val file = dir.resolve(name)
         if (!Files.isRegularFile(file)) return Result.Missing("$name does not exist for this job")
         val real = file.toRealPath()
-        if (!real.startsWith(root.toRealPath())) return Result.Missing("$name resolves outside the output root")
+        if (!real.startsWith(realRoot())) return Result.Missing("$name resolves outside the output root")
         val bytes = Files.newInputStream(real).use { it.readNBytes(maxBytes + 1) }
         val truncated = bytes.size > maxBytes
         val text = String(bytes, 0, minOf(bytes.size, maxBytes), Charsets.UTF_8)
         return Result.Text(name, text, truncated)
     }
 
+    /**
+     * The job's folder, canonicalized: a folder that is (or passes through) a symlink out of the
+     * root is no folder at all, so listing and reading agree on what exists.
+     */
     private fun dirOf(artifactUrl: String?): Path? {
         val folder = folderOf(artifactUrl) ?: return null
         val dir = root.resolve(folder).normalize()
         if (!dir.startsWith(root) || !Files.isDirectory(dir)) return null
-        return dir
+        val real = runCatching { dir.toRealPath() }.getOrNull() ?: return null
+        return real.takeIf { it.startsWith(realRoot()) }
     }
+
+    private fun realRoot(): Path = runCatching { root.toRealPath() }.getOrDefault(root)
 
     companion object {
         val ALLOWED = listOf(

@@ -54,8 +54,20 @@ class OutputFilesTest {
         val outside = Files.createTempDirectory("outside")
         Files.writeString(outside.resolve("report.md"), "outside secret")
         Files.createSymbolicLink(root.resolve("20261001_link"), outside)
-        val r = OutputFiles(root.toString()).read("http://m/20261001_link/", "report.md")
-        assertIs<OutputFiles.Result.Missing>(r)
+        val files = OutputFiles(root.toString())
+        assertIs<OutputFiles.Result.Missing>(files.read("http://m/20261001_link/", "report.md"))
+        assertEquals(emptyList(), files.available("http://m/20261001_link/"), "listing must agree with reading")
+    }
+
+    @Test
+    fun `a symlinked file out of the root is neither listed nor read`() {
+        val outside = Files.createTempFile("secret", ".md")
+        val dir = Files.createDirectories(root.resolve("20261001_mixed"))
+        Files.writeString(dir.resolve("score_fit.txt"), "80")
+        Files.createSymbolicLink(dir.resolve("report.md"), outside)
+        val files = OutputFiles(root.toString())
+        assertEquals(listOf("score_fit.txt"), files.available("http://m/20261001_mixed/"))
+        assertIs<OutputFiles.Result.Missing>(files.read("http://m/20261001_mixed/", "report.md"))
     }
 
     @Test

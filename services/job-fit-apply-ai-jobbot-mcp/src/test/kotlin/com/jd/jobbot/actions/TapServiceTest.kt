@@ -150,4 +150,11 @@ class TapServiceTest {
         assertNull(r.actionRow, "Apply must stay on the card")
         assertEquals("url:acme.co/jobs/7663", store.recent().single().jobKey)
     }
+
+    @Test
+    fun `a tap without the card's send time is refused, not exempt from expiry`() {
+        val r = service().tap(tap(sentAt = null))
+        assertEquals(Outcomes.REFUSED, r.outcome)
+        assertEquals(0, calls.get())
+    }
 }
