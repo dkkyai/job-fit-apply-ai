@@ -310,6 +310,40 @@ def test_e2e_state_dir_moves_all_slice_state() -> None:
     assert f"{ROOT / '.e2e'}/" not in rendered, "a default-.e2e path leaked past E2E_STATE_DIR"
 
 
+
+def test_jobbot_profile_is_isolated() -> None:
+    """The jobbot profile: state under the data root, JFAA data read-only, and network isolation.
+
+    The agent container (jobbot) may only reach jobbot-mcp: it sits on the `jobbot` network
+    alone, so bridge/db/steel do not resolve from it. jobbot-mcp straddles both networks and is
+    the agent's only door into JFAA. Neither publishes a host port. Without the profile, neither
+    service exists, so a test instance or the e2e slice never starts them.
+    """
+    root = Path("/tmp/jfaa jobbot root")
+    config = compose_config(BASE, environment={"COMPOSE_PROFILES": "jobbot", "JFAA_DATA_ROOT": str(root)})
+    services = config["services"]
+    assert services["jobbot"]["container_name"] == "jobfit-jobbot"
+    assert services["jobbot-mcp"]["container_name"] == "jobfit-jobbot-mcp"
+
+    assert_mount(config, "jobbot", "/opt/data", root / "jobbot", read_only=False)
+    assert_mount(config, "jobbot-mcp", "/state", root / "jobbot-mcp-state", read_only=False)
+    assert_mount(config, "jobbot-mcp", "/jfaa/pipeline-output", root / "pipeline-output", read_only=True)
+    for target in ("/jfaa/profile/resume.yaml", "/jfaa/profile/candidate_profile.yaml"):
+        assert mounts(config, "jobbot-mcp")[target].get("read_only") is True, f"{target} must be read-only"
+    assert set(mounts(config, "jobbot")) == {"/opt/data"}, "the agent container mounts nothing but its own home"
+
+    assert set(services["jobbot"]["networks"]) == {"jobbot"}, services["jobbot"]["networks"]
+    assert set(services["jobbot-mcp"]["networks"]) == {"default", "jobbot"}, services["jobbot-mcp"]["networks"]
+    for name in ("jobbot", "jobbot-mcp"):
+        assert not services[name].get("ports"), f"{name} must not publish ports"
+
+    plain = compose_config(BASE, environment={"COMPOSE_PROFILES": "intake"})["services"]
+    assert "jobbot" not in plain and "jobbot-mcp" not in plain, "jobbot services need the jobbot profile"
+
+    e2e = compose_config(BASE, E2E, environment={})["services"]
+    assert "jobbot" not in e2e and "jobbot-mcp" not in e2e, "the e2e slice must never start JobBot"
+
+
 def main() -> None:
     tests = (
         test_portable_fallback,
@@ -318,6 +352,7 @@ def main() -> None:
         test_harness_is_isolated_from_repository_dotenv,
         test_documented_exact_mirror_helper,
         test_e2e_overlay_replaces_production_sources,
+        test_jobbot_profile_is_isolated,
         test_pipeline_env_file_override,
         test_instance_identity_parameterization,
         test_e2e_state_dir_moves_all_slice_state,

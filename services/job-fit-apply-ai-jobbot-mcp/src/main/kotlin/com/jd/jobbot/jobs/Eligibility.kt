@@ -1,0 +1,36 @@
+package com.jd.jobbot.jobs
+
+import com.jd.jobbot.bridge.bool
+import com.jd.jobbot.bridge.long
+import com.jd.jobbot.bridge.str
+import kotlinx.serialization.json.JsonObject
+
+/**
+ * Which action buttons a completed event qualifies for. The notifier applies the same rules when
+ * it sends a card (Notifier.eligible); both sides are pinned by
+ * docker/jobbot/contract/button_eligibility.json, so a rule change has to land in both.
+ */
+object Eligibility {
+    val VERBS = listOf("apply", "reply", "archive")
+
+    /** Terminal labels whose email the poller leaves in the inbox (poller LabelApplier). */
+    val INBOX_TERMINAL_LABELS = setOf(
+        "Recruiter_Response_Required",
+        "JD_Not_Found",
+        "JD_Application_Update",
+        "JD_Error",
+        "JD_Scrape_Failed",
+    )
+
+    fun eligible(verb: String, event: JsonObject): Boolean {
+        if ((event.long("completed_seq") ?: 0) <= 0) return false
+        return when (verb) {
+            "apply" -> event.str("job_url") != null
+            "reply" -> event.bool("is_recruiter") && event.str("message_id") != null
+            "archive" -> event.str("message_id") != null && event.str("terminal_label") in INBOX_TERMINAL_LABELS
+            else -> false
+        }
+    }
+
+    fun eligibleVerbs(event: JsonObject): List<String> = VERBS.filter { eligible(it, event) }
+}

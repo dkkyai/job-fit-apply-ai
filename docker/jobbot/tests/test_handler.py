@@ -1,0 +1,202 @@
+"""The plugin's Telegram glue, driven with stand-ins for python-telegram-bot and Hermes so it runs
+without either installed. Covers the paths a real tap takes through on_button."""
+import asyncio
+import sys
+import types
+from datetime import datetime, timezone
+
+import pytest
+
+
+class ApplicationHandlerStop(Exception):
+    pass
+
+
+class CallbackQueryHandler:
+    def __init__(self, callback, pattern=None):
+        self.callback, self.pattern = callback, pattern
+
+
+class InlineKeyboardButton:
+    def __init__(self, text, url=None, callback_data=None):
+        self.text, self.url, self.callback_data = text, url, callback_data
+
+
+class InlineKeyboardMarkup:
+    def __init__(self, inline_keyboard):
+        self.inline_keyboard = inline_keyboard
+
+
+class MessageEvent:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+@pytest.fixture(autouse=True)
+def fake_libs(monkeypatch):
+    telegram = types.ModuleType("telegram")
+    telegram.InlineKeyboardButton, telegram.InlineKeyboardMarkup = InlineKeyboardButton, InlineKeyboardMarkup
+    ext = types.ModuleType("telegram.ext")
+    ext.ApplicationHandlerStop, ext.CallbackQueryHandler = ApplicationHandlerStop, CallbackQueryHandler
+    event_mod = types.ModuleType("gateway.platforms.event")
+    event_mod.MessageEvent = MessageEvent
+    for name, mod in {
+        "telegram": telegram, "telegram.ext": ext, "gateway": types.ModuleType("gateway"),
+        "gateway.platforms": types.ModuleType("gateway.platforms"), "gateway.platforms.event": event_mod,
+    }.items():
+        monkeypatch.setitem(sys.modules, name, mod)
+
+
+class Recorder:
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, name, ret=None):
+        async def fn(*args, **kwargs):
+            self.calls.append((name, args, kwargs))
+            return ret
+        return fn
+
+
+class FakeClient:
+    def __init__(self, result=None, error=None):
+        self.result, self.error, self.payloads = result, error, []
+
+    def tap(self, payload):
+        self.payloads.append(payload)
+        if self.error:
+            raise self.error
+        return self.result
+
+
+class FakeAdapter:
+    def __init__(self, rec):
+        self.rec = rec
+        self.handle_message = rec("handle_message")
+
+    def build_source(self, **kw):
+        return {"source": kw}
+
+
+def wire(monkeypatch, client, allowed="8679792351"):
+    import jobbot_actions as plugin
+    monkeypatch.setenv("JOBBOT_MCP_TOKEN", "tok")
+    monkeypatch.setenv("TELEGRAM_ALLOWED_USERS", allowed)
+    registered = {}
+
+    class Ctx:
+        def register_telegram_handler(self, factory):
+            registered["factory"] = factory
+
+        def register_command(self, name, handler, description=""):
+            registered[name] = handler
+
+    plugin.register(Ctx())
+    plugin._client = client
+    handlers = []
+
+    class App:
+        def add_handler(self, handler, group=0):
+            handlers.append((handler, group))
+
+    rec = Recorder()
+    adapter = FakeAdapter(rec)
+    registered["factory"](App(), adapter)
+    (handler, group), = handlers
+    return handler, group, rec, registered
+
+
+def tap(rec, data="apply:7663", user=8679792351):
+    message = types.SimpleNamespace(
+        chat_id=8679792351, message_id=55, date=datetime(2026, 10, 1, tzinfo=timezone.utc),
+        text="High-fit: Acme — Staff SDET — 80\n#J7663", caption=None,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("View Report", url="http://h/r.md")],
+            [InlineKeyboardButton("Apply", callback_data="apply:7663"),
+             InlineKeyboardButton("Archive", callback_data="archive:7663")],
+        ]),
+        reply_text=rec("reply_text"),
+    )
+    query = types.SimpleNamespace(
+        data=data, from_user=types.SimpleNamespace(id=user, first_name="Richard"), message=message,
+        answer=rec("answer"), edit_message_reply_markup=rec("edit_markup"),
+    )
+    return types.SimpleNamespace(callback_query=query)
+
+
+def run(handler, update):
+    return asyncio.run(handler.callback(update, None))
+
+
+def test_handler_is_scoped_and_runs_before_hermes(monkeypatch):
+    handler, group, _, registered = wire(monkeypatch, FakeClient({}))
+    assert handler.pattern == r"^(apply|reply|archive|undo):(\d{1,18})$"
+    assert group < 0
+    assert "jdstatus" in registered
+
+
+def test_apply_tap_forwards_and_replies_not_implemented(monkeypatch):
+    client = FakeClient({"outcome": "not_implemented", "reply": "Not implemented yet"})
+    handler, _, rec, _ = wire(monkeypatch, client)
+    with pytest.raises(ApplicationHandlerStop):
+        run(handler, tap(rec))
+    assert client.payloads == [{"verb": "apply", "seq": 7663, "user_id": "8679792351", "chat_id": "8679792351",
+                                "message_id": 55, "message_date": 1790812800}]
+    names = [c[0] for c in rec.calls]
+    assert names == ["answer", "reply_text"], names
+    assert rec.calls[1][1] == ("Not implemented yet",)
+
+
+def test_strangers_are_refused_without_reaching_the_backend(monkeypatch):
+    client = FakeClient({})
+    handler, _, rec, _ = wire(monkeypatch, client)
+    with pytest.raises(ApplicationHandlerStop):
+        run(handler, tap(rec, user=1))
+    assert client.payloads == []
+    assert rec.calls == [("answer", ("Not authorized.",), {})]
+
+
+def test_foreign_callbacks_pass_through(monkeypatch):
+    client = FakeClient({})
+    handler, _, rec, _ = wire(monkeypatch, client)
+    assert run(handler, tap(rec, data="ea:once:3")) is None
+    assert rec.calls == [] and client.payloads == []
+
+
+def test_backend_failure_answers_unavailable(monkeypatch):
+    import jobbot_actions.core as core
+    handler, _, rec, _ = wire(monkeypatch, FakeClient(error=OSError("refused")))
+    with pytest.raises(ApplicationHandlerStop):
+        run(handler, tap(rec))
+    assert rec.calls == [("answer", (core.UNAVAILABLE,), {})]
+
+
+def test_action_row_edits_the_keyboard_keeping_links(monkeypatch):
+    result = {"outcome": "done", "toast": "Archived.", "action_row": [{"text": "Undo", "callback_data": "undo:7663"}]}
+    handler, _, rec, _ = wire(monkeypatch, FakeClient(result))
+    with pytest.raises(ApplicationHandlerStop):
+        run(handler, tap(rec, data="archive:7663"))
+    edit = next(c for c in rec.calls if c[0] == "edit_markup")
+    rows = edit[2]["reply_markup"].inline_keyboard
+    assert [[b.text for b in r] for r in rows] == [["View Report"], ["Undo"]]
+
+
+def test_empty_action_row_removes_the_keyboard_when_nothing_else_is_left(monkeypatch):
+    handler, _, rec, _ = wire(monkeypatch, FakeClient({"outcome": "expired", "toast": "x", "action_row": []}))
+    with pytest.raises(ApplicationHandlerStop):
+        run(handler, tap(rec))
+    edit = next(c for c in rec.calls if c[0] == "edit_markup")
+    assert [[b.text for b in r] for r in edit[2]["reply_markup"].inline_keyboard] == [["View Report"]]
+
+
+def test_agent_prompt_wakes_the_agent_as_a_reply_to_the_card(monkeypatch):
+    result = {"outcome": "agent", "agent_prompt": "[JobBot action] Reply on #J7663"}
+    handler, _, rec, _ = wire(monkeypatch, FakeClient(result))
+    with pytest.raises(ApplicationHandlerStop):
+        run(handler, tap(rec, data="reply:7663"))
+    (_, (event,), _), = [c for c in rec.calls if c[0] == "handle_message"]
+    assert event.text == "[JobBot action] Reply on #J7663"
+    assert event.reply_to_message_id == "55"
+    assert "#J7663" in event.reply_to_text
+    assert event.allow_gateway_control is False
+    assert event.source == {"source": {"chat_id": "8679792351", "chat_type": "dm", "user_id": "8679792351", "user_name": "Richard"}}
