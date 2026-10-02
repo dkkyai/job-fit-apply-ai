@@ -94,4 +94,14 @@ class GmailClientTest {
         }
         assertEquals("Hello\nthere & you", client().message("m2").body)
     }
+
+    @Test
+    fun `base64url bodies decode padded, unpadded, wrapped or in the standard alphabet`() {
+        val text = "Héllo — wörld??>>"
+        val std = Base64.getEncoder().encodeToString(text.toByteArray())
+        val url = Base64.getUrlEncoder().encodeToString(text.toByteArray())
+        listOf(url, url.trimEnd('='), url.chunked(8).joinToString("\r\n"), std).forEach {
+            assertEquals(text, String(GmailClient.decodeBase64Url(it)), it)
+        }
+    }
 }

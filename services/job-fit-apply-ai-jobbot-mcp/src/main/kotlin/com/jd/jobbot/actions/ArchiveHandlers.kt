@@ -46,7 +46,13 @@ class ArchiveSupport(
             put("removed", JsonArray(listOf(JsonPrimitive(INBOX))))
         }.toString()
         val action = store.insert("archive", ctx.jobKey, ctx.request.seq, "started", ctx.request.chatId, ctx.request.messageId?.toString(), details)
-        gmail.modify(messageId, remove = listOf(INBOX))
+        try {
+            gmail.modify(messageId, remove = listOf(INBOX))
+        } catch (e: Exception) {
+            // Never leave a row "started": it would read as pending forever and block Undo.
+            store.update(action.id, FAILED)
+            throw e
+        }
         store.update(action.id, Outcomes.DONE)
         recordTrackEvent(ctx, "archived", "Archived the source email from Telegram")
         TapResponse(Outcomes.DONE, toast = "Archived.", actionRow = row(ctx, archived = true))
@@ -91,6 +97,7 @@ class ArchiveSupport(
     companion object {
         const val INBOX = "INBOX"
         const val UNDONE = "undone"
+        const val FAILED = "failed"
         private val JSON = Json { ignoreUnknownKeys = true }
 
         /** Only write history to a track we are sure belongs to the job. */

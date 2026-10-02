@@ -103,7 +103,7 @@ open class GmailClient(
         return part["parts"]?.jsonArray?.firstNotNullOfOrNull { findPart(it.jsonObject, mime) }
     }
 
-    private fun decode(data: String) = String(Base64.getUrlDecoder().decode(data.trimEnd('=')), Charsets.UTF_8)
+    private fun decode(data: String) = String(decodeBase64Url(data), Charsets.UTF_8)
 
     private fun stripHtml(html: String) = html
         .replace(Regex("(?is)<(script|style)[^>]*>.*?</\\1>"), " ")
@@ -116,6 +116,15 @@ open class GmailClient(
 
     companion object {
         private val JSON = Json { ignoreUnknownKeys = true }
+
+        /**
+         * Gmail's base64url, tolerantly: padded or not, possibly wrapped with whitespace. The JDK
+         * decoder is strict about both, and one odd payload must not break reading the message.
+         */
+        fun decodeBase64Url(data: String): ByteArray {
+            val clean = data.filterNot { it.isWhitespace() }.trimEnd('=').replace('+', '-').replace('/', '_')
+            return Base64.getUrlDecoder().decode(clean)
+        }
 
         /** System labels JobBot must never touch: deletion and spam are not archive. */
         val FORBIDDEN_LABELS = setOf("TRASH", "SPAM")

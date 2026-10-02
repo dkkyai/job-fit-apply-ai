@@ -23,7 +23,7 @@ class ArchiveHandlersTest {
     private val user = "8679792351"
 
     /** In-memory Gmail: one message's labels. */
-    private class FakeGmail(var labels: MutableList<String>) : GmailClient(object : GmailAuth(Paths.get("/x"), Paths.get("/y")) {
+    private open class FakeGmail(var labels: MutableList<String>) : GmailClient(object : GmailAuth(Paths.get("/x"), Paths.get("/y")) {
         override fun token(forceRefresh: Boolean) = "t"
     }) {
         val modifies = mutableListOf<Pair<List<String>, List<String>>>()
@@ -136,5 +136,20 @@ class ArchiveHandlersTest {
         assertEquals(Outcomes.DONE, taps.tap(tap("archive")).outcome)
         assertEquals(1, gmail.modifies.size)
         assertTrue(store.recentErrors().single().context.startsWith("track event archived"))
+    }
+
+    @Test
+    fun `a Gmail failure marks the archive failed, never stuck started`() {
+        val gmail = object : FakeGmail(mutableListOf("INBOX")) {
+            override fun modify(messageId: String, add: List<String>, remove: List<String>): List<String> = error("Gmail 503")
+        }
+        val store = ActionStore(":memory:", clock)
+        val lookup = StubLookup(recruiterEvent, null, null)
+        val support = ArchiveSupport(gmail, lookup, null, setOf("archive"), store)
+        val taps = TapService(lookup, store, mapOf("archive" to support.archive, "undo" to support.undo), setOf(user), setOf("archive"), false, Duration.ofDays(7), clock)
+        assertEquals(Outcomes.ERROR, taps.tap(tap("archive")).outcome)
+        assertEquals(ArchiveSupport.FAILED, store.latest("archive", "url:acme.co/jobs/9")!!.status)
+        assertEquals(emptyMap(), store.pendingCounts())
+        assertEquals("Nothing to undo.", taps.tap(tap("undo")).toast)
     }
 }
