@@ -62,6 +62,7 @@ class ApplyServiceTest {
         val store = ActionStore(":memory:", clock)
         val outbox = Outbox(dir.resolve("o.db").toString(), dir.resolve("shots"), clock)
         val tracks = Tracks()
+        val creds = Credentials(dir.resolve("creds.json"), "dkkytech@gmail.com", clock)
         val page = FakePage(readyForm).also { p -> p.onClick = { if (it == "e3") p.snap = p.snap.copy(url = p.snap.url + "/confirmation", text = "Thank you for applying!") } }
         var opened = 0
         val lookup = Lookup(FakeBridge.event(9, jobUrl = "https://boards.greenhouse.io/acme/jobs/9"), trackStatus)
@@ -71,6 +72,7 @@ class ApplyServiceTest {
             lookup = lookup,
             contextFor = { seq -> JobContext("#J$seq", "Acme", "Staff SDET", "https://boards.greenhouse.io/acme/jobs/9", "dkkytech@gmail.com", null, null, null, null) },
             store = store, outbox = outbox, tracks = tracks, viewerUrl = "https://viewer.tailnet/",
+            credentials = creds,
             clock = clock, worker = MoreExecutors.newDirectExecutorService(),
         )
         val taps = TapService(lookup, store, mapOf("apply" to service.apply), setOf(user), setOf("apply"), false, Duration.ofDays(7), clock,
@@ -202,5 +204,28 @@ class ApplyServiceTest {
         assertTrue(rig.tracks.calls.isEmpty(), "no applied status without a confirmation")
         assertFalse("close" in rig.page.actions, "the tab stays open for checking")
         assertTrue(rig.outbox.pending().last().text.contains("didn't see a confirmation"))
+    }
+
+    @Test
+    fun `a confirmed submission activates the password created for that site`() {
+        val rig = Rig()
+        rig.creds.createPending("greenhouse.io", null, "#J9")
+        rig.tap("apply")
+        rig.tap("submit", rig.fillId())
+        assertEquals(Credentials.ACTIVE, rig.creds.get("greenhouse.io")!!.status)
+    }
+
+    @Test
+    fun `discarding during a fill means no review is ever posted`() {
+        lateinit var rig: Rig
+        rig = Rig(outcome = { p ->
+            // Richard taps Discard while the fill is still running.
+            val id = rig.store.recent().first { it.verb == "fill" }.id
+            rig.service.discard(id, TapRequest("discard", id, user, user, 5, rig.clock.now.epochSecond))
+            FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(1), "")
+        })
+        rig.tap("apply")
+        assertTrue(rig.outbox.pending().none { it.buttons.any { b -> b.text == "✅ Submit" } }, "no review for a discarded fill")
+        assertEquals(ApplyService.CANCELLED, rig.store.recent().first { it.verb == "fill" }.status)
     }
 }

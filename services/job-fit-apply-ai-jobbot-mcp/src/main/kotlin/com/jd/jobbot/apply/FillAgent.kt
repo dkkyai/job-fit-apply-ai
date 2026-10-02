@@ -84,10 +84,9 @@ class FillAgent(
             }
             val note = plan.text("note").orEmpty()
             when (plan.text("status")) {
-                "ready" -> {
-                    if (pendingSite != null) credentials.activate(pendingSite!!)
-                    return FillResult.Ready(fieldsOf(page.snapshot()), page.screenshot(), note)
-                }
+                // A new password stays pending here: "ready" is not proof the site accepted the signup.
+                // It is activated only when an application on that site is confirmed submitted.
+                "ready" -> return FillResult.Ready(fieldsOf(page.snapshot()), page.screenshot(), note)
                 "need_human" -> return FillResult.NeedsHuman(note.ifBlank { "This step needs you." }, shot(page))
             }
             val actions = plan["actions"]?.jsonArray?.map { it.jsonObject }.orEmpty()
@@ -179,6 +178,8 @@ class FillAgent(
             "open_verification_link" -> {
                 val site = Credentials.siteKey(page.url) ?: return "error: no site"
                 val link = verifier?.link(site, started) ?: return "handoff: No verification email from $site arrived. Verify in the viewer, then tap Continue."
+                // Same guard as goto (the browser's route guard enforces it again at the network layer).
+                if (!SitePolicy.navigationAllowed(link, job.jobUrl, job.company)) return "refused: the verification link points off-site"
                 page.goto(link); "ok"
             }
             "google_sign_in" -> {

@@ -46,6 +46,8 @@ class ApplyService(
     private val outbox: Outbox,
     private val tracks: TrackWriter?,
     private val viewerUrl: String?,
+    /** To activate a password created for a site once an application there is confirmed. */
+    private val credentials: Credentials? = null,
     private val reviewTtl: Duration = Duration.ofHours(4),
     private val reminderAfter: Duration = Duration.ofHours(3),
     private val clock: Clock = Clock.systemUTC(),
@@ -121,6 +123,10 @@ class ApplyService(
         }
         store.update(id, Outcomes.DONE, buildJsonObject { put("submitted_url", after.url); put("confirmed", true) }.toString())
         pages.remove(id)?.close()
+        // A confirmed submission proves the account works: a password created for this site is now active.
+        listOfNotNull(Credentials.siteKey(snap.url), Credentials.siteKey(after.url)).distinct().forEach { site ->
+            if (credentials?.get(site)?.status == Credentials.PENDING) credentials.activate(site)
+        }
         recordApplied(fill.seq)
         outbox.post("Submitted: ${JobRef.format(fill.seq)}.", photo = shot)
         return TapResponse(Outcomes.DONE, toast = "Submitted.", actionRow = emptyList())
@@ -182,6 +188,11 @@ class ApplyService(
             }.also { pages[id] = it }
         val result = runCatching { fill(page, job, fresh) }
             .getOrElse { FillResult.Failed("${it.javaClass.simpleName}: ${it.message}", null) }
+        // Discarded (or expired) while the fill ran: never resurrect it with a review.
+        if (store.byId(id)?.status in setOf(CANCELLED, EXPIRED, SUPERSEDED)) {
+            pages.remove(id)?.close()
+            return
+        }
         when (result) {
             is FillResult.Ready -> {
                 store.update(id, Outcomes.AWAITING_APPROVAL, reviewDetails(result))

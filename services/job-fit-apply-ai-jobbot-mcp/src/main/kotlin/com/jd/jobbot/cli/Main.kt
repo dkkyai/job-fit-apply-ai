@@ -68,6 +68,7 @@ fun main() {
             outbox = outbox,
             tracks = tracks,
             viewerUrl = Config.APPLY_VIEWER_URL.ifBlank { null },
+            credentials = credentials,
             reviewTtl = Duration.ofHours(Config.APPLY_REVIEW_TTL_HOURS),
             reminderAfter = Duration.ofHours(Config.APPLY_REMINDER_HOURS),
         ).also { svc ->

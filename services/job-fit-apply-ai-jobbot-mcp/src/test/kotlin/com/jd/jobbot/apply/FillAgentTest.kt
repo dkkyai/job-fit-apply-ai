@@ -112,7 +112,7 @@ class FillAgentTest {
         val pw = creds.passwordFor("acme.wd5.myworkdayjobs.com")!!
         assertEquals(pw, page.values["p1"])
         assertEquals(pw, page.values["p2"], "confirm reuses the same new password")
-        assertEquals(Credentials.ACTIVE, creds.get("acme.wd5.myworkdayjobs.com")!!.status, "activated once the fill reached ready")
+        assertEquals(Credentials.PENDING, creds.get("acme.wd5.myworkdayjobs.com")!!.status, "stays pending until a submission is confirmed")
         llm.prompts.forEach { assertFalse(it.contains(pw), "the model must never see the password") }
         assertTrue("click b1" in page.actions)
     }
@@ -246,5 +246,17 @@ class FillAgentTest {
         assertFalse("fill p1" in page.actions)
         assertTrue(llm.prompts.last().contains("already exists"))
         kotlin.test.assertFailsWith<IllegalStateException> { creds.createPending("acme.com", null, null) }
+    }
+
+    @Test
+    fun `a verification link is held to the navigation guard`() {
+        val page = FakePage(Snapshot("https://acme.com/verify", elements = emptyList()))
+        val verifier = object : Verifier(com.jd.jobbot.gmail.GmailClient(object : com.jd.jobbot.gmail.GmailAuth(dir, dir) {})) {
+            override fun link(site: String, sinceMillis: Long, wait: java.time.Duration) = "https://mail.google.com/mail/u/0/#verify"
+        }
+        val llm = Script("""{"status":"continue","actions":[{"do":"open_verification_link"}]}""", """{"status":"ready"}""")
+        agent(llm, verifier).run(page, job.copy(jobUrl = "https://acme.com/verify"), startFresh = false)
+        assertFalse(page.actions.any { it.startsWith("goto https://mail.google.com") })
+        assertTrue(llm.prompts.last().contains("off-site"))
     }
 }
