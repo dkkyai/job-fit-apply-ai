@@ -35,10 +35,13 @@ open class GmailClient(
         val labels: List<String>,
         val from: String?,
         val to: String?,
+        val cc: String? = null,
         val subject: String?,
         val date: String?,
         val snippet: String?,
         val body: String,
+        /** Gmail's receive time, epoch millis. */
+        val internalDate: Long? = null,
     )
 
     open fun labels(messageId: String): List<String> =
@@ -59,6 +62,55 @@ open class GmailClient(
 
     open fun thread(threadId: String): List<Message> =
         call("GET", "/threads/${enc(threadId)}?format=full")["messages"]?.jsonArray?.map { parse(it.jsonObject) } ?: emptyList()
+
+    // ── Drafts (reply workflow) ────────────────────────────────────────────────
+
+    /** The account's own address, to tell its messages from the recruiter's. */
+    open fun selfAddress(): String = call("GET", "/profile")["emailAddress"]!!.jsonPrimitive.content.lowercase()
+
+    /** (draftId, threadId) of every draft. */
+    open fun drafts(): List<Pair<String, String?>> {
+        val out = mutableListOf<Pair<String, String?>>()
+        var page: String? = null
+        do {
+            val resp = call("GET", "/drafts?maxResults=100" + (page?.let { "&pageToken=${enc(it)}" } ?: ""))
+            resp["drafts"]?.jsonArray?.forEach { d ->
+                val o = d.jsonObject
+                out += o["id"]!!.jsonPrimitive.content to o["message"]?.jsonObject?.get("threadId")?.jsonPrimitive?.content
+            }
+            page = resp["nextPageToken"]?.jsonPrimitive?.content
+        } while (page != null && out.size < 500)
+        return out
+    }
+
+    open fun draftRaw(draftId: String): String =
+        call("GET", "/drafts/${enc(draftId)}?format=raw")["message"]!!.jsonObject["raw"]!!.jsonPrimitive.content
+
+    open fun createDraft(raw: String, threadId: String?): String =
+        call("POST", "/drafts", draftBody(null, raw, threadId))["id"]!!.jsonPrimitive.content
+
+    open fun updateDraft(draftId: String, raw: String, threadId: String?): String =
+        call("PUT", "/drafts/${enc(draftId)}", draftBody(draftId, raw, threadId))["id"]!!.jsonPrimitive.content
+
+    /** Sends a draft; returns the sent message's id. */
+    open fun sendDraft(draftId: String): String =
+        call("POST", "/drafts/send", buildJsonObject { put("id", draftId) }.toString())["id"]!!.jsonPrimitive.content
+
+    /** Raw RFC 822 headers of one message (for In-Reply-To / References). */
+    open fun headers(messageId: String): Map<String, String> =
+        call("GET", "/messages/${enc(messageId)}?format=metadata&metadataHeaders=Message-ID&metadataHeaders=References&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Reply-To")
+            .get("payload")?.jsonObject?.get("headers")?.jsonArray?.associate {
+                val h = it.jsonObject
+                h["name"]!!.jsonPrimitive.content.lowercase() to h["value"]!!.jsonPrimitive.content
+            } ?: emptyMap()
+
+    private fun draftBody(id: String?, raw: String, threadId: String?) = buildJsonObject {
+        id?.let { put("id", it) }
+        put("message", buildJsonObject {
+            put("raw", raw)
+            threadId?.let { put("threadId", it) }
+        })
+    }.toString()
 
     internal fun call(method: String, path: String, body: String? = null, retried: Boolean = false): JsonObject {
         val token = auth.token(forceRefresh = retried)
@@ -87,9 +139,10 @@ open class GmailClient(
             id = m["id"]?.jsonPrimitive?.content ?: "",
             threadId = m["threadId"]?.jsonPrimitive?.content,
             labels = m["labelIds"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-            from = headers["from"], to = headers["to"], subject = headers["subject"], date = headers["date"],
+            from = headers["from"], to = headers["to"], cc = headers["cc"], subject = headers["subject"], date = headers["date"],
             snippet = m["snippet"]?.jsonPrimitive?.content,
             body = payload?.let { textOf(it) }.orEmpty(),
+            internalDate = m["internalDate"]?.jsonPrimitive?.content?.toLongOrNull(),
         )
     }
 

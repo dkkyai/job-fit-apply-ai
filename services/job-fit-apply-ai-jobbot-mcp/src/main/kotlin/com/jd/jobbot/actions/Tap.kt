@@ -30,6 +30,7 @@ data class InlineButton(
  *  - [actionRow]: replace the card's action-button row; `[]` removes it, null leaves it alone.
  *    URL buttons (View Report / Resume) are kept by the plugin.
  *  - [agentPrompt]: wake the agent with this text, in the user's chat, as a reply to the card.
+ *  - [replyRow]: inline buttons on the [reply] message.
  */
 @Serializable
 data class TapResponse(
@@ -38,6 +39,8 @@ data class TapResponse(
     val reply: String? = null,
     @SerialName("action_row") val actionRow: List<InlineButton>? = null,
     @SerialName("agent_prompt") val agentPrompt: String? = null,
+    /** Buttons for the [reply] message itself (e.g. ✅ Send / ✖ Cancel under a draft preview). */
+    @SerialName("reply_row") val replyRow: List<InlineButton>? = null,
 )
 
 /** Everything a verb handler needs about one validated tap. */
@@ -47,6 +50,12 @@ data class TapContext(
     val jobKey: String,
     val ref: String,
 )
+
+/** ✅ Send / ✖ Cancel on an approval preview. The tap's number is the approval id, not a seq. */
+interface ApprovalHandler {
+    fun send(id: Long, req: TapRequest): TapResponse
+    fun cancel(id: Long, req: TapRequest): TapResponse
+}
 
 /** One verb's behavior. Handlers run only after the tap passed every shared check. */
 fun interface VerbHandler {
@@ -58,6 +67,7 @@ object Outcomes {
     const val ALREADY = "already"
     const val NOT_IMPLEMENTED = "not_implemented"
     const val AGENT = "agent"
+    const val AWAITING_APPROVAL = "awaiting_approval"
     const val DRY_RUN = "dry_run"
     const val EXPIRED = "expired"
     const val REFUSED = "refused"

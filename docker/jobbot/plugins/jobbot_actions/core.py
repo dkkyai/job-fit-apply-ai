@@ -10,10 +10,12 @@ import re
 import urllib.error
 import urllib.request
 
-# <verb>:<completed_seq> — the only callback data the notifier and jobbot-mcp produce.
-CALLBACK_PATTERN = r"^(apply|reply|archive|undo):(\d{1,18})$"
+# <verb>:<completed_seq> on cards; send/cancel:<approval id> under a reply-draft preview.
+CALLBACK_PATTERN = r"^(apply|reply|archive|undo|send|cancel):(\d{1,18})$"
 _CALLBACK = re.compile(CALLBACK_PATTERN)
-OUR_VERBS = ("apply", "reply", "archive", "undo")
+OUR_VERBS = ("apply", "reply", "archive", "undo", "send", "cancel")
+# Tolerates the escaped quotes of a JSON result nested in another JSON string.
+_APPROVAL_ID = re.compile(r'\\*"approval_id\\*"\s*:\s*(\d{1,18})')
 
 
 def parse_callback(data):
@@ -90,6 +92,20 @@ class JobbotMcp:
 
     def status_text(self):
         return self._request("GET", "/plugin/status").get("text") or "No status."
+
+    def approval(self, approval_id):
+        """The preview text and Send/Cancel row for a pending approval."""
+        return self._request("GET", f"/plugin/approval/{int(approval_id)}")
+
+
+def approval_id_from_result(result):
+    """The approval id in a request_send_approval tool result, however Hermes wrapped it."""
+    m = _APPROVAL_ID.search(str(result or ""))
+    return int(m.group(1)) if m else None
+
+
+def is_send_approval_tool(tool_name):
+    return (tool_name or "").endswith("request_send_approval")
 
 
 UNAVAILABLE = "JobBot's backend is unavailable. Try again in a minute."

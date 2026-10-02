@@ -35,7 +35,7 @@ The notifier sends a verb only when it is listed in `NOTIFIER_TELEGRAM_ACTIONS` 
 | Verb | Shown when | Tap does |
 |---|---|---|
 | `apply` | the job has a `job_url` | **Phase 1:** replies "Not implemented yet" |
-| `reply` | `is_recruiter` and a source `message_id` | Phase 3 |
+| `reply` | `is_recruiter` and a source `message_id` | posts the reply draft (the poller's, or one built from JFAA's `draft_text`, with the resume attached) under **✅ Send / ✖ Cancel**. If neither exists, the agent writes one |
 | `archive` | a source `message_id` the poller left in the inbox | removes `INBOX` from that email only; the button becomes **↩ Undo archive** (`undo:<seq>`), which restores exactly the labels it removed. Mail already out of the inbox, archived by Muse for example, gets "Already out of the inbox." |
 
 `callback_data` is `<verb>:<completed_seq>`. The seq is the bridge's id for the completion, so nothing is registered before the send.
@@ -51,6 +51,23 @@ The notifier sends a verb only when it is listed in `NOTIFIER_TELEGRAM_ACTIONS` 
 Then the verb's handler runs. With `JOBBOT_DRY_RUN=true`, it stops after the checks, logs the tap, and toasts `[dry run] Would …`.
 
 `/jdstatus` shows the mode, the handled verbs, the latest job, pending actions, recent actions and recent errors. Inbox sweeps are not JobBot's: Muse still does them.
+
+## Sending replies: the ✅ Send tap is the only way
+
+The model has **no send tool**.
+- **Model tools:** it can `write_reply_draft`, which only ever saves a Gmail draft, and `request_send_approval`.
+- **Preview:** `request_send_approval` stores a pending approval with a SHA-256 fingerprint of the draft (recipients, subject, text, attachment names). The plugin's `post_tool_call` hook then posts that exact preview with `send:<id>` / `cancel:<id>` buttons.
+- **Checks at Send.** A tap on ✅ Send is checked again in `jobbot-mcp`:
+  - the allowlist
+  - the preview's age
+  - `JOBBOT_SEND_ENABLED` (off by default)
+  - `JOBBOT_MAX_SENDS_PER_DAY`
+  - the draft still matches the fingerprint
+  - every recipient is already in the thread
+  - Richard hasn't replied in the thread since, for example via Muse
+
+  Then `drafts.send`. A second tap answers "Already sent."
+- **Why not Hermes's approval gate?** Hermes's `pre_tool_call` → `approve` gate is skipped by the gateway's `/yolo` toggle, and no config locks `/yolo`. A deterministic tap is immune to both the model and `/yolo`.
 
 ## Gmail (Archive / Undo / get_job_email)
 
@@ -73,6 +90,8 @@ Then the verb's handler runs. With `JOBBOT_DRY_RUN=true`, it stops after the che
 | `JOBBOT_MODEL` | Chosen by the env-llm-tuner skill. Default `deepseek-v4.1-flash:cloud`. Ollama Cloud ids end in `:cloud`; the bare name 404s. The fallback is oMLX `Qwen3.6-35B-A3B-OptiQ-4bit`. |
 | `JOBBOT_ACTIONS` | Verbs JobBot acts on. `NOTIFIER_TELEGRAM_ACTIONS` must be a subset. |
 | `JOBBOT_DRY_RUN` | `true` validates and logs taps but does nothing. |
+| `JOBBOT_SEND_ENABLED` | Kill switch for ✅ Send (default `false`). |
+| `JOBBOT_MAX_SENDS_PER_DAY` | Daily cap on sends (default 10). |
 | `NOTIFIER_TELEGRAM_ACTIONS` | Verbs the cards show. |
 
 ## Runbook

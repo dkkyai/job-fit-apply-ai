@@ -37,6 +37,16 @@ open class BridgeReadClient(
         return resp.body()
     }
 
+    /** The job's tailored resume PDF (for a reply draft JobBot creates itself). */
+    open fun resumePdf(jobId: String): ByteArray {
+        val path = "/api/jobs/${enc(jobId)}/resume.pdf"
+        require(ALLOWED_GET.any { it.matches(path) }) { "bridge route not allowed: $path" }
+        val req = HttpRequest.newBuilder(URI.create(baseUrl.trimEnd('/') + path)).timeout(timeout).GET().build()
+        val resp = http.send(req, HttpResponse.BodyHandlers.ofByteArray())
+        if (resp.statusCode() !in 200..299) throw BridgeException(resp.statusCode(), "GET $path → ${resp.statusCode()}")
+        return resp.body()
+    }
+
     /** One completion by its seq, or null when the feed has no such event. */
     open fun completedEvent(seq: Long): JsonObject? {
         if (seq <= 0) return null
@@ -74,6 +84,7 @@ open class BridgeReadClient(
             // A job id slot; /api/queue/claim (a GET that claims work) is not under /api/jobs.
             Regex("/api/jobs/[A-Za-z0-9%_-]+"),
             Regex("/api/jobs/[A-Za-z0-9%_-]+/cover_letter\\.txt"),
+            Regex("/api/jobs/[A-Za-z0-9%_-]+/resume\\.pdf"),
             Regex("/api/tracks"),
             Regex("/api/tracks/\\d+/events"),
             Regex("/health"),

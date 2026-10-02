@@ -55,6 +55,10 @@ object Config {
     val GMAIL_TOKEN_FILE: String = get("JOBBOT_GMAIL_TOKEN_FILE", "")
     val GMAIL_CREDENTIALS_FILE: String = get("JOBBOT_GMAIL_CREDENTIALS_FILE", "")
 
+    /** Kill switch for sending replies. Off until a send has been verified end to end. */
+    val SEND_ENABLED: Boolean = get("JOBBOT_SEND_ENABLED", "false").equals("true", ignoreCase = true)
+    val MAX_SENDS_PER_DAY: Int = get("JOBBOT_MAX_SENDS_PER_DAY", "10").toInt()
+
     /** How far back list_high_fit scans the completed feed. */
     val HIGH_FIT_SCAN: Int = get("JOBBOT_HIGH_FIT_SCAN", "400").toInt()
     val FIT_THRESHOLD: Int = get("FIT_THRESHOLD", "55").toFloat().toInt()

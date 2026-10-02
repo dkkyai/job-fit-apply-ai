@@ -12,6 +12,8 @@ from jobbot_actions import core
     ("reply:1", ("reply", 1)),
     ("archive:42", ("archive", 42)),
     ("undo:42", ("undo", 42)),
+    ("send:3", ("send", 3)),
+    ("cancel:3", ("cancel", 3)),
 ])
 def test_parses_our_callbacks(data, expected):
     assert core.parse_callback(data) == expected
@@ -106,3 +108,21 @@ def test_status_text(backend):
 
 def test_status_when_backend_is_down():
     assert core.safe_status(core.JobbotMcp("http://127.0.0.1:9", "tok", timeout=2)).startswith(core.UNAVAILABLE)
+
+
+@pytest.mark.parametrize("result,expected", [
+    ('{"approval_id": 12, "status": "awaiting"}', 12),
+    ('[{"type":"text","text":"{\\n  \\"approval_id\\": 5\\n}"}]', 5),
+    ({"content": '{"approval_id":9}'}, 9),
+    ("no id here", None),
+    (None, None),
+])
+def test_approval_id_is_found_in_tool_results(result, expected):
+    assert core.approval_id_from_result(result) == expected
+
+
+def test_only_the_approval_tool_triggers_posting():
+    assert core.is_send_approval_tool("mcp__jfaa__request_send_approval")
+    assert not core.is_send_approval_tool("mcp__jfaa__write_reply_draft")
+    assert not core.is_send_approval_tool(None)
+

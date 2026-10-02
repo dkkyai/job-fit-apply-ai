@@ -379,6 +379,9 @@ services:
       # The poller's Gmail token, shared read-only (same account, same scopes). jobbot-mcp refreshes
       # access tokens in memory and never writes, deletes or re-auths this file — the poller owns it.
       JOBBOT_GMAIL_TOKEN_FILE: "/poller-secrets/tokens/gmail_token.json"
+      # Replies: sending is off until verified; a ✅ Send tap is still required for every email.
+      JOBBOT_SEND_ENABLED: "${JOBBOT_SEND_ENABLED:-false}"
+      JOBBOT_MAX_SENDS_PER_DAY: "${JOBBOT_MAX_SENDS_PER_DAY:-10}"
       JOBBOT_GMAIL_CREDENTIALS_FILE: "/poller-secrets/dkkytech_credentials.json"
     volumes:
       - "${JD_JOBBOT_MCP_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/jobbot-mcp-state}:/state"

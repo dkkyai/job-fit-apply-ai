@@ -1,5 +1,6 @@
 package com.jd.jobbot.mcp
 
+import com.jd.jobbot.actions.ReplySupport
 import com.jd.jobbot.bridge.BridgeReadClient
 import com.jd.jobbot.bridge.TrackWriter
 import com.jd.jobbot.gmail.GmailAuth
@@ -47,6 +48,8 @@ class JobbotTools(
     private val highFitScan: Int,
     private val tracks: TrackWriter? = null,
     private val gmail: GmailClient? = null,
+    private val replies: ReplySupport? = null,
+    private val jobKeyOf: (Long) -> String? = { null },
 ) {
     fun server(): Server {
         val server = Server(
@@ -142,7 +145,61 @@ class JobbotTools(
             ) { req -> safely { jobEmail(req) } }
         }
 
+        if (replies != null) {
+            server.addTool(
+                name = "get_reply_draft",
+                description = "The current Gmail reply draft for a recruiter job's thread (To, Subject, attachments, text), if any.",
+                inputSchema = schema("ref" to "Job reference, e.g. #J7663"),
+                toolAnnotations = ro,
+            ) { req -> safely { getReplyDraft(req) } }
+
+            server.addTool(
+                name = "write_reply_draft",
+                description = "Write (or rewrite) the reply draft's text for a recruiter job. Creates the draft in the " +
+                    "recruiter's thread if there is none (with the tailored resume attached). NEVER sends. Facts about " +
+                    "Richard must come from get_profile or from him.",
+                inputSchema = schema("ref" to "Job reference, e.g. #J7663", "body" to "The full reply text"),
+                toolAnnotations = ToolAnnotations(readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false),
+            ) { req -> safely { writeReplyDraft(req) } }
+
+            server.addTool(
+                name = "request_send_approval",
+                description = "Put ✅ Send / ✖ Cancel buttons under a preview of the exact current draft in Telegram. " +
+                    "Sending happens only if Richard taps Send; you cannot send. Call it when he says to send, after " +
+                    "any edits.",
+                inputSchema = schema("ref" to "Job reference, e.g. #J7663"),
+                toolAnnotations = ToolAnnotations(readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false),
+            ) { req -> safely { requestSendApproval(req) } }
+        }
+
         return server
+    }
+
+    internal fun getReplyDraft(req: CallToolRequest): CallToolResult {
+        val seq = JobRef.parse(req.string("ref")) ?: return err("Give a job reference like #J7663.")
+        val draft = replies!!.currentDraft(seq) ?: return err("No reply draft for ${JobRef.format(seq)} yet.")
+        return CallToolResult(content = listOf(TextContent(draft.view.preview())))
+    }
+
+    internal fun writeReplyDraft(req: CallToolRequest): CallToolResult {
+        val seq = JobRef.parse(req.string("ref")) ?: return err("Give a job reference like #J7663.")
+        val body = req.string("body") ?: return err("Give the reply text.")
+        val draft = replies!!.writeDraft(seq, body)
+        return CallToolResult(
+            content = listOf(
+                TextContent("Draft saved (not sent). Show Richard the text and ask for approval or changes.\n\n" + draft.view.preview()),
+            ),
+        )
+    }
+
+    internal fun requestSendApproval(req: CallToolRequest): CallToolResult {
+        val seq = JobRef.parse(req.string("ref")) ?: return err("Give a job reference like #J7663.")
+        val draft = replies!!.currentDraft(seq) ?: return err("No reply draft for ${JobRef.format(seq)} — write one first.")
+        val approval = replies.requestApproval(seq, jobKeyOf(seq) ?: "seq:$seq", draft, null)
+        return ok(buildJsonObject {
+            put("approval_id", approval.id)
+            put("status", "awaiting Richard's tap on ✅ Send — NOT sent")
+        })
     }
 
     /** A track id we are sure belongs to the job, or an explanation of why there isn't one. */

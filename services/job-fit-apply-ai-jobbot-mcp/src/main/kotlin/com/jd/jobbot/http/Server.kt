@@ -36,6 +36,7 @@ fun Application.jobbotModule(
     taps: TapService,
     status: StatusReport,
     tools: JobbotTools,
+    approvals: ((Long) -> com.jd.jobbot.actions.TapResponse?)? = null,
 ) {
     intercept(ApplicationCallPipeline.Plugins) {
         val path = call.request.path()
@@ -62,6 +63,16 @@ fun Application.jobbotModule(
             }
             val resp = taps.tap(req)
             call.respondText(JSON.encodeToString(com.jd.jobbot.actions.TapResponse.serializer(), resp), ContentType.Application.Json)
+        }
+        // The preview + Send/Cancel buttons for an approval the model requested (posted by the plugin).
+        get("/plugin/approval/{id}") {
+            val id = call.parameters["id"]?.toLongOrNull()
+            val body = id?.let { approvals?.invoke(it) }
+            if (body == null) {
+                call.respondText("""{"error":"not found"}""", ContentType.Application.Json, HttpStatusCode.NotFound)
+            } else {
+                call.respondText(JSON.encodeToString(com.jd.jobbot.actions.TapResponse.serializer(), body), ContentType.Application.Json)
+            }
         }
         get("/plugin/status") {
             val body = buildJsonObject { put("text", status.text()) }
