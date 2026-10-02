@@ -168,6 +168,14 @@ class ExistingProductPathsE2ETest {
             result.llmCalls,
             "captured text must route through scrape_jd exactly once before normal processing",
         )
+        // A posting URL makes the job applicable: the ping carries Apply as <verb>:<completed_seq>.
+        // No source email, so Reply and Archive must not appear.
+        val seq = result.completedEvent.path("completed_seq").asLong()
+        assertEquals(
+            listOf("cb:apply:$seq"),
+            result.telegramButtons.map { it.second }.filter { it.startsWith("cb:") },
+            "captured page should get exactly one action button: ${result.telegramButtons}",
+        )
         assertEquals(1, result.completedEvents.size)
         assertTrue(result.discordMessages.single().contains("(TAILOR)"))
         assertEquals(1, result.telegramMessages.size)
@@ -221,6 +229,19 @@ class ExistingProductPathsE2ETest {
         assertEquals(result.jobId, result.completedEvent.path("job_id").asText())
         assertTrue(result.discordMessages.single().contains("(TAILOR)"))
         assertEquals(1, result.telegramMessages.size)
+
+        // A recruiter email stays in the inbox, so it can be replied to and archived; with no
+        // posting URL there is nothing to apply to.
+        val event = result.completedEvent
+        assertEquals(messageId, event.path("message_id").asText())
+        assertTrue(event.path("is_recruiter").asBoolean(), "recruiter email not flagged: $event")
+        assertEquals("Recruiter_Response_Required", event.path("terminal_label").asText(), "event: $event")
+        val seq = event.path("completed_seq").asLong()
+        assertEquals(
+            listOf("cb:reply:$seq", "cb:archive:$seq"),
+            result.telegramButtons.map { it.second }.filter { it.startsWith("cb:") },
+            "recruiter email buttons: ${result.telegramButtons}",
+        )
     }
 
     /**

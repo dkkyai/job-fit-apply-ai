@@ -37,25 +37,26 @@ object Config {
     val TELEGRAM_API_BASE: String = get("TELEGRAM_API_BASE", "https://api.telegram.org")
 
     /**
-     * Inline buttons on the Telegram high-fit ping (View Report / View Resume / Apply).
+     * Inline buttons on the Telegram high-fit ping (View Report / View Resume / actions).
      * Off by default so a rollout is a config flip, not a code change.
      */
     val TELEGRAM_BUTTONS_ENABLED: Boolean =
         get("NOTIFIER_TELEGRAM_BUTTONS", "false").equals("true", ignoreCase = true)
 
     /**
-     * Split the link buttons from the Apply button.
-     *
-     * They carry very different risk: View Report / View Resume are inert URLs, while Apply
-     * commits to an agent workflow. Gating them together would force anyone who wants the links
-     * to also accept the action button, so links are the default and Apply is separate opt-in.
+     * The link buttons (View Report / View Resume). Empty falls back to
+     * NOTIFIER_TELEGRAM_BUTTONS so the two cannot silently disagree.
      */
     val TELEGRAM_LINK_BUTTONS_ENABLED: Boolean =
         get("NOTIFIER_TELEGRAM_LINK_BUTTONS", TELEGRAM_BUTTONS_ENABLED.toString())
             .equals("true", ignoreCase = true)
 
-    val TELEGRAM_APPLY_BUTTON_ENABLED: Boolean =
-        get("NOTIFIER_TELEGRAM_APPLY_BUTTON", "false").equals("true", ignoreCase = true)
+    /**
+     * Action buttons, comma-separated verbs: `apply`, `reply`, `archive`. Each is a callback the
+     * JobBot agent handles, so list a verb only once the agent handles it. Blank = no actions.
+     * Gated separately from the links: links are inert URLs, an action starts agent work.
+     */
+    val TELEGRAM_ACTIONS: String = get("NOTIFIER_TELEGRAM_ACTIONS", "")
 
     /**
      * Looking up `tailored_resume_url` needs one fetch of the job's metadata.json. On when
@@ -67,22 +68,6 @@ object Config {
 
     /** Budget for the metadata.json lookup — must not stall the notifier loop. */
     val ARTIFACT_LINKS_TIMEOUT_MS: Int = get("NOTIFIER_ARTIFACT_TIMEOUT_MS", "4000").toInt()
-
-    /**
-     * Writing Apply registrations into the agent's pending-actions file.
-     *
-     * Off by default and only meaningful when the file is reachable: the notifier runs in a
-     * container, so this path must be a mounted volume. Blank disables it.
-     */
-    val JOBBOT_PENDING_ACTIONS_PATH: String = get("JOBBOT_PENDING_ACTIONS", "")
-
-    val APPLY_REGISTRAR_ENABLED: Boolean =
-        get("NOTIFIER_APPLY_REGISTRAR", "false").equals("true", ignoreCase = true) &&
-            JOBBOT_PENDING_ACTIONS_PATH.isNotBlank()
-
-    /** Apply labels older than this are pruned, matching the agent's 7-day expiry. */
-    val APPLY_LABEL_TTL_SECONDS: Long = get("NOTIFIER_APPLY_TTL_SECONDS", "604800").toLong()
-
 
     /**
      * Public base for bridge-relative artifact links. The bridge exposes the same resume bytes

@@ -1,6 +1,7 @@
 package com.jd.notifier.bridge
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.PropertyNamingStrategies
@@ -26,6 +27,13 @@ data class CompletedEvent(
     val artifactUrl: String? = null,
     val artifacts: ArtifactUrls? = null,
     val error: String? = null,
+    /** The source Gmail message (null for jobs that did not arrive by email). */
+    val messageId: String? = null,
+    /** Explicit name: Jackson would otherwise read the Kotlin `is` getter as `recruiter`. */
+    @JsonProperty("is_recruiter")
+    val isRecruiter: Boolean = false,
+    /** The Gmail label the poller writes back — tells whether the email is still in the inbox. */
+    val terminalLabel: String? = null,
 ) {
     /**
      * The pipeline output directory name, taken from the tail of [artifactUrl].
