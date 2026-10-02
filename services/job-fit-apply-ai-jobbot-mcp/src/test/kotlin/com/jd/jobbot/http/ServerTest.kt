@@ -137,6 +137,14 @@ class ServerTest {
             bridge.failWith = 500
             val outage = client.callTool("get_job", mapOf("ref" to "#J11"))
             assertEquals(true, outage.isError, "a bridge outage must be a tool error, not a transport failure")
+
+            // A malformed feed event (no completed_seq) must not crash the tool either.
+            bridge.failWith = null
+            bridge.events = bridge.events + kotlinx.serialization.json.buildJsonObject {
+                put("completed_seq", kotlinx.serialization.json.JsonPrimitive(13)); put("fit_score", kotlinx.serialization.json.JsonPrimitive(90))
+            }
+            val listed = client.callTool("list_high_fit", emptyMap())
+            assertEquals(null, listed.isError, (listed.content.single() as TextContent).text)
         } finally {
             client.close()
         }

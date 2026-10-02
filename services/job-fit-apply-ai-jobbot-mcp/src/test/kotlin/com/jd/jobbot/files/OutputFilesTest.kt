@@ -83,4 +83,11 @@ class OutputFilesTest {
     fun `a job without artifacts has no folder`() {
         assertIs<OutputFiles.Result.Missing>(OutputFiles(root.toString()).read(null, "report.md"))
     }
+
+    @Test
+    fun `a broken symlink is reported missing, not thrown`() {
+        val dir = Files.createDirectories(root.resolve("20261001_broken"))
+        Files.createSymbolicLink(dir.resolve("report.md"), root.resolve("does-not-exist"))
+        assertIs<OutputFiles.Result.Missing>(OutputFiles(root.toString()).read("http://m/20261001_broken/", "report.md"))
+    }
 }

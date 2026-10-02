@@ -38,9 +38,14 @@ class OutputFiles(root: String, private val maxBytes: Int = 64 * 1024) {
         val dir = dirOf(artifactUrl) ?: return Result.Missing("this job has no output folder")
         val file = dir.resolve(name)
         if (!Files.isRegularFile(file)) return Result.Missing("$name does not exist for this job")
-        val real = file.toRealPath()
-        if (!real.startsWith(realRoot())) return Result.Missing("$name resolves outside the output root")
-        val bytes = Files.newInputStream(real).use { it.readNBytes(maxBytes + 1) }
+        // The folder is live pipeline output: a file can vanish or be swapped between checks.
+        val bytes = try {
+            val real = file.toRealPath()
+            if (!real.startsWith(realRoot())) return Result.Missing("$name resolves outside the output root")
+            Files.newInputStream(real).use { it.readNBytes(maxBytes + 1) }
+        } catch (e: java.io.IOException) {
+            return Result.Missing("$name could not be read (${e.javaClass.simpleName})")
+        }
         val truncated = bytes.size > maxBytes
         val text = String(bytes, 0, minOf(bytes.size, maxBytes), Charsets.UTF_8)
         return Result.Text(name, text, truncated)

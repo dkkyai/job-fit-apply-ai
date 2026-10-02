@@ -151,7 +151,7 @@ class JobbotTools(
             events += page
             since = page.last().long("completed_seq") ?: break
         }
-        val jobs = events.filter { (it.long("fit_score") ?: 0) >= min && it.str("company") != null }
+        val jobs = events.filter { it.long("completed_seq") != null && (it.long("fit_score") ?: 0) >= min && it.str("company") != null }
             .sortedByDescending { it.long("completed_seq") }
             .take(limit)
         return ok(buildJsonArray {
@@ -222,6 +222,9 @@ class JobbotTools(
         err("JFAA bridge error (${e.status}). Try again shortly.")
     } catch (e: java.io.IOException) {
         err("Couldn't reach JFAA: ${e.message}")
+    } catch (e: Exception) {
+        // Anything else is still a tool error the model can read, never an MCP transport failure.
+        err("Tool failed: ${e.javaClass.simpleName}: ${e.message}")
     }
 
     companion object {
