@@ -93,6 +93,21 @@ Then the verb's handler runs. With `JOBBOT_DRY_RUN=true`, it stops after the che
 3. Open the viewer and sign in to Google as dkkytech@ once. That also covers 2-step verification.
 4. Set `JOBBOT_APPLY_ENABLED=true`.
 
+## Card template
+
+Richard can ask JobBot to change how high-fit cards look.
+- **Tools:** `get_alert_template` and `preview_alert_template` (with a real `#J` or a sample), then `update_alert_template`, which `revert_alert_template` undoes.
+- **Storage:** the template lives in `jobbot-templates/high-fit.html`. jobbot-mcp writes it; the notifier mounts it read-only and re-reads it per card once `NOTIFIER_TELEGRAM_TEMPLATE_FILE=/templates/high-fit.html` is set.
+- **Rules:**
+  - `{placeholder}` substitution only: `{company} {title} {company_link} {title_link} {score} {action} {ref}`
+  - values are HTML-escaped
+  - links are built in code, and `<a>` is refused
+  - tags allowed: `b i u s code pre blockquote`, balanced
+  - `{ref}` is required, and the template is at most 1000 characters
+
+  Both sides test against `docker/jobbot/contract/alert_template_vectors.json`.
+- **Never costs a card:** a missing or invalid template falls back to the built-in format, and a template Telegram rejects is re-sent once in the built-in format.
+
 ## Sending replies: the ✅ Send tap is the only way
 
 The model has **no send tool**.

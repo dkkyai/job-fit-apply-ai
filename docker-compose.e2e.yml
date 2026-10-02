@@ -145,9 +145,13 @@ services:
       NOTIFIER_TELEGRAM_BUTTONS: "true"
       NOTIFIER_TELEGRAM_LINK_BUTTONS: "true"
       NOTIFIER_TELEGRAM_ACTIONS: "apply,reply,archive"
+      # No card template in E2E: the built-in format is what the suite pins.
+      NOTIFIER_TELEGRAM_TEMPLATE_FILE: ""
       # The bridge publishes on the host at E2E_BRIDGE_PORT, so a bridge-relative resume path
       # needs this base to become a URL a chat client could actually open. Without it the button
       # would carry a bare "/api/jobs/.../resume.pdf", which is not a URL at all.
       BRIDGE_PUBLIC_URL: "http://127.0.0.1:${E2E_BRIDGE_PORT:-18765}"
     volumes:
       - ${E2E_STATE_DIR:-./.e2e}/notifier-state:/state
+      # Overrides the prod card-template mount (unused here: the template file is blank).
+      - ${E2E_STATE_DIR:-./.e2e}/jobbot-templates:/templates:ro

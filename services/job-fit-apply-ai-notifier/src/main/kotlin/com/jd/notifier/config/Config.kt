@@ -59,6 +59,12 @@ object Config {
     val TELEGRAM_ACTIONS: String = get("NOTIFIER_TELEGRAM_ACTIONS", "")
 
     /**
+     * Optional template for the Telegram ping (JobBot edits it with update_alert_template). Blank =
+     * the built-in format. Re-read per event; any problem falls back to the built-in format.
+     */
+    val TELEGRAM_TEMPLATE_FILE: String = get("NOTIFIER_TELEGRAM_TEMPLATE_FILE", "")
+
+    /**
      * Looking up `tailored_resume_url` needs one fetch of the job's metadata.json. On when
      * buttons are on; disable separately to send link buttons without that round-trip.
      */

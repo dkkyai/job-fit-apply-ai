@@ -1,6 +1,7 @@
 package com.jd.jobbot.mcp
 
 import com.jd.jobbot.actions.ReplySupport
+import com.jd.jobbot.templates.AlertTemplates
 import com.jd.jobbot.bridge.BridgeReadClient
 import com.jd.jobbot.bridge.TrackWriter
 import com.jd.jobbot.gmail.GmailAuth
@@ -50,6 +51,7 @@ class JobbotTools(
     private val gmail: GmailClient? = null,
     private val replies: ReplySupport? = null,
     private val jobKeyOf: (Long) -> String? = { null },
+    private val templates: AlertTemplates? = null,
 ) {
     fun server(): Server {
         val server = Server(
@@ -145,6 +147,42 @@ class JobbotTools(
             ) { req -> safely { jobEmail(req) } }
         }
 
+        if (templates != null) {
+            server.addTool(
+                name = "get_alert_template",
+                description = "The current Telegram high-fit card template (or the built-in format), its placeholders and rules.",
+                inputSchema = ToolSchema(),
+                toolAnnotations = ro,
+            ) { _ -> safely { getTemplate() } }
+
+            server.addTool(
+                name = "preview_alert_template",
+                description = "Render a candidate card template with a real job (ref) or a sample, and validate it. Changes nothing.",
+                inputSchema = ToolSchema(
+                    properties = buildJsonObject {
+                        putJsonObject("template") { put("type", "string"); put("description", "Template text with {placeholders}") }
+                        putJsonObject("ref") { put("type", "string"); put("description", "Optional job reference, e.g. #J7663") }
+                    },
+                    required = listOf("template"),
+                ),
+                toolAnnotations = ro,
+            ) { req -> safely { previewTemplate(req) } }
+
+            server.addTool(
+                name = "update_alert_template",
+                description = "Change the Telegram high-fit card format when Richard asks. Validated first; the next card uses it; revert_alert_template undoes it.",
+                inputSchema = schema("template" to "Template text with {placeholders}"),
+                toolAnnotations = ToolAnnotations(readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false),
+            ) { req -> safely { updateTemplate(req) } }
+
+            server.addTool(
+                name = "revert_alert_template",
+                description = "Undo the last card template change (or return to the built-in format).",
+                inputSchema = ToolSchema(),
+                toolAnnotations = ToolAnnotations(readOnlyHint = false, destructiveHint = false, idempotentHint = false, openWorldHint = false),
+            ) { _ -> safely { CallToolResult(content = listOf(TextContent(templates.revert()))) } }
+        }
+
         if (replies != null) {
             server.addTool(
                 name = "get_reply_draft",
@@ -173,6 +211,33 @@ class JobbotTools(
         }
 
         return server
+    }
+
+    internal fun getTemplate(): CallToolResult = ok(buildJsonObject {
+        put("template", templates!!.current() ?: AlertTemplates.BUILT_IN)
+        put("is_built_in", templates.current() == null)
+        put("placeholders", buildJsonArray { AlertTemplates.PLACEHOLDERS.forEach { add(JsonPrimitive("{$it}")) } })
+        put("rules", "Must contain {ref}; ≤ ${AlertTemplates.MAX_LENGTH} chars; tags: ${AlertTemplates.ALLOWED_TAGS.joinToString()}; no <a> (links are {company_link}/{title_link}).")
+    })
+
+    internal fun previewTemplate(req: CallToolRequest): CallToolResult {
+        val template = req.string("template") ?: return err("Give the template text.")
+        AlertTemplates.validate(template)?.let { return err("Invalid template: $it") }
+        val event = req.string("ref")?.let { JobRef.parse(it) }?.let { lookup.event(it) }
+        val values = AlertTemplates.Values(
+            company = event?.str("company") ?: "Acme", title = event?.str("role_title") ?: "Staff SDET",
+            score = event?.long("fit_score")?.toString() ?: "72", action = event?.str("pipeline_action") ?: "TAILOR",
+            ref = event?.long("completed_seq")?.let { JobRef.format(it) } ?: "#J1234",
+            jobUrl = event?.str("job_url") ?: "https://example.com/job",
+            reportUrl = event?.str("artifact_url")?.let { "${it.trimEnd('/')}/report.md" } ?: "https://example.com/report.md",
+        )
+        return CallToolResult(content = listOf(TextContent("Valid. Rendered (Telegram HTML):\n" + AlertTemplates.render(template, values))))
+    }
+
+    internal fun updateTemplate(req: CallToolRequest): CallToolResult {
+        val template = req.string("template") ?: return err("Give the template text.")
+        templates!!.update(template)?.let { return err("Not saved — invalid template: $it") }
+        return CallToolResult(content = listOf(TextContent("Saved. The next high-fit card uses it; revert_alert_template undoes it.")))
     }
 
     internal fun getReplyDraft(req: CallToolRequest): CallToolResult {

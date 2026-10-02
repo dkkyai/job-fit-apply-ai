@@ -46,6 +46,7 @@ class Notifier(
     private val linkButtonsEnabled: Boolean = Config.TELEGRAM_LINK_BUTTONS_ENABLED,
     private val actions: Set<TelegramButtons.Action> = TelegramButtons.parseActions(Config.TELEGRAM_ACTIONS),
     private val links: ArtifactLinks = ArtifactLinks(),
+    private val template: AlertTemplate = AlertTemplate(Config.TELEGRAM_TEMPLATE_FILE.takeIf { it.isNotBlank() }?.let { java.nio.file.Path.of(it) }),
 ) {
     /**
      * Deliver [event]. [alreadyDelivered] names channels that landed on a previous attempt of this
@@ -72,12 +73,18 @@ class Notifier(
         val score = event.fitScore?.toString() ?: "?"
         val action = event.pipelineAction ?: "?"
         val discordResult = discord("• ${discordJobLabel(event)} — **$score** ($action)")
-        val telegramText = "High-fit: ${telegramJobLabel(event)} — ${event.fitScore}" + jobRefLine(event)
+        val builtIn = "High-fit: ${telegramJobLabel(event)} — ${event.fitScore}" + jobRefLine(event)
+        val templated = templated(event)
+        fun send(text: String) = if (buttonsEnabled) client.postTelegramHtmlWithButtons(text, buttonsFor(event)) else client.postTelegramHtml(text)
         val telegramResult = when {
             (event.fitScore ?: 0) < fitThreshold -> DeliveryResult.SKIPPED
             "telegram" in alreadyDelivered -> DeliveryResult.DELIVERED
-            buttonsEnabled -> client.postTelegramHtmlWithButtons(telegramText, buttonsFor(event))
-            else -> client.postTelegramHtml(telegramText)
+            templated != null -> send(templated).let { r ->
+                // Telegram refused the templated HTML: one re-send in the built-in format, so a bad
+                // template can never cost the alert.
+                if (r == DeliveryResult.PERMANENT) send(builtIn) else r
+            }
+            else -> send(builtIn)
         }
         return NotifyOutcome(discord = discordResult, telegram = telegramResult)
     }
@@ -102,6 +109,22 @@ class Notifier(
             completedSeq = event.completedSeq,
         )
     }
+
+    /** The ping from the editable template, or null for the built-in format (no template, or any problem). */
+    private fun templated(e: CompletedEvent): String? = runCatching {
+        if (e.completedSeq <= 0) return null
+        template.render(
+            AlertTemplate.Values(
+                company = e.company ?: "",
+                title = (e.roleTitle ?: "").ifBlank { "(no title)" },
+                score = e.fitScore?.toString() ?: "?",
+                action = e.pipelineAction ?: "",
+                ref = "#J${e.completedSeq}",
+                jobUrl = e.jobUrl,
+                reportUrl = e.artifactUrl?.takeIf { it.isNotBlank() }?.let { "${it.trimEnd('/')}/report.md" },
+            ),
+        )
+    }.getOrNull()
 
     /** Enabled actions this event qualifies for, in display order. */
     internal fun actionsFor(event: CompletedEvent): List<TelegramButtons.Action> =

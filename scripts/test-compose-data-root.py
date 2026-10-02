@@ -336,6 +336,8 @@ def test_jobbot_profile_is_isolated() -> None:
     assert set(services["jobbot"]["networks"]) == {"jobbot"}, services["jobbot"]["networks"]
     assert set(services["jobbot-mcp"]["networks"]) == {"default", "jobbot", "apply"}, services["jobbot-mcp"]["networks"]
     assert_mount(config, "jobbot-mcp", "/secrets", root / "jobbot-secrets", read_only=False)
+    assert_mount(config, "jobbot-mcp", "/templates", root / "jobbot-templates", read_only=False)
+    assert_mount(config, "notifier", "/templates", root / "jobbot-templates", read_only=True)
     for name in ("jobbot", "jobbot-mcp"):
         assert not services[name].get("ports"), f"{name} must not publish ports"
 
