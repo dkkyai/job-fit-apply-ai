@@ -192,7 +192,8 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
                 // Pumping Playwright (waitForTimeout) is what delivers the popup and CDP events.
                 repeat(POPUP_POLLS) {
                     popups.poll()?.let { return popup(it) }
-                    fedCmDialog?.let { d -> return fedCm(session!!, d) }
+                    val dialog = fedCmDialog
+                    if (dialog != null && session != null) return fedCm(session, dialog)
                     if (page.isClosed) return GoogleWindow.None
                     page.waitForTimeout(250.0)
                 }
@@ -223,13 +224,9 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
             return GoogleWindow.Popup(PlaywrightPage(p, guard))
         }
 
-        private fun fedCm(session: CDPSession, d: JsonObject): GoogleWindow {
-            val dialogId = d.get("dialogId").asString
-            val emails = d.getAsJsonArray("accounts")?.map { a -> a.asJsonObject.get("email")?.asString.orEmpty() }.orEmpty()
-            return GoogleWindow.FedCm(d.get("dialogType")?.asString ?: "", emails) { index ->
-                session.send("FedCm.selectAccount", JsonObject().apply { addProperty("dialogId", dialogId); addProperty("accountIndex", index) })
-                settle()
-            }
+        private fun fedCm(session: CDPSession, d: JsonObject): GoogleWindow = fedCmDialog(d) { dialogId, index ->
+            session.send("FedCm.selectAccount", JsonObject().apply { addProperty("dialogId", dialogId); addProperty("accountIndex", index) })
+            settle()
         }
 
         override fun settle() {
@@ -255,6 +252,21 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
         /** How long a Google click is watched for a popup or FedCM dialog: 32 × 250 ms. */
         private const val POPUP_POLLS = 32
         private const val SNAPSHOT_TRIES = 3
+
+        /**
+         * Reads a CDP `FedCm.dialogShown` event. A payload of unexpected shape becomes a dialog
+         * the fill hands off to Richard — never an exception.
+         */
+        internal fun fedCmDialog(d: JsonObject, select: (dialogId: String, index: Int) -> Unit): GoogleWindow.FedCm {
+            fun str(o: JsonObject, key: String): String? = o.get(key)?.takeIf { it.isJsonPrimitive }?.asString
+            val dialogId = str(d, "dialogId") ?: return GoogleWindow.FedCm(UNREADABLE_DIALOG, emptyList()) {}
+            // Positions are kept: the index selected is the dialog's own account index.
+            val emails = d.get("accounts")?.takeIf { it.isJsonArray }?.asJsonArray
+                ?.map { a -> a.takeIf { it.isJsonObject }?.asJsonObject?.let { str(it, "email") }.orEmpty() }.orEmpty()
+            return GoogleWindow.FedCm(str(d, "dialogType").orEmpty(), emails) { index -> select(dialogId, index) }
+        }
+
+        const val UNREADABLE_DIALOG = "unreadable dialog"
 
         /**
          * Enumerates the page's interactive elements, tags each with a stable data-jobbot-id, and

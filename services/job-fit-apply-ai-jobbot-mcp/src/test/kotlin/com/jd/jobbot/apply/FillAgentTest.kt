@@ -409,6 +409,15 @@ class FillAgentTest {
     }
 
     @Test
+    fun `an unreadable FedCM dialog hands off`() {
+        val page = FakePage(signIn())
+        page.onClickGoogle = { PlaywrightApplyBrowser.fedCmDialog(com.google.gson.JsonObject()) { _, _ -> error("must not select") } }
+        val r = agent(Script("""{"status":"continue","actions":[{"do":"google_sign_in","id":"e110"}]}""")).run(page, jobright, startFresh = false)
+        assertIs<FillResult.NeedsHuman>(r)
+        assertTrue(r.reason.contains(PlaywrightApplyBrowser.UNREADABLE_DIALOG))
+    }
+
+    @Test
     fun `a same-tab Google consent that shows the account chip is approved, not sent back to the chooser`() {
         val consent = Snapshot(
             "https://accounts.google.com/signin/oauth/id",
