@@ -44,9 +44,8 @@ class Notifier(
     private val fitThreshold: Int = Config.FIT_THRESHOLD,
     private val buttonsEnabled: Boolean = Config.TELEGRAM_BUTTONS_ENABLED,
     private val linkButtonsEnabled: Boolean = Config.TELEGRAM_LINK_BUTTONS_ENABLED,
-    private val applyButtonEnabled: Boolean = Config.TELEGRAM_APPLY_BUTTON_ENABLED,
+    private val actions: Set<TelegramButtons.Action> = TelegramButtons.parseActions(Config.TELEGRAM_ACTIONS),
     private val links: ArtifactLinks = ArtifactLinks(),
-    private val registrar: ApplyRegistrar = ApplyRegistrar(),
 ) {
     /**
      * Deliver [event]. [alreadyDelivered] names channels that landed on a previous attempt of this
@@ -73,60 +72,51 @@ class Notifier(
         val score = event.fitScore?.toString() ?: "?"
         val action = event.pipelineAction ?: "?"
         val discordResult = discord("• ${discordJobLabel(event)} — **$score** ($action)")
+        val telegramText = "High-fit: ${telegramJobLabel(event)} — ${event.fitScore}" + jobRefLine(event)
         val telegramResult = when {
             (event.fitScore ?: 0) < fitThreshold -> DeliveryResult.SKIPPED
             "telegram" in alreadyDelivered -> DeliveryResult.DELIVERED
-            buttonsEnabled -> {
-                val rows = buttonsFor(event)
-                client.postTelegramHtmlWithButtons(
-                    "High-fit: ${telegramJobLabel(event)} — ${event.fitScore}",
-                    rows,
-                )
-            }
-            else -> client.postTelegramHtml("High-fit: ${telegramJobLabel(event)} — ${event.fitScore}")
+            buttonsEnabled -> client.postTelegramHtmlWithButtons(telegramText, buttonsFor(event))
+            else -> client.postTelegramHtml(telegramText)
         }
         return NotifyOutcome(discord = discordResult, telegram = telegramResult)
     }
 
     /**
-     * View Report / View Resume / Apply for one event.
+     * View Report / View Resume plus the eligible action buttons for one event.
      *
-     * The two groups are independently gated: links are inert URLs, Apply commits to an agent
-     * workflow. The Apply label only gets built (and registered) when that button is actually
-     * being sent — registering a label for a button no one can tap would leave dead entries in
-     * the agent's pending state.
-     *
-     * The Apply label is registered with the agent **before** the message is sent: a tap can
-     * arrive the instant the keyboard renders, and a tap for an unregistered label does nothing.
-     * Registration failure still sends the message — the links are independently useful.
+     * Links and actions are independently gated: links are inert URLs, while an action hands
+     * work to the JobBot agent. An action is sent only when it is enabled *and* [eligible] for
+     * this event — the agent's plugin re-checks the same rules on every tap.
      */
     private fun buttonsFor(event: CompletedEvent): List<List<TelegramButtons.Button>> {
-        val label = if (applyButtonEnabled) {
-            event.dirName()?.let { dirName ->
-                TelegramButtons.applyLabelUnique(
-                    event.company,
-                    event.roleTitle,
-                    TelegramButtons.discriminator(dirName),
-                ).also {
-                    registrar.register(it, dirName, event.company, event.roleTitle, event.jobUrl)
-                }
-            }
-        } else {
-            null
-        }
-
         val resolved = if (linkButtonsEnabled) {
             links.resolve(event.artifactUrl, event.artifacts?.resumePdf)
         } else {
             ArtifactLinks.Links(null, null)
         }
-
         return TelegramButtons.forHighFit(
             reportUrl = resolved.reportUrl,
             resumeUrl = resolved.resumeUrl,
-            applyLabel = label,
+            actions = actionsFor(event),
+            completedSeq = event.completedSeq,
         )
     }
+
+    /** Enabled actions this event qualifies for, in display order. */
+    internal fun actionsFor(event: CompletedEvent): List<TelegramButtons.Action> =
+        if (event.completedSeq <= 0) {
+            emptyList()
+        } else {
+            TelegramButtons.Action.entries.filter { it in actions && eligible(it, event) }
+        }
+
+    /**
+     * `#J<completed_seq>` on its own line: the job reference the agent resolves when the user
+     * replies to the ping, and a Telegram hashtag that gathers every message about the job.
+     */
+    private fun jobRefLine(e: CompletedEvent): String =
+        if (e.completedSeq > 0) "\n#J${e.completedSeq}" else ""
 
     /** `Company — [Title](artifactUrl)` — the title links to its report when present. */
     private fun discordJobLabel(e: CompletedEvent): String {
@@ -150,4 +140,30 @@ class Notifier(
 
     private fun htmlEscape(s: String): String = s
         .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+
+    companion object {
+        /**
+         * Terminal labels whose email the poller leaves in the inbox (LabelApplier). Everything
+         * else — JD_Processed, JD_Processed_Digest — is archived by the poller already, so an
+         * Archive button there would do nothing.
+         */
+        val INBOX_TERMINAL_LABELS = setOf(
+            "Recruiter_Response_Required",
+            "JD_Not_Found",
+            "JD_Application_Update",
+            "JD_Error",
+            "JD_Scrape_Failed",
+        )
+
+        /**
+         * Whether [action] makes sense for [e]. Mirrored by the agent's `jobbot_actions` plugin;
+         * both sides are pinned by `docker/jobbot/contract/button_eligibility.json`.
+         */
+        fun eligible(action: TelegramButtons.Action, e: CompletedEvent): Boolean = when (action) {
+            TelegramButtons.Action.APPLY -> !e.jobUrl.isNullOrBlank()
+            TelegramButtons.Action.REPLY -> e.isRecruiter && !e.messageId.isNullOrBlank()
+            TelegramButtons.Action.ARCHIVE ->
+                !e.messageId.isNullOrBlank() && e.terminalLabel in INBOX_TERMINAL_LABELS
+        }
+    }
 }

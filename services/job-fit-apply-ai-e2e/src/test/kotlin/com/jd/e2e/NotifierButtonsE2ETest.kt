@@ -19,10 +19,10 @@ import kotlin.test.assertTrue
  * Verifies the inline buttons on the notifier's high-fit Telegram ping, end to end through the
  * real Bridge → Processor → Notifier path with the mock sink standing in for Telegram.
  *
- * The suite's compose override pins the button config, so this asserts the *documented* E2E
- * shape: link buttons ON, Apply button OFF. Apply is deliberately out of scope — it starts an
- * agent workflow and E2E has no agent to consume the registration, so asserting it here would
- * test a button the deployment does not send.
+ * The suite's compose override enables the links and every action verb, so what reaches the wire
+ * is decided by the event alone. A manually submitted job has no posting URL and no source email,
+ * so it must get the links and **no** action button: an action it cannot qualify for would be a
+ * dead button. (Action buttons on qualifying events are asserted in ExistingProductPathsE2ETest.)
  *
  * These assertions are wire-level: the sink receives the notifier's actual HTTP body, so a
  * button that exists in Kotlin but never reaches Telegram fails here.
@@ -69,7 +69,7 @@ class NotifierButtonsE2ETest {
     }
 
     @Test
-    @DisplayName("high-fit ping carries View Report + View Resume as URL buttons and no Apply")
+    @DisplayName("high-fit ping carries View Report + View Resume, no ineligible action, and its #J ref")
     fun linkButtonsRideThePing() {
         val result = runHighFitScenario("E2E Buttons")
 
@@ -82,8 +82,11 @@ class NotifierButtonsE2ETest {
         assertEquals(
             listOf(listOf("View Report", "View Resume")),
             result.telegramButtonRows,
-            "unexpected keyboard (Apply must NOT appear while the compose override pins it off)",
+            "unexpected keyboard (a job with no posting URL and no source email qualifies for no action)",
         )
+        val seq = result.completedEvent.path("completed_seq").asLong()
+        val ping = result.telegramMessages.single { it.contains(result.company) }
+        assertEquals("#J$seq", ping.lines().last(), "ping must end with its job reference: $ping")
     }
 
     @Test

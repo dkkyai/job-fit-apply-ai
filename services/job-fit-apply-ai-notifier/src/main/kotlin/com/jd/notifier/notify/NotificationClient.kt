@@ -55,8 +55,18 @@ open class NotificationClient(
     internal fun discordMessagesUrl() =
         "${discordApiBase.trimEnd('/')}/api/v10/channels/$discordChannelId/messages"
 
-    internal fun telegramSendMessageUrl() =
-        "${telegramApiBase.trimEnd('/')}/bot$telegramToken/sendMessage"
+    internal fun telegramSendMessageUrl() = telegramMethodUrl("sendMessage")
+
+    /**
+     * Every Telegram call goes through here. The notifier shares the JobBot token but must never
+     * read updates: Telegram allows one `getUpdates` consumer per token, and that is the agent.
+     */
+    internal fun telegramMethodUrl(method: String): String {
+        require(method in TELEGRAM_METHODS) {
+            "the notifier may not call Telegram '$method' — the JobBot agent is the token's only update reader"
+        }
+        return "${telegramApiBase.trimEnd('/')}/bot$telegramToken/$method"
+    }
 
     open fun postDiscord(text: String): DeliveryResult {
         if (!discordConfigured) return DeliveryResult.SKIPPED
@@ -159,5 +169,10 @@ open class NotificationClient(
         }
         if (current.isNotEmpty()) chunks += current.toString()
         return chunks
+    }
+
+    companion object {
+        /** The only Telegram Bot API methods the notifier may call. */
+        val TELEGRAM_METHODS: Set<String> = setOf("sendMessage")
     }
 }

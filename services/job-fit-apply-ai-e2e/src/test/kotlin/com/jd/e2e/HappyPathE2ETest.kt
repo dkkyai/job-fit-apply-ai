@@ -176,7 +176,11 @@ class HappyPathE2ETest {
     private fun telegramHighFitDelivered(result: ScenarioResult) {
         val message = result.telegramMessages.single()
         assertTrue(message.startsWith("High-fit:"), "unexpected Telegram format: $message")
-        assertTrue(Regex("""—\s*72\s*$""").containsMatchIn(message), "Telegram message has wrong score: $message")
+        val lines = message.lines()
+        assertTrue(Regex("""—\s*72\s*$""").containsMatchIn(lines.first()), "Telegram message has wrong score: $message")
+        // The job reference the JobBot agent resolves replies and button taps against.
+        val seq = result.completedEvent.path("completed_seq").asLong()
+        assertEquals("#J$seq", lines.last(), "Telegram ping must end with its job reference: $message")
     }
 
     private fun artifactUrl(result: ScenarioResult): String =

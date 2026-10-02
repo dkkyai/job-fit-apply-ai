@@ -26,15 +26,18 @@ class TelegramButtonsWireShapeTest {
     private lateinit var server: HttpServer
     private lateinit var client: NotificationClient
     private val bodies = CopyOnWriteArrayList<String>()
+    private val paths = CopyOnWriteArrayList<String>()
     private val mapper = ObjectMapper()
 
     @BeforeEach
     fun start() {
         bodies.clear()
+        paths.clear()
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { ex ->
             val body = ex.requestBody.readBytes().toString(Charsets.UTF_8)
             bodies += body
+            paths += ex.requestURI.path
             val out = """{"ok":true}""".toByteArray()
             ex.sendResponseHeaders(200, out.size.toLong())
             ex.responseBody.use { it.write(out) }
@@ -59,7 +62,8 @@ class TelegramButtonsWireShapeTest {
     private fun rows() = TelegramButtons.forHighFit(
         reportUrl = "http://host:8081/job/report.md",
         resumeUrl = "http://host:8765/api/jobs/x/resume.pdf",
-        applyLabel = null,
+        actions = listOf(TelegramButtons.Action.APPLY),
+        completedSeq = 77,
     )
 
     @Test
@@ -113,5 +117,26 @@ class TelegramButtonsWireShapeTest {
             !mapper.readTree(bodies.single()).has("reply_markup"),
             "an empty keyboard must be omitted, not sent empty (Telegram rejects [[]]): ${bodies.single()}",
         )
+    }
+
+    @Test
+    @DisplayName("action buttons reach the wire as <verb>:<seq> callback_data")
+    fun actionCallbackOnTheWire() {
+        client.postTelegramHtmlWithButtons("High-fit: Acme — 80\n#J77", rows())
+        val keyboard = mapper.readTree(bodies.single()).path("reply_markup").path("inline_keyboard")
+        val apply = keyboard[1][0]
+        assertEquals("Apply", apply.path("text").asText())
+        assertEquals("apply:77", apply.path("callback_data").asText())
+        assertTrue(apply.path("url").isMissingNode, "an action button must not carry a url")
+    }
+
+    @Test
+    @DisplayName("every Telegram request the client makes is sendMessage — never getUpdates")
+    fun onlySendMessageOnTheWire() {
+        client.postTelegramHtml("plain")
+        client.postTelegramHtmlWithButtons("buttons", rows())
+        client.postTelegramHtmlWithButtons((1..500).joinToString("\n") { "l$it" }, rows())
+        assertTrue(paths.isNotEmpty())
+        paths.forEach { assertTrue(it.endsWith("/sendMessage"), "unexpected Telegram method: $it") }
     }
 }

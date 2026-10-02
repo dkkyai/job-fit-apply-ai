@@ -1,0 +1,56 @@
+{
+  "_comment": "Which action buttons a completed-feed event qualifies for. The notifier (Notifier.eligible) and the JobBot plugin (jobbot_actions.rules) must both pass every case. Fields are the bridge's wire names.",
+  "verbs": ["apply", "reply", "archive"],
+  "cases": [
+    {
+      "name": "scraped job with a posting URL and no source email",
+      "event": {"completed_seq": 7, "job_url": "https://acme.co/jobs/1", "message_id": null, "is_recruiter": false, "terminal_label": null},
+      "eligible": ["apply"]
+    },
+    {
+      "name": "digest child: the poller already archived the email",
+      "event": {"completed_seq": 8, "job_url": "https://acme.co/jobs/2", "message_id": "m-digest", "is_recruiter": false, "terminal_label": "JD_Processed_Digest"},
+      "eligible": ["apply"]
+    },
+    {
+      "name": "job-board email processed and archived by the poller",
+      "event": {"completed_seq": 9, "job_url": "https://acme.co/jobs/3", "message_id": "m-board", "is_recruiter": false, "terminal_label": "JD_Processed"},
+      "eligible": ["apply"]
+    },
+    {
+      "name": "recruiter email with a posting URL: everything",
+      "event": {"completed_seq": 10, "job_url": "https://acme.co/jobs/4", "message_id": "m-rec", "is_recruiter": true, "terminal_label": "Recruiter_Response_Required"},
+      "eligible": ["apply", "reply", "archive"]
+    },
+    {
+      "name": "recruiter email without a posting URL: reply and archive only",
+      "event": {"completed_seq": 11, "job_url": null, "message_id": "m-rec2", "is_recruiter": true, "terminal_label": "Recruiter_Response_Required"},
+      "eligible": ["reply", "archive"]
+    },
+    {
+      "name": "recruiter flag but no source email: nothing to reply to or archive",
+      "event": {"completed_seq": 12, "job_url": null, "message_id": null, "is_recruiter": true, "terminal_label": "Recruiter_Response_Required"},
+      "eligible": []
+    },
+    {
+      "name": "blank job_url is no job_url",
+      "event": {"completed_seq": 13, "job_url": "   ", "message_id": null, "is_recruiter": false, "terminal_label": null},
+      "eligible": []
+    },
+    {
+      "name": "source email with no terminal label yet cannot be archived",
+      "event": {"completed_seq": 14, "job_url": null, "message_id": "m-x", "is_recruiter": false, "terminal_label": null},
+      "eligible": []
+    },
+    {
+      "name": "application update stays in the inbox: archive only",
+      "event": {"completed_seq": 15, "job_url": null, "message_id": "m-upd", "is_recruiter": false, "terminal_label": "JD_Application_Update"},
+      "eligible": ["archive"]
+    },
+    {
+      "name": "no completed_seq: no callback can address the job",
+      "event": {"completed_seq": 0, "job_url": "https://acme.co/jobs/5", "message_id": "m-rec3", "is_recruiter": true, "terminal_label": "Recruiter_Response_Required"},
+      "eligible": []
+    }
+  ]
+}

@@ -1,25 +1,22 @@
 package com.jd.notifier.notify
 
+import com.jd.notifier.bridge.ArtifactUrls
 import com.jd.notifier.bridge.CompletedEvent
-import java.nio.file.Files
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
-import org.mockito.kotlin.whenever
 
 /**
- * The button feature as the Notifier actually uses it: what gets registered, what gets sent,
- * and what happens when the lookups fail.
+ * The button feature as the Notifier actually uses it: which buttons a high-fit event gets, what
+ * their callback data says, and the job reference line the agent resolves replies against.
  */
 @DisplayName("Notifier (Telegram buttons)")
 class NotifierButtonsTest {
@@ -35,164 +32,122 @@ class NotifierButtonsTest {
     }
 
     private fun event(
-        company: String? = "Acme",
-        role: String? = "Staff SDET",
-        fit: Int = 80,
-        artifact: String? = "http://host:8081/20260901_acme_staff_sdet/",
-        resumePdf: String? = "/api/jobs/abc/resume.pdf",
+        seq: Long = 7663,
+        jobUrl: String? = "https://acme.co/j",
+        messageId: String? = "gmail-1",
+        recruiter: Boolean = true,
+        terminalLabel: String? = "Recruiter_Response_Required",
     ) = CompletedEvent(
-        jobId = "j", completedSeq = 1, status = "done",
-        company = company, roleTitle = role, fitScore = fit,
-        pipelineAction = "tailor", jobUrl = "https://acme.co/j", artifactUrl = artifact,
-        artifacts = resumePdf?.let { com.jd.notifier.bridge.ArtifactUrls(resumePdf = it) },
+        jobId = "j", completedSeq = seq, status = "done",
+        company = "Acme", roleTitle = "Staff SDET", fitScore = 80,
+        pipelineAction = "tailor", jobUrl = jobUrl,
+        artifactUrl = "http://host:8081/20260901_acme_staff_sdet/",
+        artifacts = ArtifactUrls(resumePdf = "/api/jobs/abc/resume.pdf"),
+        messageId = messageId, isRecruiter = recruiter, terminalLabel = terminalLabel,
     )
 
     private fun notifier(
         c: NotificationClient,
-        buttons: Boolean,
-        dir: java.nio.file.Path,
+        buttons: Boolean = true,
+        actions: String = "apply,reply,archive",
     ) = Notifier(
         client = c,
         fitThreshold = 50,
         buttonsEnabled = buttons,
-        // These tests exercise the full keyboard, so both groups are on; the independent
-        // gating matrix lives in NotifierGatingTest.
         linkButtonsEnabled = buttons,
-        applyButtonEnabled = buttons,
+        actions = TelegramButtons.parseActions(actions),
         links = ArtifactLinks(enabled = false, timeoutMs = 100, bridgeBase = "http://bridge:8765"),
-        registrar = ApplyRegistrar(
-            enabled = true,
-            pendingPath = dir.resolve("pending_actions.json"),
-            ttlSeconds = 604800,
-            now = { 1000L },
-        ),
     )
 
-    @Test
-    @DisplayName("buttons on: sends Report + Resume + Apply and registers the Apply label")
-    fun sendsButtonsAndRegisters() {
-        val dir = Files.createTempDirectory("nb")
-        val c = client()
-        notifier(c, buttons = true, dir = dir).notify(event())
-
+    private fun sent(c: NotificationClient): Pair<String, List<List<TelegramButtons.Button>>> {
+        val text = argumentCaptor<String>()
         val rows = argumentCaptor<List<List<TelegramButtons.Button>>>()
-        verify(c).postTelegramHtmlWithButtons(any(), rows.capture())
-        assertEquals(2, rows.firstValue.size)
-        assertEquals(listOf("View Report", "View Resume"), rows.firstValue[0].map { it.text })
-        val apply = rows.firstValue[1].single()
-        assertEquals("Apply", apply.text)
+        verify(c).postTelegramHtmlWithButtons(text.capture(), rows.capture())
+        return text.firstValue to rows.firstValue
+    }
 
-        // The registered label must be byte-identical to the one on the button.
-        val registered = com.fasterxml.jackson.databind.ObjectMapper()
-            .readTree(Files.readString(dir.resolve("pending_actions.json")))
-        assertNotNull(registered.get(apply.callbackData), "tap label must be registered verbatim")
+    @Test
+    @DisplayName("every enabled, eligible action becomes a <verb>:<completed_seq> callback")
+    fun actionsCarryVerbAndSeq() {
+        val c = client()
+        notifier(c).notify(event())
+        val (_, rows) = sent(c)
+
+        assertEquals(listOf("View Report", "View Resume"), rows[0].map { it.text })
+        assertEquals(listOf("Apply", "Reply", "Archive"), rows[1].map { it.text })
         assertEquals(
-            "20260901_acme_staff_sdet",
-            registered.get(apply.callbackData).get("dirname").asText(),
+            listOf("apply:7663", "reply:7663", "archive:7663"),
+            rows[1].map { it.callbackData },
         )
+        rows[1].forEach { assertNull(it.url, "${it.text} must be a callback, not a URL") }
     }
 
     @Test
-    @DisplayName("registration happens before the send, so a tap can never outrun it")
-    fun registersBeforeSend() {
-        val dir = Files.createTempDirectory("nb")
-        val pending = dir.resolve("pending_actions.json")
-        val c = mock<NotificationClient> {
-            on { discordConfigured } doReturn false
-            on { telegramConfigured } doReturn true
-            on { postDiscord(any()) } doReturn DeliveryResult.SKIPPED
-            on { postTelegramHtmlWithButtons(any(), any()) } doAnswer {
-                // Asserted at send time: the file must already exist.
-                assertTrue(Files.exists(pending), "Apply label registered only after send")
-                DeliveryResult.DELIVERED
-            }
-        }
-        notifier(c, buttons = true, dir = dir).notify(event())
-        verify(c).postTelegramHtmlWithButtons(any(), any())
-    }
-    @Test
-    @DisplayName("buttons off: falls back to the plain ping, registers nothing")
-    fun buttonsOffIsPlain() {
-        val dir = Files.createTempDirectory("nb")
+    @DisplayName("the ping text ends with the #J<completed_seq> job reference line")
+    fun textCarriesJobRef() {
         val c = client()
-        notifier(c, buttons = false, dir = dir).notify(event())
+        notifier(c).notify(event())
+        val (text, _) = sent(c)
+        assertTrue(text.startsWith("High-fit: "), text)
+        assertEquals("#J7663", text.lines().last(), "job ref must be its own last line: $text")
+        assertTrue(text.lines().first().endsWith("— 80"), "score stays on the first line: $text")
+    }
+
+    @Test
+    @DisplayName("the plain (no-buttons) ping also carries the job reference")
+    fun plainPingCarriesJobRef() {
+        val c = client()
+        notifier(c, buttons = false).notify(event())
+        val text = argumentCaptor<String>()
+        verify(c).postTelegramHtml(text.capture())
         verify(c, never()).postTelegramHtmlWithButtons(any(), any())
-        verify(c).postTelegramHtml(any())
-        assertTrue(!Files.exists(dir.resolve("pending_actions.json")))
+        assertEquals("#J7663", text.firstValue.lines().last())
     }
 
     @Test
-    @DisplayName("no artifacts: links omitted and Apply withheld (no dirname to key it on)")
-    fun noArtifactsWithholdsApply() {
-        val dir = Files.createTempDirectory("nb")
+    @DisplayName("no completed_seq: no job ref line and no action buttons, links still sent")
+    fun noSeqNoActions() {
         val c = client()
-        notifier(c, buttons = true, dir = dir).notify(event(artifact = null, resumePdf = null))
-
-        val rows = argumentCaptor<List<List<TelegramButtons.Button>>>()
-        verify(c).postTelegramHtmlWithButtons(any(), rows.capture())
-        // Without artifactUrl there is no dirname, so nothing identifies which job to apply to.
-        // A button whose tap resolves to nothing is worse than no button, so none is offered.
-        assertTrue(
-            rows.firstValue.flatten().isEmpty(),
-            "expected no buttons, got ${rows.firstValue.flatten().map { it.text }}",
-        )
-        assertTrue(!Files.exists(dir.resolve("pending_actions.json")))
+        notifier(c).notify(event(seq = 0))
+        val (text, rows) = sent(c)
+        assertTrue(!text.contains("#J"), text)
+        assertEquals(listOf(listOf("View Report", "View Resume")), rows.map { r -> r.map { it.text } })
     }
 
     @Test
-    @DisplayName("all real high-fit events carry artifact_url (premise for the Apply button)")
-    fun premiseHoldsInSample() {
-        // Documents the assumption the withholding above relies on: every event that clears the
-        // fit threshold also carries artifacts. Verified against the live feed (7/7 at >= 50).
-        val withArtifacts = event()
-        assertEquals("20260901_acme_staff_sdet", withArtifacts.dirName())
-        assertEquals(
-            "20260901_acme_staff_sdet",
-            event(artifact = "http://host:8081/20260901_acme_staff_sdet").dirName(),
-        )
-        assertTrue(event(artifact = null).dirName() == null)
-    }
-
-    @Test
-    @DisplayName("below threshold: no Telegram send at all, no registration")
-    fun belowThresholdNoButtons() {
-        val dir = Files.createTempDirectory("nb")
+    @DisplayName("a disabled verb is never sent, even when the event qualifies")
+    fun disabledVerbsWithheld() {
         val c = client()
-        notifier(c, buttons = true, dir = dir).notify(event(fit = 30))
+        notifier(c, actions = "apply").notify(event())
+        val (_, rows) = sent(c)
+        assertEquals(listOf("Apply"), rows[1].map { it.text })
+    }
+
+    @Test
+    @DisplayName("an ineligible verb is never sent, even when enabled (the dead-button guard)")
+    fun ineligibleVerbsWithheld() {
+        val c = client()
+        // Not a recruiter email, already archived by the poller, no posting URL.
+        notifier(c).notify(event(jobUrl = null, recruiter = false, terminalLabel = "JD_Processed"))
+        val (_, rows) = sent(c)
+        assertEquals(listOf(listOf("View Report", "View Resume")), rows.map { r -> r.map { it.text } })
+    }
+
+    @Test
+    @DisplayName("unknown verbs in the config are dropped, not sent as dead buttons")
+    fun unknownVerbsDropped() {
+        val c = client()
+        notifier(c, actions = "apply, investigate ,frobnicate").notify(event())
+        val (_, rows) = sent(c)
+        assertEquals(listOf("apply:7663"), rows[1].map { it.callbackData })
+    }
+
+    @Test
+    @DisplayName("below the threshold nothing goes to Telegram")
+    fun belowThresholdSilent() {
+        val c = client()
+        notifier(c).notify(event().copy(fitScore = 10))
         verify(c, never()).postTelegramHtmlWithButtons(any(), any())
-        assertTrue(!Files.exists(dir.resolve("pending_actions.json")))
-    }
-
-    @Test
-    @DisplayName("two jobs with identical company+title get distinct Apply labels")
-    fun distinctLabelsForSimilarJobs() {
-        val dir = Files.createTempDirectory("nb")
-        val c = client()
-        val n = notifier(c, buttons = true, dir = dir)
-        n.notify(event(artifact = "http://host:8081/20260901_acme_a/"))
-        n.notify(event(artifact = "http://host:8081/20260902_acme_b/"))
-
-        val rows = argumentCaptor<List<List<TelegramButtons.Button>>>()
-        verify(c, org.mockito.kotlin.times(2)).postTelegramHtmlWithButtons(any(), rows.capture())
-        val labels = rows.allValues.map { it[1].single().callbackData }
-        assertEquals(2, labels.toSet().size, "identical labels would cross-resolve taps: $labels")
-
-        val registered = com.fasterxml.jackson.databind.ObjectMapper()
-            .readTree(Files.readString(dir.resolve("pending_actions.json")))
-        labels.forEach { assertNotNull(registered.get(it), "missing registration for $it") }
-    }
-
-    @Test
-    @DisplayName("event with no dirname (no artifacts) still renders an Apply button")
-    fun applyWithoutDirnameIsNotOffered() {
-        val dir = Files.createTempDirectory("nb")
-        val c = client()
-        // No artifactUrl -> no dirname -> nothing to key the action on.
-        notifier(c, buttons = true, dir = dir).notify(event(artifact = null, resumePdf = null))
-        val rows = argumentCaptor<List<List<TelegramButtons.Button>>>()
-        verify(c).postTelegramHtmlWithButtons(any(), rows.capture())
-        // The card test above asserts Apply is retained; here we pin the registration side.
-        val pending = dir.resolve("pending_actions.json")
-        assertTrue(!Files.exists(pending), "no dirname means no registration to write")
+        verify(c, never()).postTelegramHtml(any())
     }
 }

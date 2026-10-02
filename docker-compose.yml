@@ -329,20 +329,17 @@ services:
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
       # Same FIT_THRESHOLD as the processor (see there) — one number for tailoring and the ping.
       FIT_THRESHOLD: "${FIT_THRESHOLD:-50}"
-      # Inline buttons on the high-fit ping. Link buttons and the Apply button are gated
-      # independently: links are inert URLs, while Apply hands work to the JobBot agent
-      # workflow. Enabling Apply additionally needs a mount for the agent's pending-actions
-      # file (JOBBOT_PENDING_ACTIONS below) — without it the Apply button renders but a tap
-      # resolves to nothing.
+      # Inline buttons on the high-fit ping. Link buttons and action buttons are gated
+      # independently: links are inert URLs, while an action (apply / reply / archive) is a
+      # callback the JobBot agent handles — it is the bot token's only update reader.
       NOTIFIER_TELEGRAM_BUTTONS: "${NOTIFIER_TELEGRAM_BUTTONS:-false}"
       # Empty falls back to NOTIFIER_TELEGRAM_BUTTONS inside the notifier, so the two cannot
       # silently disagree.
       NOTIFIER_TELEGRAM_LINK_BUTTONS: "${NOTIFIER_TELEGRAM_LINK_BUTTONS:-}"
-      NOTIFIER_TELEGRAM_APPLY_BUTTON: "${NOTIFIER_TELEGRAM_APPLY_BUTTON:-false}"
-      NOTIFIER_APPLY_REGISTRAR: "${NOTIFIER_APPLY_REGISTRAR:-false}"
-      # Where Apply labels are registered. Must be a path mounted into this container; blank
-      # disables registration. See the volume note below.
-      JOBBOT_PENDING_ACTIONS: "${JOBBOT_PENDING_ACTIONS:-}"
+      # Comma-separated verbs, e.g. "apply,archive". Each button is sent only when the event
+      # qualifies (docker/jobbot/contract/button_eligibility.json). Blank = no action buttons;
+      # list a verb only once the jobbot service handles it (docs/jobbot.md).
+      NOTIFIER_TELEGRAM_ACTIONS: "${NOTIFIER_TELEGRAM_ACTIONS:-}"
       # Absolute base for bridge-relative artifact links — Telegram needs an absolute URL for a
       # link button, and the bridge serves the same resume bytes the artifacts carry.
       BRIDGE_PUBLIC_URL: "${BRIDGE_PUBLIC_URL:-}"
@@ -351,11 +348,8 @@ services:
     volumes:
       # Persisted consumer cursor (max completed_seq notified) — survives restarts.
       - "${JD_NOTIFIER_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/notifier-state}:/state"
-      # Deliberately NOT mounted: the JobBot agent's state dir. Apply registration would need it,
-      # but the agent runs as a host PM2 process (~/.nanobot-jobbot), not a container, so there
-      # is no container-shared volume to mount. Adding a host path here would couple this
-      # container to that process's on-disk layout; containerizing the agent first is cleaner.
-      # Until then keep NOTIFIER_APPLY_REGISTRAR=false — link buttons need no volume.
+      # No agent state is mounted: action buttons carry <verb>:<completed_seq>, which the agent
+      # resolves against the bridge feed, so there is nothing to register here.
     # No ports — a completed-feed event consumer. Healthcheck (exec --health) baked into the image.
 
 volumes:

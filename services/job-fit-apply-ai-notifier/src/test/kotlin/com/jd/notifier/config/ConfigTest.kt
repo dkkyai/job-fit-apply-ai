@@ -83,4 +83,11 @@ class ConfigTest {
     fun missingCredentialsResolveBlank() {
         assertEquals("", resolveCredential(null, null))
     }
+
+    @Test
+    @DisplayName("action buttons default to none, so a deploy never sends a button the agent cannot handle")
+    fun actionsDefaultBlank() {
+        assertEquals("", Config.TELEGRAM_ACTIONS)
+        assertEquals(emptySet(), com.jd.notifier.notify.TelegramButtons.parseActions(Config.TELEGRAM_ACTIONS))
+    }
 }
