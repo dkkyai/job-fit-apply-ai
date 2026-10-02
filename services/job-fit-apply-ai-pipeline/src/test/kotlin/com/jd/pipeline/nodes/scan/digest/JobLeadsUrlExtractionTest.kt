@@ -272,5 +272,18 @@ class JobLeadsUrlExtractionTest {
             assertEquals(JOB_A, jobs[0].jobUrl)
             assertEquals(JOB_B, jobs[1].jobUrl)
         }
+
+        @Test
+        @DisplayName("mixed templates are matched in DOCUMENT order, not grouped by anchor")
+        fun mixedTemplatesKeepDocumentOrder() {
+            // New-template entry appears FIRST in the body. Collecting all old-anchor matches
+            // before the new-anchor ones would swap these and attach the wrong URL to each job.
+            val html = "<html><body>${card("Role One", "Corp A", "Remote")}${card("Role Two", "Corp B", "Seattle, WA")}</body></html>"
+            val body = "View full details and apply$JOB_B\nView job: $JOB_A"
+            val jobs = JobLeadsDigestStrategy.expand(parent, email(body, html))
+            assertEquals(2, jobs.size)
+            assertEquals(JOB_B, jobs[0].jobUrl, "card 1 must get the URL that appeared first in the body")
+            assertEquals(JOB_A, jobs[1].jobUrl, "card 2 must get the second URL")
+        }
     }
 }

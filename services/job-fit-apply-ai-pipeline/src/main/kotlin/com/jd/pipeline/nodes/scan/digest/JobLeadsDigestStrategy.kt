@@ -56,9 +56,14 @@ object JobLeadsDigestStrategy : BoardDigestStrategy {
      * All job-posting URLs in preference order: anchored templates first, then the structural
      * fallback. Each entry is cleaned so trailing punctuation or the `&amp;` a plain-text body
      * carries does not end up inside the URL.
+     *
+     * Anchored matches are merged **in document order**, not grouped per anchor. The caller
+     * zips this list against the HTML cards by index, so grouping would attach one card's URL to
+     * another card as soon as a digest mixes templates.
      */
     internal fun extractJobUrls(emailBody: String): List<String> {
         val anchored = (ANCHORED_VIEW_JOB.findAll(emailBody) + ANCHORED_VIEW_DETAILS.findAll(emailBody))
+            .sortedBy { it.range.first }
             .map { it.groupValues[1] }
             .toList()
         if (anchored.isNotEmpty()) {
