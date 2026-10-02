@@ -238,4 +238,33 @@ class ReplySupportTest {
         assertEquals(Outcomes.EXPIRED, r.outcome)
         assertTrue(rig.gmail.sent.isEmpty())
     }
+
+    @Test
+    fun `an interrupted send is recovered, never stuck`() {
+        // Process died after Gmail sent: the draft is gone → recorded as sent, nothing re-sent.
+        val sent = Rig()
+        val a = sent.approvalId(sent.tap("reply"))
+        sent.store.update(a, ReplySupport.SENDING)
+        sent.gmail.drafts.clear()
+        clock.at = clock.at.plus(Duration.ofMinutes(5))
+        assertEquals(Outcomes.ALREADY, sent.tap("send", a).outcome)
+        assertEquals(Outcomes.DONE, sent.store.byId(a)!!.status)
+
+        // Process died before Gmail sent: the draft is still there → the tap sends it.
+        val unsent = Rig()
+        val b = unsent.approvalId(unsent.tap("reply"))
+        unsent.store.update(b, ReplySupport.SENDING)
+        clock.at = clock.at.plus(Duration.ofMinutes(5))
+        assertEquals(Outcomes.DONE, unsent.tap("send", b).outcome)
+        assertEquals(1, unsent.gmail.sent.size)
+    }
+
+    @Test
+    fun `a send genuinely in flight is not doubled`() {
+        val rig = Rig()
+        val a = rig.approvalId(rig.tap("reply"))
+        rig.store.update(a, ReplySupport.SENDING)
+        assertEquals(Outcomes.REFUSED, rig.tap("send", a).outcome)
+        assertTrue(rig.gmail.sent.isEmpty())
+    }
 }

@@ -78,7 +78,9 @@ class ReplySupport(
             Outcomes.DONE -> return TapResponse(Outcomes.ALREADY, toast = "Already sent.", actionRow = emptyList())
             CANCELLED, SUPERSEDED -> return TapResponse(Outcomes.REFUSED, toast = "This preview is no longer valid.", actionRow = emptyList())
         }
-        if (approval.status != Outcomes.AWAITING_APPROVAL) {
+        if (approval.status == SENDING) {
+            recoverInterruptedSend(approval)?.let { return it }
+        } else if (approval.status != Outcomes.AWAITING_APPROVAL) {
             return TapResponse(Outcomes.REFUSED, toast = "This send is already in progress.")
         }
         // A preview approves the reply as it was then; a stale one must be looked at again.
@@ -142,6 +144,30 @@ class ReplySupport(
         recordTrackEvent(approval.seq, "email_sent", "Replied to ${current.to.joinToString()} from Telegram")
         log.info("sent reply draft {} for {} to {}", draftId, ref, current.to)
         return TapResponse(Outcomes.DONE, toast = "Sent.", reply = "Sent to ${current.to.joinToString()}.", actionRow = emptyList())
+    }
+
+    /**
+     * An approval left SENDING (the process stopped mid-send). Recent: genuinely in progress.
+     * Older: if Gmail no longer has the draft, the send went through — record it; if it still
+     * does, the send never happened — the tap may proceed.
+     */
+    private fun recoverInterruptedSend(approval: ActionStore.Action): TapResponse? {
+        if (Duration.ofMillis(clock.millis() - approval.updatedAt) < SEND_STALL) {
+            return TapResponse(Outcomes.REFUSED, toast = "This send is already in progress.")
+        }
+        val draftId = JSON.parseToJsonElement(approval.details ?: "{}").jsonObject["draft_id"]!!.jsonPrimitive.content
+        val stillThere = try {
+            gmail.draftRaw(draftId); true
+        } catch (e: GmailClient.GmailException) {
+            if (e.status == 404) false else throw e
+        }
+        if (!stillThere) {
+            store.update(approval.id, Outcomes.DONE)
+            recordTrackEvent(approval.seq, "email_sent", "Reply sent from Telegram (recovered after an interrupted send)")
+            return TapResponse(Outcomes.ALREADY, toast = "Already sent.", actionRow = emptyList())
+        }
+        store.update(approval.id, Outcomes.AWAITING_APPROVAL)
+        return null
     }
 
     /** ✖ Cancel under a preview: the draft stays in Gmail. */
@@ -263,6 +289,9 @@ class ReplySupport(
         const val CANCELLED = "cancelled"
         const val SUPERSEDED = "superseded"
         const val RESUME_NAME = "RichardHatcherResume.pdf"
+
+        /** A SENDING row older than this was interrupted, not in flight. */
+        val SEND_STALL: Duration = Duration.ofMinutes(2)
 
         /** How long a Send preview stays valid. */
         val APPROVAL_TTL: Duration = Duration.ofHours(24)

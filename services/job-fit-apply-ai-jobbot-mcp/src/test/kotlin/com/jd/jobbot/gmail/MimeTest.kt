@@ -70,4 +70,22 @@ class MimeTest {
         assertEquals("Re: Role", Mime.reSubject("Role"))
         assertEquals("RE: Role", Mime.reSubject("RE: Role"))
     }
+
+    @Test
+    fun `editing an HTML-only multipart draft keeps its attachment`() {
+        val html = jakarta.mail.internet.MimeMultipart().apply {
+            addBodyPart(jakarta.mail.internet.MimeBodyPart().apply { setContent("<p>Hi</p>", "text/html; charset=UTF-8") })
+            addBodyPart(jakarta.mail.internet.MimeBodyPart().apply {
+                dataHandler = jakarta.activation.DataHandler(jakarta.mail.util.ByteArrayDataSource("%PDF".toByteArray(), "application/pdf"))
+                fileName = "RichardHatcherResume.pdf"
+                disposition = jakarta.mail.Part.ATTACHMENT
+            })
+        }
+        val msg = jakarta.mail.internet.MimeMessage(jakarta.mail.Session.getInstance(java.util.Properties())).apply {
+            setRecipients(jakarta.mail.Message.RecipientType.TO, "r@x.com"); subject = "Re: A"; setContent(html); saveChanges()
+        }
+        val v = Mime.view(Mime.parse(Mime.encode(Mime.withBody(Mime.parse(Mime.encode(msg)), "Plain now"))))
+        assertEquals("Plain now", v.body)
+        assertEquals(listOf("RichardHatcherResume.pdf"), v.attachments)
+    }
 }

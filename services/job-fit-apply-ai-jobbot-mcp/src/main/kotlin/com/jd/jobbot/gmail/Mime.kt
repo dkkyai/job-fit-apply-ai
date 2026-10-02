@@ -72,7 +72,17 @@ object Mime {
     fun withBody(msg: MimeMessage, body: String): MimeMessage {
         val copy = MimeMessage(msg)
         val text = textPart(copy)
-        if (text == null || text === copy) copy.setText(body, "UTF-8") else (text as MimeBodyPart).setText(body, "UTF-8")
+        val content = runCatching { copy.content }.getOrNull()
+        when {
+            text != null && text !== copy -> (text as MimeBodyPart).setText(body, "UTF-8")
+            // A multipart with no plain-text part (HTML-only + attachments): add the text as the first
+            // part; replacing the content would drop the attachments.
+            text == null && content is MimeMultipart -> {
+                content.addBodyPart(MimeBodyPart().apply { setText(body, "UTF-8") }, 0)
+                copy.setContent(content)
+            }
+            else -> copy.setText(body, "UTF-8")
+        }
         copy.saveChanges()
         return copy
     }
