@@ -43,6 +43,7 @@ Each service-specific override wins over `JFAA_DATA_ROOT`, which wins over the p
 | `pipeline-state` | `JD_PIPELINE_STATE_HOST` | Processor `/app/state` RW | Steel/browser authenticated storage state |
 | `jobbot` | `JD_JOBBOT_HOME_HOST` | JobBot (Hermes) `/opt/data` RW | Agent sessions, memory, logs (profile `jobbot`) |
 | `jobbot-mcp-state` | `JD_JOBBOT_MCP_STATE_HOST` | jobbot-mcp `/state` RW | Action table, outbox, review screenshots |
+| `jobbot-templates` | `JD_JOBBOT_TEMPLATES_HOST` | jobbot-mcp `/templates` RW; Notifier `/templates` RO | The Telegram card template (`high-fit.html`) |
 | `jobbot-secrets` | `JD_JOBBOT_SECRETS_HOST` | jobbot-mcp `/secrets` RW | Site logins JobBot created (`site-credentials.json`, mode 600) |
 | `apply-browser` | `JD_APPLY_BROWSER_HOST` | apply-browser `/config` RW | The apply browser's profile: site logins and the Google session (profile `apply`) |
 

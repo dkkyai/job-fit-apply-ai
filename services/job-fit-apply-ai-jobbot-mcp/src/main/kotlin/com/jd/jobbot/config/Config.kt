@@ -74,6 +74,9 @@ object Config {
     val LLM_URL: String = get("JOBBOT_LLM_URL", "http://host.docker.internal:11434/v1")
     val FILL_MODEL: String = get("JOBBOT_FILL_MODEL", get("JOBBOT_MODEL", "deepseek-v4.1-flash:cloud"))
 
+    /** The notifier's card template (shared volume; the notifier mounts it read-only). Blank = no template tools. */
+    val TEMPLATE_FILE: String = get("JOBBOT_TEMPLATE_FILE", "")
+
     /** How far back list_high_fit scans the completed feed. */
     val HIGH_FIT_SCAN: Int = get("JOBBOT_HIGH_FIT_SCAN", "400").toInt()
     val FIT_THRESHOLD: Int = get("FIT_THRESHOLD", "55").toFloat().toInt()

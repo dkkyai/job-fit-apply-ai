@@ -16,6 +16,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import com.jd.jobbot.actions.ArchiveSupport
 import com.jd.jobbot.actions.ReplySupport
+import com.jd.jobbot.templates.AlertTemplates
 import com.jd.jobbot.jobs.JobIdentity
 import com.jd.jobbot.actions.VerbHandler
 import com.jd.jobbot.bridge.TrackWriter
@@ -112,6 +113,7 @@ fun main() {
         gmail = gmail,
         replies = replies,
         jobKeyOf = { seq -> lookup.event(seq)?.let { JobIdentity.of(it) } },
+        templates = Config.TEMPLATE_FILE.takeIf { it.isNotBlank() }?.let { AlertTemplates(Paths.get(it)) },
     )
     log.info("jobbot-mcp on :{} (dry_run={}, verbs={})", Config.PORT, Config.DRY_RUN, Config.HANDLED_VERBS)
     embeddedServer(CIO, port = Config.PORT) {

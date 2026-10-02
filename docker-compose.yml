@@ -340,6 +340,9 @@ services:
       # qualifies (docker/jobbot/contract/button_eligibility.json). Blank = no action buttons;
       # list a verb only once the jobbot service handles it (docs/jobbot.md).
       NOTIFIER_TELEGRAM_ACTIONS: "${NOTIFIER_TELEGRAM_ACTIONS:-}"
+      # Optional card template JobBot edits (update_alert_template), e.g. /templates/high-fit.html.
+      # Blank = the built-in format; any template problem falls back to it.
+      NOTIFIER_TELEGRAM_TEMPLATE_FILE: "${NOTIFIER_TELEGRAM_TEMPLATE_FILE:-}"
       # Absolute base for bridge-relative artifact links — Telegram needs an absolute URL for a
       # link button, and the bridge serves the same resume bytes the artifacts carry.
       BRIDGE_PUBLIC_URL: "${BRIDGE_PUBLIC_URL:-}"
@@ -348,6 +351,8 @@ services:
     volumes:
       # Persisted consumer cursor (max completed_seq notified) — survives restarts.
       - "${JD_NOTIFIER_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/notifier-state}:/state"
+      # The card template, written by jobbot-mcp; read-only here.
+      - "${JD_JOBBOT_TEMPLATES_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/jobbot-templates}:/templates:ro"
       # No agent state is mounted: action buttons carry <verb>:<completed_seq>, which the agent
       # resolves against the bridge feed, so there is nothing to register here.
     # No ports — a completed-feed event consumer. Healthcheck (exec --health) baked into the image.
@@ -394,7 +399,9 @@ services:
       JOBBOT_LLM_URL: "http://host.docker.internal:11434/v1"
       JOBBOT_MODEL: "${JOBBOT_MODEL:-deepseek-v4.1-flash:cloud}"
       JOBBOT_GMAIL_CREDENTIALS_FILE: "/poller-secrets/dkkytech_credentials.json"
+      JOBBOT_TEMPLATE_FILE: "/templates/high-fit.html"
     volumes:
+      - "${JD_JOBBOT_TEMPLATES_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/jobbot-templates}:/templates"
       - "${JD_JOBBOT_MCP_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/jobbot-mcp-state}:/state"
       # The whole directory, not the file: a poller re-auth deletes and recreates the token, and a
       # single-file bind mount would stay pinned to the deleted inode.
