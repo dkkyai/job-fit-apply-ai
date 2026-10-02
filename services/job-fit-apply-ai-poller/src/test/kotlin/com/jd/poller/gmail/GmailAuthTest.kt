@@ -221,7 +221,7 @@ class GmailAuthTest {
     }
 
     @Test
-    @DisplayName("a rotated refresh token is persisted, keeping the file's mtime for doctor's age check")
+    @DisplayName("a rotated refresh token is persisted, keeping the file's mtime as the consent date")
     fun rotatedRefreshTokenPersisted(@TempDir dir: Path) {
         val rig = Rig(dir)
         val consentTime = FileTime.fromMillis(1_700_000_000_000L)

@@ -183,12 +183,26 @@ else
   else
     POLLER_SECRETS="$HOME/.local/share/jfaa/poller-secrets"
   fi
-  if [ -f "$POLLER_SECRETS/tokens/gmail_token.json" ]; then
-    # Warn if the token is stale (Testing-mode refresh token expires ~weekly).
-    if [ -n "$(find "$POLLER_SECRETS/tokens/gmail_token.json" -mtime +6 2>/dev/null)" ]; then
-      warn "Gmail token >6 days old — refresh soon: docker compose run --rm poller --reauth"
-    else ok "Gmail token present in poller secrets  ($POLLER_SECRETS)"; fi
+  TOKEN="$POLLER_SECRETS/tokens/gmail_token.json"
+  if [ -f "$TOKEN" ]; then
+    # The OAuth app is in Production, so the refresh token has no fixed lifetime and the file's
+    # age says nothing about its health. The poller rewrites the file only on re-auth (it keeps
+    # the mtime when persisting a rotated token), so the mtime is the consent date — context only.
+    ok "Gmail token present in poller secrets  ($POLLER_SECRETS; consented $(date -r "$TOKEN" '+%Y-%m-%d' 2>/dev/null || echo '?'))"
   else bad "Gmail token missing in $POLLER_SECRETS/tokens  →  docker compose run --rm poller --reauth"; fi
+  # Auth health comes from the poller: a rejected grant (at startup or on a mid-run refresh) leaves
+  # `<HEARTBEAT_FILE>.auth-failed` in the container (GmailAuth → Heartbeat.markAuthFailed) until a
+  # refresh or re-auth succeeds. A stopped poller is already reported under Compose services.
+  if running "$P-poller"; then
+    AUTH="$(docker exec "$P-poller" sh -c 'f="${HEARTBEAT_FILE:-/tmp/poller-heartbeat}.auth-failed"
+      if [ -e "$f" ]; then echo FAILED; cat "$f"; else echo OK; fi' 2>/dev/null)"
+    case "$AUTH" in
+      OK)      ok "Gmail auth healthy — poller reports no rejected grant" ;;
+      FAILED*) REASON="$(printf '%s\n' "$AUTH" | sed 1d)"
+               bad "poller reports Gmail auth dead: ${REASON:-Gmail auth failed}  →  docker compose run --rm poller --reauth" ;;
+      *)       warn "could not read Gmail auth state from $P-poller  →  docker logs $P-poller" ;;
+    esac
+  fi
 fi
 
 hdr "JobBot (Telegram agent for the JobBot bot — docs/jobbot.md)"
