@@ -14,8 +14,9 @@ Processor ──► Bridge (completed feed: completed_seq, job_url, message_id, 
                 │                                      ├─ jobbot_actions plugin: taps → /plugin/tap
                 │                                      └─ agent: read-only MCP tools (mcp__jfaa__*)
                 │                                               │ Bearer JOBBOT_MCP_TOKEN
-                └──── GET only (route allowlist) ──── jobbot-mcp  (networks default + jobbot)
-                                                       ├─ pipeline-output (ro), resume/profile YAML (ro)
+                └──── GET (route allowlist) ───────── jobbot-mcp  (networks default + jobbot)
+                      POST only tracks/{id}/events|status   ├─ pipeline-output (ro), resume/profile YAML (ro)
+                                                       ├─ poller-secrets (ro): Gmail token, refreshed in memory
                                                        └─ /state/actions.db (taps, undo records, errors)
 ```
 
@@ -24,7 +25,7 @@ Processor ──► Bridge (completed feed: completed_seq, job_url, message_id, 
 - **One bot, split by direction.** The notifier only calls `sendMessage`; its Telegram client cannot build any other method. The `jobbot` container is the token's **only** `getUpdates` reader. Telegram allows one, and a second reader gets HTTP 409. `make doctor` fails while the retired `pm2 nanobot-jobbot` is online.
 - **Alerts never depend on JobBot.** The notifier works with `jobbot` stopped. Without JobBot, cards just have no working action buttons, so leave `NOTIFIER_TELEGRAM_ACTIONS` blank whenever JobBot is down for long.
 - **Buttons are code, not prompts.** A tap is decided by `jobbot-mcp`'s `TapService`, which is deterministic Kotlin. The model never sees a tap unless a verb hands work to it (Reply, later).
-- **The model is read-only.** Its tools are `get_job`, `list_high_fit`, `read_job_file`, `list_tracks` and `get_profile`. Hermes's terminal, file, browser, code-execution, delegation, cron and skill-editing toolsets are disabled. Config, persona and plugins are re-seeded from the image on every start (`docker/jobbot/seed.py`).
+- **The model is (almost) read-only.** Its tools are `get_job`, `list_high_fit`, `read_job_file`, `list_tracks`, `get_profile`, `get_track_timeline` and `get_job_email`. Its only writes are `add_track_note` and `set_track_status`, which append to a job's history in the bridge's `track_events` as `source=jobbot`, and only on a track matched by `track_id` or `artifact_url`, never a fuzzy match. Hermes's terminal, file, browser, code-execution, delegation, cron and skill-editing toolsets are disabled. Config, persona and plugins are re-seeded from the image on every start (`docker/jobbot/seed.py`).
 - **Untrusted content is data.** Job postings, reports quoting them, and emails never become instructions. File text from `read_job_file` is prefixed with a notice saying so.
 
 ## Card buttons
@@ -35,7 +36,7 @@ The notifier sends a verb only when it is listed in `NOTIFIER_TELEGRAM_ACTIONS` 
 |---|---|---|
 | `apply` | the job has a `job_url` | **Phase 1:** replies "Not implemented yet" |
 | `reply` | `is_recruiter` and a source `message_id` | Phase 3 |
-| `archive` | a source `message_id` the poller left in the inbox | Phase 2, with Undo |
+| `archive` | a source `message_id` the poller left in the inbox | removes `INBOX` from that email only; the button becomes **↩ Undo archive** (`undo:<seq>`), which restores exactly the labels it removed. Mail already out of the inbox, archived by Muse for example, gets "Already out of the inbox." |
 
 `callback_data` is `<verb>:<completed_seq>`. The seq is the bridge's id for the completion, so nothing is registered before the send.
 
@@ -50,6 +51,15 @@ The notifier sends a verb only when it is listed in `NOTIFIER_TELEGRAM_ACTIONS` 
 Then the verb's handler runs. With `JOBBOT_DRY_RUN=true`, it stops after the checks, logs the tap, and toasts `[dry run] Would …`.
 
 `/jdstatus` shows the mode, the handled verbs, the latest job, pending actions, recent actions and recent errors. Inbox sweeps are not JobBot's: Muse still does them.
+
+## Gmail (Archive / Undo / get_job_email)
+
+`jobbot-mcp` uses **the poller's token**: the same dkkytech@ account and scopes, since neither is useful without the other.
+- **Mount:** `poller-secrets` is mounted read-only as a directory. A poller re-auth recreates the token file, and the new file is picked up without a restart.
+- **Never written:** the token file is never written, deleted or re-authorized here. Access tokens stay in memory.
+- **Dead token:** `invalid_grant` puts `/jdstatus` on `Gmail: NEEDS RE-AUTH`. The fix is the poller's own `docker compose run --rm poller --reauth`.
+- **Production app:** the OAuth app is in Production, so tokens don't expire weekly.
+- **What it touches:** Archive and Undo touch only the `INBOX` label. `TRASH` and `SPAM` are refused in code.
 
 ## Configuration (root `.env`)
 

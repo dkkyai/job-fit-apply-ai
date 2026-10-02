@@ -328,6 +328,7 @@ def test_jobbot_profile_is_isolated() -> None:
     assert_mount(config, "jobbot", "/opt/data", root / "jobbot", read_only=False)
     assert_mount(config, "jobbot-mcp", "/state", root / "jobbot-mcp-state", read_only=False)
     assert_mount(config, "jobbot-mcp", "/jfaa/pipeline-output", root / "pipeline-output", read_only=True)
+    assert_mount(config, "jobbot-mcp", "/poller-secrets", root / "poller-secrets", read_only=True)
     for target in ("/jfaa/profile/resume.yaml", "/jfaa/profile/candidate_profile.yaml"):
         assert mounts(config, "jobbot-mcp")[target].get("read_only") is True, f"{target} must be read-only"
     assert set(mounts(config, "jobbot")) == {"/opt/data"}, "the agent container mounts nothing but its own home"

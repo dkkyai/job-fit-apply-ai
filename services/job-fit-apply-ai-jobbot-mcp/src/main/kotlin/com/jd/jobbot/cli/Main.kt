@@ -1,6 +1,11 @@
 package com.jd.jobbot.cli
 
 import com.jd.jobbot.actions.ActionStore
+import com.jd.jobbot.actions.ArchiveSupport
+import com.jd.jobbot.actions.VerbHandler
+import com.jd.jobbot.bridge.TrackWriter
+import com.jd.jobbot.gmail.GmailAuth
+import com.jd.jobbot.gmail.GmailClient
 import com.jd.jobbot.actions.ApplyNotImplemented
 import com.jd.jobbot.actions.StatusReport
 import com.jd.jobbot.actions.TapService
@@ -25,16 +30,32 @@ fun main() {
     val bridge = BridgeReadClient(Config.BRIDGE_URL)
     val lookup = JobLookup(bridge)
     val store = ActionStore(Paths.get(Config.STATE_DIR, "actions.db").toString())
+    val tracks = TrackWriter(Config.BRIDGE_URL)
+    val gmailAuth = if (Config.GMAIL_TOKEN_FILE.isNotBlank() && Config.GMAIL_CREDENTIALS_FILE.isNotBlank()) {
+        GmailAuth(Paths.get(Config.GMAIL_TOKEN_FILE), Paths.get(Config.GMAIL_CREDENTIALS_FILE))
+    } else {
+        log.warn("Gmail not configured (JOBBOT_GMAIL_TOKEN_FILE / JOBBOT_GMAIL_CREDENTIALS_FILE) — archive/undo and get_job_email are off")
+        null
+    }
+    val gmail = gmailAuth?.let { GmailClient(it) }
+    val handlers = buildMap<String, VerbHandler> {
+        put("apply", ApplyNotImplemented)
+        gmail?.let {
+            val archive = ArchiveSupport(it, lookup, tracks, Config.HANDLED_VERBS, store)
+            put("archive", archive.archive)
+            put("undo", archive.undo)
+        }
+    }
     val taps = TapService(
         lookup = lookup,
         store = store,
-        handlers = mapOf("apply" to ApplyNotImplemented),
+        handlers = handlers,
         allowedUsers = Config.ALLOWED_USERS,
         handledVerbs = Config.HANDLED_VERBS,
         dryRun = Config.DRY_RUN,
         cardTtl = Duration.ofDays(Config.CARD_TTL_DAYS),
     )
-    val status = StatusReport(bridge, store, Config.HANDLED_VERBS, Config.DRY_RUN)
+    val status = StatusReport(bridge, store, Config.HANDLED_VERBS, Config.DRY_RUN, gmailAuth)
     val tools = JobbotTools(
         lookup = lookup,
         bridge = bridge,
@@ -42,6 +63,8 @@ fun main() {
         profile = ProfileReader(Config.RESUME_YAML, Config.CANDIDATE_PROFILE_YAML),
         fitThreshold = Config.FIT_THRESHOLD,
         highFitScan = Config.HIGH_FIT_SCAN,
+        tracks = tracks,
+        gmail = gmail,
     )
     log.info("jobbot-mcp on :{} (dry_run={}, verbs={})", Config.PORT, Config.DRY_RUN, Config.HANDLED_VERBS)
     embeddedServer(CIO, port = Config.PORT) {

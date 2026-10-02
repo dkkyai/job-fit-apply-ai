@@ -48,6 +48,13 @@ object Config {
     val RESUME_YAML: String = get("JOBBOT_RESUME_YAML", "/jfaa/profile/resume.yaml")
     val CANDIDATE_PROFILE_YAML: String = get("JOBBOT_CANDIDATE_PROFILE_YAML", "/jfaa/profile/candidate_profile.yaml")
 
+    /**
+     * The poller's Gmail token and OAuth client, mounted read-only from poller-secrets. Blank
+     * disables Gmail (archive/undo and get_job_email). jobbot-mcp never writes or re-auths these.
+     */
+    val GMAIL_TOKEN_FILE: String = get("JOBBOT_GMAIL_TOKEN_FILE", "")
+    val GMAIL_CREDENTIALS_FILE: String = get("JOBBOT_GMAIL_CREDENTIALS_FILE", "")
+
     /** How far back list_high_fit scans the completed feed. */
     val HIGH_FIT_SCAN: Int = get("JOBBOT_HIGH_FIT_SCAN", "400").toInt()
     val FIT_THRESHOLD: Int = get("FIT_THRESHOLD", "55").toFloat().toInt()
