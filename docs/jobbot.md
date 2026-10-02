@@ -34,7 +34,7 @@ The notifier sends a verb only when it is listed in `NOTIFIER_TELEGRAM_ACTIONS` 
 
 | Verb | Shown when | Tap does |
 |---|---|---|
-| `apply` | the job has a `job_url` and was tailored (`pipeline_action` TAILOR). A skipped job, e.g. pay-gated, has no tailored resume to upload | with `JOBBOT_APPLY_ENABLED`: fills the application in the apply browser and posts it under **✅ Submit / ✖ Discard** (see Apply below). Otherwise it replies "Not implemented yet" |
+| `apply` | the job has a `job_url` and was tailored (`pipeline_action` TAILOR). A skipped job, e.g. pay-gated, has no tailored resume to upload | with `JOBBOT_APPLY_ENABLED`: fills the application in JobBot's browser and posts it under **✅ Submit / ✖ Discard** (see Apply below). Otherwise it replies "Not implemented yet" |
 | `reply` | `is_recruiter` and a source `message_id` | posts the reply draft (the poller's, or one built from JFAA's `draft_text`, with the resume attached) under **✅ Send / ✖ Cancel**. If neither exists, the agent writes one |
 | `archive` | a source `message_id` the poller left in the inbox | removes `INBOX` from that email only; the button becomes **↩ Undo archive** (`undo:<seq>`), which restores exactly the labels it removed. Mail already out of the inbox, archived by Muse for example, gets "Already out of the inbox." |
 
@@ -63,7 +63,7 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 
 **How it works**
 - **Tap Apply.** `jobbot-mcp` queues a fill. Fills run one at a time.
-- **Model-planned, code-executed.** The fill loop (`FillAgent`) asks the model (`JOBBOT_MODEL`) for symbolic steps on element ids, and executes them in the **apply browser**: the `apply-browser` container, a headed Chromium 154 with a persistent profile.
+- **Model-planned, code-executed.** The fill loop (`FillAgent`) asks the model (`JOBBOT_MODEL`) for symbolic steps on element ids, and executes them in **JobBot's browser**: the `jobbot-browser` container, a headed Chromium 154 with a persistent profile.
 - **Review card.** When the form is ready, JobBot posts a screenshot and every filled field (passwords masked) under ✅ Submit / ✖ Discard.
 - **Submit.** ✅ Submit clicks the site's submit button **only** if the form still matches what the card showed (field fingerprint) and exactly one submit control exists. It then sets the track to `applied` and adds an `application_submitted` event.
 - **Review window.** A filled form waits **4 h** (`JOBBOT_APPLY_REVIEW_TTL_HOURS`), with a reminder at 3 h. After that it expires and nothing is submitted.
@@ -88,15 +88,15 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 - **Verification email.** Codes and links come only from the site's (or its ATS's) own sender, and links must point back at the site.
 - **CAPTCHAs** are never solved. They are handed off.
 
-**The apply browser** (`docker/apply-browser`, profile `apply`)
+**JobBot's browser** (`docker/jobbot-browser`, profile `jobbot-browser`; called `apply-browser` before 2026-10-02)
 - **Image:** `linuxserver/chromium`, pinned by digest. Its Selkies web viewer streams over WebRTC/websockets.
-- **CDP:** socat exposes Chromium's DevTools on `:9223`, reachable only on the private `apply` network (apply-browser + jobbot-mcp). DevTools rejects non-IP Host headers, so jobbot-mcp resolves the address first.
-- **Viewer:** published on `127.0.0.1:3200` behind `APPLY_BROWSER_PASSWORD`. `scripts/setup-tailscale-serve.sh` serves it as `https://<tailnet-name>:3200`. The container **refuses to start** without the password.
+- **CDP:** socat exposes Chromium's DevTools on `:9223`, reachable only on the private `jobbot-browser` network (jobbot-browser + jobbot-mcp). DevTools rejects non-IP Host headers, so jobbot-mcp resolves the address first.
+- **Viewer:** published on `127.0.0.1:3200` behind `JOBBOT_BROWSER_PASSWORD` (user `JOBBOT_BROWSER_USER`, default `richard`). `scripts/setup-tailscale-serve.sh` serves it as `https://<tailnet-name>:3200`. The container **refuses to start** without the password.
 - **Profile lock:** cleared at init. A stale `SingletonLock` from a previous container made Chromium skip DevTools; this was caught in the spike.
 - **Accepted risk:** the image runs Chromium with `--no-sandbox`. The container is the boundary: it has its own network, no host mounts beyond its profile, and a 3 GB memory limit.
 
 **First-time setup (Richard)**
-1. Set `APPLY_BROWSER_PASSWORD` and `JOBBOT_APPLY_VIEWER_URL` in the root `.env`, and add `apply` to `COMPOSE_PROFILES`.
+1. Set `JOBBOT_BROWSER_PASSWORD` and `JOBBOT_BROWSER_VIEWER_URL` in the root `.env`, and add `jobbot-browser` to `COMPOSE_PROFILES`. The old names (`APPLY_BROWSER_*`, `JOBBOT_APPLY_VIEWER_URL`, profile `apply`) still work, and doctor warns about them.
 2. Run `scripts/setup-tailscale-serve.sh`.
 3. Open the viewer and sign in to Google as dkkytech@ once. That also covers 2-step verification.
 4. Set `JOBBOT_APPLY_ENABLED=true`.
@@ -196,7 +196,7 @@ Then set `NOTIFIER_TELEGRAM_ACTIONS=` (blank) and recreate the notifier, so card
 | Notifier unit + contract | `services/job-fit-apply-ai-notifier`: `./gradlew test` |
 | jobbot-mcp unit, fake-bridge HTTP, real MCP client over HTTP | `services/job-fit-apply-ai-jobbot-mcp`: `./gradlew test` |
 | Hermes plugin (stubbed Telegram/Hermes) + seed | `docker/jobbot`: `python -m pytest tests` |
-| **Live apply browser** (opt-in): real Chromium over CDP + a fixture job site + a scripted model | `APPLY_BROWSER_CDP_URL=http://127.0.0.1:19223 FIXTURE_HOST=host.docker.internal ./gradlew test --tests '*ApplyBrowserLiveTest*'` |
+| **Live jobbot-browser** (opt-in): real Chromium over CDP + a fixture job site + a scripted model | `JOBBOT_BROWSER_CDP_URL=http://127.0.0.1:19223 FIXTURE_HOST=host.docker.internal ./gradlew test --tests '*ApplyBrowserLiveTest*'` |
 | Compose isolation (networks, mounts, ports, profile) | `make compose-data-root-test` |
 | Buttons at the wire (Bridge → Processor → Notifier) | `make e2e` |
 
