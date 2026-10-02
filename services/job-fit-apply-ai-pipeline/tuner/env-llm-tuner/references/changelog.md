@@ -3,6 +3,17 @@
 Append-only. **Deliberately NOT in SKILL.md** — history is never needed to execute a run,
 and keeping it out of the always-loaded context saves ~1,000 tokens per run.
 
+## Skill change (2026-10-01) — not a self-scan run
+- [ADDED]   JOBBOT_MODEL: new tuner-selected var, Section A3. Model of the JobBot Telegram agent
+            (Hermes, `jobbot` compose service; repo-root `.env` → Hermes `model.default`, provider
+            `ollama` → `http://host.docker.internal:11434`). NOT a `Config.kt` var — excluded from
+            the C.2 reconciliation like RUN_ANALYZER_MODEL; never classify it `REMOVED`.
+            Primary signal: llm-stats agent/tool-calling scores (`tuner_tools.py leaderboard --agent`).
+            Value must be an Ollama-route id (`<name>:cloud`); default `deepseek-v4.1-flash:cloud`.
+            Counts toward the ≤3-distinct-cloud cap in `.env.recommended`.
+Env files written before this date lack JOBBOT_MODEL; `tuner_tools.py values` warns until a run
+writes it.
+
 ## Self-Scan Changelog (2026-07-18 run)
 - [MATCH]   SCAN_MODEL: ScanEmailNode, LlmDigestStrategy (fromModelString, temp 0.0, jsonMode true)
 - [MATCH]   SCRAPE_MODEL: ScrapeJdNode (fromModelString, temp 0.0, jsonMode true; defaults to SCAN_MODEL)
