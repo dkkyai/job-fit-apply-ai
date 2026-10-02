@@ -147,11 +147,16 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
         override fun screenshot(): ByteArray = page.screenshot(Page.ScreenshotOptions().setFullPage(true))
         override fun close() { runCatching { page.close() } }
 
-        private fun el(id: String) = page.locator("[data-jobbot-id=\"${id.replace("\"", "")}\"]").first()
+        private fun el(id: String): com.microsoft.playwright.Locator {
+            // Ids come from the snapshot script (e1, e2, …); anything else could break out of the selector.
+            require(ID.matches(id)) { "invalid element id: $id" }
+            return page.locator("[data-jobbot-id=\"$id\"]").first()
+        }
     }
 
     companion object {
         private val JSON = Json { ignoreUnknownKeys = true }
+        val ID = Regex("""^e\d{1,6}$""")
 
         /**
          * Enumerates the page's interactive elements, tags each with a stable data-jobbot-id, and

@@ -107,7 +107,12 @@ class Credentials(
         val current = load()
         val next = current.copy(accounts = current.accounts + (site to entry))
         Files.createDirectories(file.toAbsolutePath().parent)
-        if (Files.exists(file)) Files.copy(file, file.resolveSibling(file.fileName.toString() + ".prev"), StandardCopyOption.REPLACE_EXISTING)
+        if (Files.exists(file)) {
+            val prev = file.resolveSibling(file.fileName.toString() + ".prev")
+            Files.copy(file, prev, StandardCopyOption.REPLACE_EXISTING)
+            // The backup holds the same passwords: same mode as the store.
+            runCatching { Files.setPosixFilePermissions(prev, PosixFilePermissions.fromString("rw-------")) }
+        }
         val tmp = file.resolveSibling(file.fileName.toString() + ".tmp")
         Files.writeString(tmp, JSON.encodeToString(Store.serializer(), next))
         runCatching { Files.setPosixFilePermissions(tmp, PosixFilePermissions.fromString("rw-------")) }

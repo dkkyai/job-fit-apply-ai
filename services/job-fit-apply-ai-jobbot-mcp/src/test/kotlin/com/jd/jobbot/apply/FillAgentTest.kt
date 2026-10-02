@@ -98,37 +98,37 @@ class FillAgentTest {
         val signup = Snapshot(
             url = "https://acme.wd5.myworkdayjobs.com/en-US/careers/signup",
             elements = listOf(
-                Element("p1", "input", "password", "Password"), Element("p2", "input", "password", "Verify password"),
-                Element("b1", "button", "button", text = "Create Account"),
+                Element("e101", "input", "password", "Password"), Element("e102", "input", "password", "Verify password"),
+                Element("e103", "button", "button", text = "Create Account"),
             ),
         )
         val page = FakePage(signup)
         val creds = Credentials(dir.resolve("c.json"), "dkkytech@gmail.com")
         val llm = Script(
-            """{"status":"continue","actions":[{"do":"password","id":"p1","purpose":"new"},{"do":"password","id":"p2","purpose":"confirm"},{"do":"click","id":"b1"}]}""",
+            """{"status":"continue","actions":[{"do":"password","id":"e101","purpose":"new"},{"do":"password","id":"e102","purpose":"confirm"},{"do":"click","id":"e103"}]}""",
             """{"status":"ready"}""",
         )
         FillAgent(llm, creds, null).run(page, job.copy(jobUrl = signup.url))
         val pw = creds.passwordFor("acme.wd5.myworkdayjobs.com")!!
-        assertEquals(pw, page.values["p1"])
-        assertEquals(pw, page.values["p2"], "confirm reuses the same new password")
+        assertEquals(pw, page.values["e101"])
+        assertEquals(pw, page.values["e102"], "confirm reuses the same new password")
         assertEquals(Credentials.PENDING, creds.get("acme.wd5.myworkdayjobs.com")!!.status, "stays pending until a submission is confirmed")
         llm.prompts.forEach { assertFalse(it.contains(pw), "the model must never see the password") }
-        assertTrue("click b1" in page.actions)
+        assertTrue("click e103" in page.actions)
     }
 
     @Test
     fun `typing into a password field is refused`() {
-        val page = FakePage(form(Element("p1", "input", "password", "Password")))
-        val llm = Script("""{"status":"continue","actions":[{"do":"fill","id":"p1","value":"hunter2"}]}""", """{"status":"ready"}""")
+        val page = FakePage(form(Element("e101", "input", "password", "Password")))
+        val llm = Script("""{"status":"continue","actions":[{"do":"fill","id":"e101","value":"hunter2"}]}""", """{"status":"ready"}""")
         agent(llm).run(page, job)
-        assertFalse("fill p1" in page.actions)
+        assertFalse("fill e101" in page.actions)
     }
 
     @Test
     fun `login without a saved password hands off`() {
-        val page = FakePage(Snapshot("https://acme.com/login", elements = listOf(Element("p1", "input", "password", "Password"))))
-        val r = agent(Script("""{"status":"continue","actions":[{"do":"password","id":"p1","purpose":"login"}]}""")).run(page, job.copy(jobUrl = "https://acme.com/login"))
+        val page = FakePage(Snapshot("https://acme.com/login", elements = listOf(Element("e101", "input", "password", "Password"))))
+        val r = agent(Script("""{"status":"continue","actions":[{"do":"password","id":"e101","purpose":"login"}]}""")).run(page, job.copy(jobUrl = "https://acme.com/login"))
         assertIs<FillResult.NeedsHuman>(r)
         assertTrue(r.reason.contains("no saved password"))
     }
@@ -146,50 +146,50 @@ class FillAgentTest {
     fun `Google's account chooser is answered by rule, not by the model`() {
         val chooser = Snapshot(
             "https://accounts.google.com/v3/signin/accountchooser",
-            elements = listOf(Element("g1", "link", text = "Richard dkkytech@gmail.com"), Element("g2", "link", text = "Use another account")),
+            elements = listOf(Element("e105", "link", text = "Richard dkkytech@gmail.com"), Element("e106", "link", text = "Use another account")),
         )
         val page = FakePage(chooser)
-        page.onClick = { if (it == "g1") page.snap = form() }
+        page.onClick = { if (it == "e105") page.snap = form() }
         val llm = Script("""{"status":"ready"}""")
         assertIs<FillResult.Ready>(agent(llm).run(page, job, startFresh = false))
-        assertTrue("click g1" in page.actions)
+        assertTrue("click e105" in page.actions)
     }
 
     @Test
     fun `Google consent beyond sign-in scopes hands off`() {
         val consent = Snapshot(
             "https://accounts.google.com/signin/oauth/consent",
-            elements = listOf(Element("c1", "button", text = "Continue")),
+            elements = listOf(Element("e107", "button", text = "Continue")),
             text = "Acme wants to read, compose, send and permanently delete all your email from Gmail",
         )
         val page = FakePage(consent)
         val r = agent(Script()).run(page, job, startFresh = false)
         assertIs<FillResult.NeedsHuman>(r)
-        assertFalse("click c1" in page.actions)
+        assertFalse("click e107" in page.actions)
     }
 
     @Test
     fun `basic Google consent is approved`() {
         val consent = Snapshot(
             "https://accounts.google.com/signin/oauth/consent",
-            elements = listOf(Element("c1", "button", text = "Continue")),
+            elements = listOf(Element("e107", "button", text = "Continue")),
             text = "Acme wants to access your Google Account. See your primary Google Account email address. See your personal info",
         )
         val page = FakePage(consent)
         page.onClick = { page.snap = form() }
         assertIs<FillResult.Ready>(agent(Script("""{"status":"ready"}""")).run(page, job, startFresh = false))
-        assertTrue("click c1" in page.actions)
+        assertTrue("click e107" in page.actions)
     }
 
     @Test
     fun `verification codes come from the verifier`() {
-        val page = FakePage(Snapshot("https://acme.com/verify", elements = listOf(Element("v1", "input", "text", "Code"))))
+        val page = FakePage(Snapshot("https://acme.com/verify", elements = listOf(Element("e104", "input", "text", "Code"))))
         val verifier = object : Verifier(com.jd.jobbot.gmail.GmailClient(object : com.jd.jobbot.gmail.GmailAuth(dir, dir) {})) {
             override fun code(site: String, sinceMillis: Long, wait: java.time.Duration) = "482913".takeIf { site == "acme.com" }
         }
-        agent(Script("""{"status":"continue","actions":[{"do":"verification_code","id":"v1"}]}""", """{"status":"ready"}"""), verifier)
+        agent(Script("""{"status":"continue","actions":[{"do":"verification_code","id":"e104"}]}""", """{"status":"ready"}"""), verifier)
             .run(page, job.copy(jobUrl = "https://acme.com/verify"))
-        assertEquals("482913", page.values["v1"])
+        assertEquals("482913", page.values["e104"])
     }
 
     @Test
@@ -222,9 +222,9 @@ class FillAgentTest {
 
     @Test
     fun `a password the page reflects back never reaches the model`() {
-        val page = FakePage(Snapshot("https://acme.com/signup", elements = listOf(Element("p1", "input", "password", "Password"))))
+        val page = FakePage(Snapshot("https://acme.com/signup", elements = listOf(Element("e101", "input", "password", "Password"))))
         val creds = Credentials(dir.resolve("c.json"), "dkkytech@gmail.com")
-        val llm = Script("""{"status":"continue","actions":[{"do":"password","id":"p1","purpose":"new"}]}""", """{"status":"ready"}""")
+        val llm = Script("""{"status":"continue","actions":[{"do":"password","id":"e101","purpose":"new"}]}""", """{"status":"ready"}""")
         // A hostile page that echoes whatever was typed into its visible text.
         val echo = object : ApplyPage by page {
             override fun snapshot() = page.snapshot().let { s -> s.copy(text = "You typed: " + page.values.values.joinToString()) }
@@ -239,11 +239,11 @@ class FillAgentTest {
     fun `an active password is never replaced by a new one`() {
         val creds = Credentials(dir.resolve("c.json"), "dkkytech@gmail.com")
         val first = creds.createPending("acme.com", null, null).also { creds.activate("acme.com") }
-        val page = FakePage(Snapshot("https://acme.com/signup", elements = listOf(Element("p1", "input", "password", "Password"))))
-        val llm = Script("""{"status":"continue","actions":[{"do":"password","id":"p1","purpose":"new"}]}""", """{"status":"ready"}""")
+        val page = FakePage(Snapshot("https://acme.com/signup", elements = listOf(Element("e101", "input", "password", "Password"))))
+        val llm = Script("""{"status":"continue","actions":[{"do":"password","id":"e101","purpose":"new"}]}""", """{"status":"ready"}""")
         FillAgent(llm, creds, null).run(page, job.copy(jobUrl = "https://acme.com/signup"))
         assertEquals(first, creds.passwordFor("acme.com"))
-        assertFalse("fill p1" in page.actions)
+        assertFalse("fill e101" in page.actions)
         assertTrue(llm.prompts.last().contains("already exists"))
         kotlin.test.assertFailsWith<IllegalStateException> { creds.createPending("acme.com", null, null) }
     }
@@ -258,5 +258,14 @@ class FillAgentTest {
         agent(llm, verifier).run(page, job.copy(jobUrl = "https://acme.com/verify"), startFresh = false)
         assertFalse(page.actions.any { it.startsWith("goto https://mail.google.com") })
         assertTrue(llm.prompts.last().contains("off-site"))
+    }
+
+    @Test
+    fun `ids the snapshot did not produce are never acted on`() {
+        val page = FakePage(form())
+        val llm = Script("""{"status":"continue","actions":[{"do":"click","id":"e1\"],a[href"},{"do":"fill","id":"*","value":"x"}]}""", """{"status":"ready"}""")
+        agent(llm).run(page, job)
+        assertEquals(listOf("goto ${job.jobUrl}"), page.actions)
+        assertTrue(llm.prompts.last().contains("no element"))
     }
 }

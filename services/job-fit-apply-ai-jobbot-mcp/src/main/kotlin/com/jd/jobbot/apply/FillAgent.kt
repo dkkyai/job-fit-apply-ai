@@ -113,7 +113,8 @@ class FillAgent(
         onPending: (String, String) -> Unit,
     ): String {
         val id = a.text("id")
-        val el = id?.let { i -> snap.elements.firstOrNull { it.id == i } }
+        // Only ids the snapshot produced: the model cannot address anything it did not see.
+        val el = id?.takeIf { PlaywrightApplyBrowser.ID.matches(it) }?.let { i -> snap.elements.firstOrNull { it.id == i } }
         return when (a.text("do")) {
             "fill" -> {
                 el ?: return "error: no element $id"

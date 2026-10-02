@@ -86,6 +86,7 @@ class CredentialsTest {
         c.createPending("a.com", null, null)
         c.createPending("b.com", null, null)
         assertEquals("rw-------", PosixFilePermissions.toString(Files.getPosixFilePermissions(file)))
+        assertEquals("rw-------", PosixFilePermissions.toString(Files.getPosixFilePermissions(file.resolveSibling("site-credentials.json.prev"))), "the backup holds passwords too")
         assertTrue(Files.readString(file.resolveSibling("site-credentials.json.prev")).contains("a.com"))
         assertFalse(Files.readString(file.resolveSibling("site-credentials.json.prev")).contains("b.com"))
     }
