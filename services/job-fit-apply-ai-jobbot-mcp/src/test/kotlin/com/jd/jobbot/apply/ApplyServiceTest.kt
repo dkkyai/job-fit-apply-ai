@@ -191,4 +191,16 @@ class ApplyServiceTest {
         assertEquals(Outcomes.REFUSED, r.outcome)
         assertFalse(rig.page.actions.any { it.startsWith("click") })
     }
+
+    @Test
+    fun `a page change without a confirmation is not recorded as applied`() {
+        val rig = Rig()
+        rig.page.onClick = { if (it == "e3") rig.page.snap = rig.page.snap.copy(url = "https://boards.greenhouse.io/login", text = "Please sign in") }
+        rig.tap("apply")
+        val r = rig.tap("submit", rig.fillId())
+        assertTrue(r.toast!!.contains("couldn't confirm"), r.toast)
+        assertTrue(rig.tracks.calls.isEmpty(), "no applied status without a confirmation")
+        assertFalse("close" in rig.page.actions, "the tab stays open for checking")
+        assertTrue(rig.outbox.pending().last().text.contains("didn't see a confirmation"))
+    }
 }

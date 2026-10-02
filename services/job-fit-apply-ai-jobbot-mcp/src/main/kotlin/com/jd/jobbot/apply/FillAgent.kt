@@ -155,8 +155,16 @@ class FillAgent(
                 val pw = when (a.text("purpose")) {
                     "login" -> credentials.passwordFor(site)
                         ?: return "handoff: I have no saved password for $site, and it wants one to sign in. Sign in in the viewer, then tap Continue."
-                    else -> credentials.get(site)?.takeIf { it.status == Credentials.PENDING }?.password
-                        ?: credentials.createPending(site, page.url, job.ref).also { onPending(site, it) }
+                    else -> {
+                        val existing = credentials.get(site)
+                        when {
+                            // Never replace a working password: the site already has an account.
+                            existing?.status == Credentials.ACTIVE && existing.method == "password" ->
+                                return "refused: an account for $site already exists — sign in instead (password purpose login)"
+                            existing?.status == Credentials.PENDING -> existing.password!!
+                            else -> credentials.createPending(site, page.url, job.ref).also { onPending(site, it) }
+                        }
+                    }
                 }
                 secrets += pw
                 page.fill(el.id, pw); "ok (password filled from the store, not shown)"

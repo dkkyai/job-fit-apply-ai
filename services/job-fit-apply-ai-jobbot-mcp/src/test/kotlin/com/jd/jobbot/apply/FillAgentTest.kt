@@ -234,4 +234,17 @@ class FillAgentTest {
         assertTrue(llm.prompts.last().contains("[redacted]"))
         llm.prompts.forEach { assertFalse(it.contains(pw)) }
     }
+
+    @Test
+    fun `an active password is never replaced by a new one`() {
+        val creds = Credentials(dir.resolve("c.json"), "dkkytech@gmail.com")
+        val first = creds.createPending("acme.com", null, null).also { creds.activate("acme.com") }
+        val page = FakePage(Snapshot("https://acme.com/signup", elements = listOf(Element("p1", "input", "password", "Password"))))
+        val llm = Script("""{"status":"continue","actions":[{"do":"password","id":"p1","purpose":"new"}]}""", """{"status":"ready"}""")
+        FillAgent(llm, creds, null).run(page, job.copy(jobUrl = "https://acme.com/signup"))
+        assertEquals(first, creds.passwordFor("acme.com"))
+        assertFalse("fill p1" in page.actions)
+        assertTrue(llm.prompts.last().contains("already exists"))
+        kotlin.test.assertFailsWith<IllegalStateException> { creds.createPending("acme.com", null, null) }
+    }
 }

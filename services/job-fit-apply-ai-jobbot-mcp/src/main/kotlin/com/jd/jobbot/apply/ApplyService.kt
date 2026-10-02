@@ -80,6 +80,7 @@ class ApplyService(
         val fill = store.byId(id)?.takeIf { it.verb == FILL } ?: return gone("Unknown application.")
         when (fill.status) {
             Outcomes.DONE -> return TapResponse(Outcomes.ALREADY, toast = "Already submitted.", actionRow = emptyList())
+            UNCONFIRMED -> return TapResponse(Outcomes.ALREADY, toast = "Submit was already clicked — check the viewer.", actionRow = emptyList())
             EXPIRED, CANCELLED, FAILED -> return gone("This application is no longer open. Tap Apply on the card to start again.")
         }
         if (fill.status != Outcomes.AWAITING_APPROVAL) return TapResponse(Outcomes.REFUSED, toast = "Not ready to submit yet.")
@@ -106,15 +107,22 @@ class ApplyService(
         page.click(submits.single().id)
         page.settle()
         val after = page.snapshot()
-        val confirmed = CONFIRMATION.containsMatchIn(after.text) || after.url != snap.url
         val shot = runCatching { page.screenshot() }.getOrNull()
-        store.update(id, Outcomes.DONE, buildJsonObject { put("submitted_url", after.url); put("confirmed", confirmed) }.toString())
+        // Only a confirmation message counts. A URL change alone could be a login redirect or an
+        // error page, and marking the track "applied" on that would be a false record.
+        if (!CONFIRMATION.containsMatchIn(after.text)) {
+            store.update(id, UNCONFIRMED, buildJsonObject { put("submitted_url", after.url) }.toString())
+            outbox.post(
+                "I clicked Submit for ${JobRef.format(fill.seq)} but didn't see a confirmation. The tab is still open — " +
+                    "check it${viewerUrl?.let { " in the viewer: $it" } ?: " in the viewer"}. The track was not changed.",
+                photo = shot,
+            )
+            return TapResponse(Outcomes.DONE, toast = "Clicked Submit — couldn't confirm. Check the viewer.", actionRow = emptyList())
+        }
+        store.update(id, Outcomes.DONE, buildJsonObject { put("submitted_url", after.url); put("confirmed", true) }.toString())
         pages.remove(id)?.close()
         recordApplied(fill.seq)
-        outbox.post(
-            "${if (confirmed) "Submitted" else "Submitted (no confirmation text seen — check the viewer)"}: ${JobRef.format(fill.seq)}.",
-            photo = shot,
-        )
+        outbox.post("Submitted: ${JobRef.format(fill.seq)}.", photo = shot)
         return TapResponse(Outcomes.DONE, toast = "Submitted.", actionRow = emptyList())
     }
 
@@ -249,6 +257,8 @@ class ApplyService(
         const val FILLING = "filling"
         const val NEEDS_HUMAN = "needs_human"
         const val SUBMITTING = "submitting"
+        /** Submit was clicked but no confirmation appeared: Richard checks the tab. */
+        const val UNCONFIRMED = "submitted_unconfirmed"
         const val EXPIRED = "expired"
         const val CANCELLED = "cancelled"
         const val SUPERSEDED = "superseded"

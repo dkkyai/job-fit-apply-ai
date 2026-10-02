@@ -65,9 +65,11 @@ class Credentials(
      */
     @Synchronized
     fun createPending(site: String, loginUrl: String?, createdFor: String?, rules: PasswordRules = PasswordRules()): String {
+        val prior = load().accounts[site]
+        // Defense in depth: an active password is the only copy of a working login.
+        check(!(prior?.status == ACTIVE && prior.method == "password")) { "refusing to replace the active password for $site" }
         val password = generate(rules)
         val now = clock.instant().toString()
-        val prior = load().accounts[site]
         put(site, Entry("password", username, password, PENDING, loginUrl, prior?.created_at ?: now, now, createdFor ?: prior?.created_for))
         return password
     }
