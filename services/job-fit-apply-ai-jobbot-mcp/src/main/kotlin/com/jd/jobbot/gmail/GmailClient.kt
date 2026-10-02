@@ -63,6 +63,11 @@ open class GmailClient(
     open fun thread(threadId: String): List<Message> =
         call("GET", "/threads/${enc(threadId)}?format=full")["messages"]?.jsonArray?.map { parse(it.jsonObject) } ?: emptyList()
 
+    /** Message ids matching a Gmail search, newest first. */
+    open fun search(query: String, max: Int = 10): List<String> =
+        call("GET", "/messages?q=${enc(query)}&maxResults=$max")["messages"]?.jsonArray
+            ?.map { it.jsonObject["id"]!!.jsonPrimitive.content } ?: emptyList()
+
     // ── Drafts (reply workflow) ────────────────────────────────────────────────
 
     /** The account's own address, to tell its messages from the recruiter's. */

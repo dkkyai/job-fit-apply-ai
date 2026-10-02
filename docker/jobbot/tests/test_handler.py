@@ -72,9 +72,13 @@ class FakeClient:
 class FakeBot:
     def __init__(self):
         self.sent = []
+        self.photos = []
 
     async def send_message(self, **kw):
         self.sent.append(kw)
+
+    async def send_photo(self, **kw):
+        self.photos.append(kw)
 
 
 class FakeAdapter:
@@ -144,7 +148,8 @@ def run(handler, update):
 
 def test_handler_is_scoped_and_runs_before_hermes(monkeypatch):
     handler, group, _, registered = wire(monkeypatch, FakeClient({}))
-    assert handler.pattern == r"^(apply|reply|archive|undo|send|cancel):(\d{1,18})$"
+    assert handler.pattern == r"^(apply|reply|archive|undo|send|cancel|submit|discard|resume):(\d{1,18})$"
+    assert "jdaccounts" in registered
     assert group < 0
     assert "jdstatus" in registered
 
@@ -265,4 +270,48 @@ def test_request_send_approval_posts_the_preview_with_send_and_cancel(monkeypatc
         assert [b.callback_data for b in sent["reply_markup"].inline_keyboard[0]] == ["send:7"]
     finally:
         loop.call_soon_threadsafe(loop.stop)
+
+
+class OutboxClient(FakeClient):
+    def __init__(self, items):
+        super().__init__({})
+        self.items, self.acked = items, []
+
+    def outbox_photo(self, item_id):
+        return b"PNG" + str(item_id).encode()
+
+
+def test_outbox_items_are_posted_with_photo_caption_and_buttons(monkeypatch):
+    import jobbot_actions as plugin
+    wire(monkeypatch, FakeClient({}))
+    plugin._client = OutboxClient([])
+    bot = FakeBot()
+    review = {"id": 3, "text": "Ready to submit #J9", "has_photo": True,
+              "buttons": [{"text": "✅ Submit", "callback_data": "submit:3"}, {"text": "✖ Discard", "callback_data": "discard:3"}]}
+    asyncio.run(plugin._post_outbox_item(bot, 8679792351, review))
+    (photo,) = bot.photos
+    assert photo["caption"] == "Ready to submit #J9" and photo["photo"] == b"PNG3"
+    assert [b.callback_data for b in photo["reply_markup"].inline_keyboard[0]] == ["submit:3", "discard:3"]
+    assert bot.sent == []
+
+
+def test_long_outbox_text_goes_as_a_message_after_the_photo(monkeypatch):
+    import jobbot_actions as plugin
+    wire(monkeypatch, FakeClient({}))
+    plugin._client = OutboxClient([])
+    bot = FakeBot()
+    item = {"id": 4, "text": "x" * 2000, "has_photo": True, "buttons": [{"text": "▶ Continue", "callback_data": "resume:4"}]}
+    asyncio.run(plugin._post_outbox_item(bot, 1, item))
+    assert "caption" not in bot.photos[0]
+    assert bot.sent[0]["text"] == "x" * 2000
+    assert bot.sent[0]["reply_markup"].inline_keyboard[0][0].callback_data == "resume:4"
+
+
+def test_text_only_items_are_plain_messages(monkeypatch):
+    import jobbot_actions as plugin
+    wire(monkeypatch, FakeClient({}))
+    plugin._client = OutboxClient([])
+    bot = FakeBot()
+    asyncio.run(plugin._post_outbox_item(bot, 1, {"id": 5, "text": "Couldn't fill #J9", "has_photo": False, "buttons": []}))
+    assert bot.photos == [] and bot.sent[0]["text"] == "Couldn't fill #J9" and bot.sent[0]["reply_markup"] is None
 

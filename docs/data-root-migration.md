@@ -42,7 +42,9 @@ Each service-specific override wins over `JFAA_DATA_ROOT`, which wins over the p
 | `pipeline-output` | `JD_PIPELINE_OUTPUT_HOST` | Processor `/app/output` RW; Markserv `/data` RO | Resumes, cover letters, and reports |
 | `pipeline-state` | `JD_PIPELINE_STATE_HOST` | Processor `/app/state` RW | Steel/browser authenticated storage state |
 | `jobbot` | `JD_JOBBOT_HOME_HOST` | JobBot (Hermes) `/opt/data` RW | Agent sessions, memory, logs (profile `jobbot`) |
-| `jobbot-mcp-state` | `JD_JOBBOT_MCP_STATE_HOST` | jobbot-mcp `/state` RW | Action table: button taps, undo records, errors |
+| `jobbot-mcp-state` | `JD_JOBBOT_MCP_STATE_HOST` | jobbot-mcp `/state` RW | Action table, outbox, review screenshots |
+| `jobbot-secrets` | `JD_JOBBOT_SECRETS_HOST` | jobbot-mcp `/secrets` RW | Site logins JobBot created (`site-credentials.json`, mode 600) |
+| `apply-browser` | `JD_APPLY_BROWSER_HOST` | apply-browser `/config` RW | The apply browser's profile: site logins and the Google session (profile `apply`) |
 
 `pipeline-state` must never be mounted into Markserv or served as an artifact. Keep the root,
 `poller-secrets`, and `pipeline-state` private on the host.

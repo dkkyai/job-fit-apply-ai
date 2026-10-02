@@ -11,6 +11,7 @@ import io.ktor.server.application.ApplicationCallPipeline
 import io.ktor.server.application.call
 import io.ktor.server.request.path
 import io.ktor.server.request.receiveText
+import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -37,6 +38,8 @@ fun Application.jobbotModule(
     status: StatusReport,
     tools: JobbotTools,
     approvals: ((Long) -> com.jd.jobbot.actions.TapResponse?)? = null,
+    outbox: com.jd.jobbot.actions.Outbox? = null,
+    accounts: (() -> String)? = null,
 ) {
     intercept(ApplicationCallPipeline.Plugins) {
         val path = call.request.path()
@@ -73,6 +76,24 @@ fun Application.jobbotModule(
             } else {
                 call.respondText(JSON.encodeToString(com.jd.jobbot.actions.TapResponse.serializer(), body), ContentType.Application.Json)
             }
+        }
+        // Messages for the plugin to post (fill results, hand-offs, reminders), then acknowledge.
+        get("/plugin/outbox") {
+            val items = outbox?.pending() ?: emptyList()
+            call.respondText(JSON.encodeToString(kotlinx.serialization.builtins.ListSerializer(com.jd.jobbot.actions.Outbox.Item.serializer()), items), ContentType.Application.Json)
+        }
+        get("/plugin/outbox/{id}/photo") {
+            val bytes = call.parameters["id"]?.toLongOrNull()?.let { outbox?.photo(it) }
+            if (bytes == null) call.respondText("", status = HttpStatusCode.NotFound)
+            else call.respondBytes(bytes, ContentType.Image.PNG)
+        }
+        post("/plugin/outbox/{id}/delivered") {
+            call.parameters["id"]?.toLongOrNull()?.let { outbox?.delivered(it) }
+            call.respondText("""{"ok":true}""", ContentType.Application.Json)
+        }
+        get("/plugin/accounts") {
+            val body = buildJsonObject { put("text", accounts?.invoke() ?: "Apply is not enabled, so JobBot has no site accounts.") }
+            call.respondText(body.toString(), ContentType.Application.Json)
         }
         get("/plugin/status") {
             val body = buildJsonObject { put("text", status.text()) }

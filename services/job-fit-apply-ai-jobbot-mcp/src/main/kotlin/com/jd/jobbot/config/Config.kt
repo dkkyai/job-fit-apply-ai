@@ -59,6 +59,21 @@ object Config {
     val SEND_ENABLED: Boolean = get("JOBBOT_SEND_ENABLED", "false").equals("true", ignoreCase = true)
     val MAX_SENDS_PER_DAY: Int = get("JOBBOT_MAX_SENDS_PER_DAY", "10").toInt()
 
+    // ── Apply (Phase 4) ─────────────────────────────────────────────────────────
+    /** Off = an Apply tap answers "Not implemented yet" (Q4). */
+    val APPLY_ENABLED: Boolean = get("JOBBOT_APPLY_ENABLED", "false").equals("true", ignoreCase = true)
+    val APPLY_CDP_URL: String = get("JOBBOT_APPLY_CDP_URL", "http://apply-browser:9223")
+    /** Where Richard watches and takes over (tailnet URL of the apply-browser viewer). */
+    val APPLY_VIEWER_URL: String = get("JOBBOT_APPLY_VIEWER_URL", "")
+    val APPLY_REVIEW_TTL_HOURS: Long = get("JOBBOT_APPLY_REVIEW_TTL_HOURS", "4").toLong()
+    val APPLY_REMINDER_HOURS: Long = get("JOBBOT_APPLY_REMINDER_HOURS", "3").toLong()
+    /** The identity every site account uses. */
+    val ACCOUNT_EMAIL: String = get("JOBBOT_ACCOUNT_EMAIL", "dkkytech@gmail.com")
+    val CREDENTIALS_FILE: String = get("JOBBOT_CREDENTIALS_FILE", "/secrets/site-credentials.json")
+    /** The fill loop's model: the same Ollama route and model family as the agent. */
+    val LLM_URL: String = get("JOBBOT_LLM_URL", "http://host.docker.internal:11434/v1")
+    val FILL_MODEL: String = get("JOBBOT_FILL_MODEL", get("JOBBOT_MODEL", "deepseek-v4.1-flash:cloud"))
+
     /** How far back list_high_fit scans the completed feed. */
     val HIGH_FIT_SCAN: Int = get("JOBBOT_HIGH_FIT_SCAN", "400").toInt()
     val FIT_THRESHOLD: Int = get("FIT_THRESHOLD", "55").toFloat().toInt()
