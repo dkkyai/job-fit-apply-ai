@@ -1,6 +1,7 @@
 package com.jd.jobbot.actions
 
 import com.jd.jobbot.bridge.BridgeReadClient
+import com.jd.jobbot.gmail.GmailAuth
 import com.jd.jobbot.jobs.JobRef
 import java.time.Instant
 import java.time.ZoneId
@@ -12,6 +13,7 @@ class StatusReport(
     private val store: ActionStore,
     private val handledVerbs: Set<String>,
     private val dryRun: Boolean,
+    private val gmail: GmailAuth? = null,
     private val zone: ZoneId = ZoneId.of("America/Los_Angeles"),
 ) {
     private val fmt = DateTimeFormatter.ofPattern("MMM d HH:mm").withZone(zone)
@@ -26,6 +28,14 @@ class StatusReport(
                 { "Latest JFAA job: ${JobRef.format(it)}" },
                 { "Latest JFAA job: bridge unreachable (${it.message?.take(80)})" },
             ),
+        )
+        appendLine(
+            "Gmail: " + when (val s = gmail?.state) {
+                null -> "not configured"
+                GmailAuth.State.Ok -> "ok"
+                is GmailAuth.State.NeedsReauth -> "NEEDS RE-AUTH (${s.reason}) → docker compose run --rm poller --reauth"
+                is GmailAuth.State.Unavailable -> "unavailable (${s.reason})"
+            },
         )
         appendLine("Last sweep: not run by JobBot (inbox sweeps stay with Muse)")
         val pending = store.pendingCounts()

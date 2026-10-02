@@ -26,10 +26,11 @@ def test_default_model_is_the_cloud_id_that_actually_resolves():
     assert cfg["model"]["default"] == "deepseek-v4.1-flash:cloud"
 
 
-def test_the_mcp_tool_allowlist_matches_jobbot_mcp_phase_1():
+def test_the_mcp_tool_allowlist_matches_jobbot_mcp():
     cfg = yaml.safe_load(seed.render_config({"JOBBOT_MCP_TOKEN": "tok"}, JOBBOT))
     assert cfg["mcp_servers"]["jfaa"]["tools"]["include"] == [
         "get_job", "list_high_fit", "read_job_file", "list_tracks", "get_profile",
+        "get_track_timeline", "add_track_note", "set_track_status", "get_job_email",
     ]
 
 

@@ -17,6 +17,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 class FakeBridge(
     var events: List<JsonObject> = emptyList(),
     var tracks: List<JsonObject> = emptyList(),
+    var trackEvents: Map<Long, List<JsonObject>> = emptyMap(),
 ) : AutoCloseable {
     val requests = CopyOnWriteArrayList<String>()
     @Volatile var failWith: Int? = null
@@ -37,6 +38,8 @@ class FakeBridge(
                     200 to JsonArray(events.filter { it.seq() > since }.sortedBy { it.seq() }.take(limit)).toString()
                 }
                 path == "/api/tracks" -> 200 to JsonArray(tracks).toString()
+                Regex("/api/tracks/(\\d+)/events").matches(path) ->
+                    200 to JsonArray(trackEvents[path.split('/')[3].toLong()] ?: emptyList()).toString()
                 else -> 404 to """{"error":"not found"}"""
             }
             val bytes = body.toByteArray()

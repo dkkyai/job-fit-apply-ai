@@ -376,8 +376,15 @@ services:
       # true = validate and log taps, do nothing (cutover / shadow).
       JOBBOT_DRY_RUN: "${JOBBOT_DRY_RUN:-false}"
       FIT_THRESHOLD: "${FIT_THRESHOLD:-50}"
+      # The poller's Gmail token, shared read-only (same account, same scopes). jobbot-mcp refreshes
+      # access tokens in memory and never writes, deletes or re-auths this file — the poller owns it.
+      JOBBOT_GMAIL_TOKEN_FILE: "/poller-secrets/tokens/gmail_token.json"
+      JOBBOT_GMAIL_CREDENTIALS_FILE: "/poller-secrets/dkkytech_credentials.json"
     volumes:
       - "${JD_JOBBOT_MCP_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/jobbot-mcp-state}:/state"
+      # The whole directory, not the file: a poller re-auth deletes and recreates the token, and a
+      # single-file bind mount would stay pinned to the deleted inode.
+      - "${JD_POLLER_SECRETS_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/poller-secrets}:/poller-secrets:ro"
       - "${JD_PIPELINE_OUTPUT_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/pipeline-output}:/jfaa/pipeline-output:ro"
       # The same personal files the processor reads (symlinks into the main checkout on releases).
       - ./services/job-fit-apply-ai-pipeline/src/main/resources/resume/resume.yaml:/jfaa/profile/resume.yaml:ro
