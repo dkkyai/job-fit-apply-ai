@@ -47,7 +47,7 @@ object Mime {
     }
 
     fun parse(rawBase64Url: String): MimeMessage =
-        MimeMessage(session, Base64.getUrlDecoder().decode(rawBase64Url.trimEnd('=')).inputStream())
+        MimeMessage(session, GmailClient.decodeBase64Url(rawBase64Url).inputStream())
 
     fun encode(msg: MimeMessage): String {
         msg.saveChanges()
