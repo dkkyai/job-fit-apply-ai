@@ -23,7 +23,7 @@ object SitePolicy {
     )
 
     /** Google pages the sign-in flow needs. Everything else on Google is off limits. */
-    private val GOOGLE_AUTH_PATHS = listOf("/o/oauth2", "/signin", "/v3/signin", "/accountchooser", "/servicelogin", "/oauthchooseaccount")
+    private val GOOGLE_AUTH_PATHS = listOf("/o/oauth2", "/signin", "/v3/signin", "/accountchooser", "/servicelogin", "/oauthchooseaccount", "/gsi/")
     private val GOOGLE_FAMILY = setOf("google.com", "gmail.com", "googleusercontent.com", "youtube.com", "gstatic.com")
 
     /**
@@ -69,15 +69,23 @@ object SitePolicy {
     }
 
     private val BASIC_SCOPE_WORDS = listOf("name", "profile picture", "email address", "personal info", "language preference")
+    // Not "manage": Google's own sign-in screen says "You can manage Sign in with Google in your Google Account".
     private val SENSITIVE_SCOPE_WORDS = listOf(
         "gmail", "email messages", "drive", "documents", "spreadsheets", "contacts", "calendar", "photos",
-        "youtube", "manage", "delete", "send email", "your files", "location history", "phone number",
+        "youtube", "delete", "send email", "your files", "location history", "phone number",
     )
+    private val EMAIL_ADDRESS = Regex("""[a-z0-9._%+-]+@[a-z0-9.-]+""")
+
+    /** Consent text without email addresses: the screen shows the account (…@gmail.com), which is not a scope. */
+    private fun scopeText(consentText: String) = consentText.lowercase().replace(EMAIL_ADDRESS, " ")
+
+    /** Does a Google consent screen ask for anything beyond sign-in (mail, files, contacts …)? */
+    fun consentIsSensitive(consentText: String): Boolean = scopeText(consentText).let { t -> SENSITIVE_SCOPE_WORDS.any { it in t } }
 
     /** May a Google consent screen with this visible text be approved automatically? */
     fun consentIsBasic(consentText: String): Boolean {
-        val t = consentText.lowercase()
-        if (SENSITIVE_SCOPE_WORDS.any { it in t }) return false
+        if (consentIsSensitive(consentText)) return false
+        val t = scopeText(consentText)
         return BASIC_SCOPE_WORDS.any { it in t }
     }
 

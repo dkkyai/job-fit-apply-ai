@@ -17,6 +17,8 @@ class SitePolicyTest {
         "https://accounts.google.com/o/oauth2/v2/auth?client_id=x, true",
         "https://accounts.google.com/v3/signin/identifier, true",
         "https://accounts.google.com/AccountChooser, true",
+        // Google Identity Services: the "Sign in with Google" popup.
+        "https://accounts.google.com/gsi/select?client_id=x, true",
         "https://accounts.google.com/b/0/ManageAccount, false",
         "https://myaccount.google.com/security, false",
         "https://mail.google.com/mail/u/0/, false",
@@ -73,6 +75,11 @@ class SitePolicyTest {
         assertFalse(SitePolicy.consentIsBasic("Acme wants to: Read, compose, send, and permanently delete all your email from Gmail"))
         assertFalse(SitePolicy.consentIsBasic("See and download all your Google Drive files. See your primary Google Account email address"))
         assertFalse(SitePolicy.consentIsBasic("Sign in to continue"))
+        // The screen shows the account address (…@gmail.com) and a "manage Sign in with Google" note: neither is a scope.
+        assertTrue(SitePolicy.consentIsBasic("Sign in to jobright.ai with google.com dkkytech@gmail.com By continuing, Google will share your name, " +
+            "email address, language preference, and profile picture with jobright.ai. You can manage Sign in with Google in your Google Account."))
+        assertTrue(SitePolicy.consentIsSensitive("dkkytech@gmail.com — Read, compose and send email from your Gmail account"))
+        assertFalse(SitePolicy.consentIsSensitive("Continue as Richard dkkytech@gmail.com"))
     }
 
     @Test

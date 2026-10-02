@@ -55,20 +55,25 @@ class ApplyService(
 ) {
     private val log = LoggerFactory.getLogger(ApplyService::class.java)
     private val pages = ConcurrentHashMap<Long, ApplyPage>()
+    /** Fills queued or running in this process. One left "queued"/"filling" by an earlier process is dead. */
+    private val running = ConcurrentHashMap.newKeySet<Long>()
     private val fmt = DateTimeFormatter.ofPattern("MMM d HH:mm").withZone(ZoneId.of("America/Los_Angeles"))
 
     /** The card's Apply tap. */
     val apply = VerbHandler { ctx, store ->
         alreadyApplied(ctx)?.let { return@VerbHandler it }
         val latest = store.latest(FILL, ctx.jobKey)
-        when (latest?.status) {
+        if (latest != null && isOrphan(latest)) {
+            // Its tab or worker died with an earlier JobBot process: nothing can continue it, so start over.
+            store.update(latest.id, EXPIRED)
+        } else when (latest?.status) {
             QUEUED, FILLING -> return@VerbHandler TapResponse(Outcomes.ALREADY, toast = "Already filling this one.")
             Outcomes.AWAITING_APPROVAL -> return@VerbHandler TapResponse(Outcomes.ALREADY, toast = "It's filled and waiting for your review above.")
             NEEDS_HUMAN -> return@VerbHandler TapResponse(Outcomes.ALREADY, toast = "It's waiting on you — see the hand-off message above.")
             Outcomes.DONE -> return@VerbHandler TapResponse(Outcomes.ALREADY, toast = "Already submitted ${fmt.format(Instant.ofEpochMilli(latest.updatedAt))}.")
         }
         val fill = store.insert(FILL, ctx.jobKey, ctx.request.seq, QUEUED, ctx.request.chatId, ctx.request.messageId?.toString())
-        worker.submit { runFill(fill.id, fresh = true) }
+        start(fill.id, fresh = true)
         TapResponse(
             Outcomes.DONE,
             toast = "Filling ${ctx.ref}…",
@@ -145,9 +150,9 @@ class ApplyService(
     fun resume(id: Long, req: TapRequest): TapResponse {
         val fill = store.byId(id)?.takeIf { it.verb == FILL } ?: return gone("Unknown application.")
         if (fill.status != NEEDS_HUMAN) return TapResponse(Outcomes.REFUSED, toast = "Nothing to continue.")
-        if (pages[id] == null) return gone("The browser tab for this application is gone. Tap Apply on the card to start again.")
+        if (pages[id] == null) return expire(id, "The browser tab for this application is gone (JobBot restarted?).")
         store.update(id, QUEUED)
-        worker.submit { runFill(id, fresh = false) }
+        start(id, fresh = false)
         return TapResponse(Outcomes.DONE, toast = "Continuing…", actionRow = emptyList())
     }
 
@@ -170,6 +175,18 @@ class ApplyService(
                 }
             }
         }
+    }
+
+    private fun start(id: Long, fresh: Boolean) {
+        running += id
+        worker.submit { try { runFill(id, fresh) } finally { running -= id } }
+    }
+
+    /** An open fill this process can no longer act on: no live worker, or no tab to continue or submit. */
+    private fun isOrphan(fill: ActionStore.Action): Boolean = when (fill.status) {
+        QUEUED, FILLING -> fill.id !in running
+        NEEDS_HUMAN, Outcomes.AWAITING_APPROVAL -> fill.id !in running && pages[fill.id] == null
+        else -> false
     }
 
     internal fun runFill(id: Long, fresh: Boolean) {

@@ -72,11 +72,12 @@ Then the verb's handler runs. With `JOBBOT_DRY_RUN=true`, it stops after the che
   - Google's sign-in and consent pages
 
   Gmail, Drive and Google account settings are blocked at the network layer, because the browser holds a live Google session for dkkytech@.
-- **Accounts.** "Sign in with Google" is preferred. Otherwise JobBot creates the account as `JOBBOT_ACCOUNT_EMAIL` with a **per-site generated password**.
+- **Accounts.** "Sign in with Google" wherever a site offers it, enforced in code. The password action is refused on such a site unless it already has a password account. The snapshot finds Google's embedded button (an `accounts.google.com/gsi/button` iframe) as well as a site's own "Continue with Google" control. JobBot follows the Google popup, or Chrome's FedCM account dialog, by rule until it closes. Sites without Google get an account as `JOBBOT_ACCOUNT_EMAIL` with a **per-site generated password**.
   - The password is saved `pending` in `jobbot-secrets/site-credentials.json` (mode 600, read only by jobbot-mcp) **before** use, and activated once the fill gets through.
   - The model never sees a password: the snapshot never exposes input values as text, and every prompt is scrubbed of passwords used in the run.
   - `/jdaccounts` lists the accounts.
-- **Google consent.** Approved automatically only for basic sign-in scopes (name, email, profile). Anything else is handed to Richard.
+- **Google consent.** Approved automatically only for basic sign-in scopes (name, email, profile). The account's own address on the screen doesn't count as a Gmail scope. Anything else is handed to Richard.
+- **After a restart.** A fill waiting on a hand-off or review loses its tab when jobbot-mcp restarts. ▶ Continue then expires it, and the card's Apply button starts a fresh fill.
 - **Verification email.** Codes and links come only from the site's (or its ATS's) own sender, and links must point back at the site.
 - **CAPTCHAs** are never solved. They are handed off.
 

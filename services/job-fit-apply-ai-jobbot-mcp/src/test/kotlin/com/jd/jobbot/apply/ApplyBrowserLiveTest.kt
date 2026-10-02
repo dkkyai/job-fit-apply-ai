@@ -36,7 +36,10 @@ import kotlin.test.assertTrue
  *
  * Proves: CDP attach (IP-resolved), the snapshot script on real Chromium, the navigation guard at
  * the network layer, account creation with a generated password the model never sees, the fill
- * stopping before submit, and only the ✅ Submit tap submitting.
+ * stopping before submit, and only the ✅ Submit tap submitting. And Sign in with Google: the
+ * snapshot finds Google's embedded button iframe and a site's own Google button, a click on the
+ * iframe opens the popup, the popup is followed until it closes, and a popup that opens somewhere
+ * forbidden is closed at once. (The fixture stands in for Google, so no real account is touched.)
  */
 @EnabledIfEnvironmentVariable(named = "APPLY_BROWSER_CDP_URL", matches = ".+")
 class ApplyBrowserLiveTest {
@@ -60,6 +63,21 @@ class ApplyBrowserLiveTest {
                     <label for="pw">Create password</label><input id="pw" name="password" type="password">
                     <label for="cv">Resume</label><input id="cv" name="resume" type="file">
                     <button type="submit">Submit application</button></form>""")
+                // Sign-in modal like jobright.ai's: Google's button is an iframe (id gsi_…), plus email + password.
+                "/login" -> 200 to page("""<h1>Sign In to Apply</h1>
+                    <iframe id="gsi_fixture" src="/gsi-button" title="Sign in with Google Button" style="width:300px;height:44px;border:0"></iframe>
+                    <label for="em">Email</label><input id="em" type="email"><label for="pw">Password</label><input id="pw" type="password">
+                    <button>Sign in to apply</button>""")
+                "/gsi-button" -> 200 to page("""<button style="margin:0;width:100%;height:44px" onclick="window.open('/google-popup','gsi','popup,width=480,height=600')">Sign in with Google</button>""")
+                // Stands in for Google's popup: it hands the sign-in to the opener and closes itself.
+                "/google-popup" -> 200 to page("""<p>Choose an account</p><script>setTimeout(() => {
+                    try { window.opener.top.location.href = '/apply?google=1'; } catch (e) {} window.close(); }, 800);</script>""")
+                // A site's own (non-iframe) Google button.
+                "/login2" -> 200 to page("""<div style="cursor:pointer;padding:8px" onclick="location.href='/apply?google=2'"><span>Continue with Google</span></div>
+                    <label for="em2">Email</label><input id="em2" type="email">""")
+                // A "Google" button whose popup opens somewhere the guard forbids.
+                "/login3" -> 200 to page("""<iframe id="gsi_bad" src="/gsi-bad" title="Sign in with Google Button" style="width:300px;height:44px;border:0"></iframe>""")
+                "/gsi-bad" -> 200 to page("""<button style="margin:0;width:100%;height:44px" onclick="window.open('https://mail.google.com/mail/u/0/','gsi','popup')">Sign in with Google</button>""")
                 "/submit" -> {
                     submissions += ex.requestBody.readBytes().toString(Charsets.ISO_8859_1)
                     200 to page("<h1>Thank you for applying!</h1>")
@@ -145,5 +163,70 @@ class ApplyBrowserLiveTest {
         assertTrue(body.contains("Richard") && body.contains("dkkytech@gmail.com") && body.contains(password), "submitted form carries the fill")
         assertTrue(body.contains("RichardHatcherResume.pdf"), "resume uploaded")
         assertTrue(outbox.pending().last().text.startsWith("Submitted:"))
+    }
+
+    private fun idWhere(user: String, attr: String) = Regex(""""id":"(e\d+)"[^}]*$attr""").find(user)?.groupValues?.get(1)
+
+    @Test
+    fun `the snapshot sees Google's embedded button and a site's own Google button`() {
+        val page = PlaywrightApplyBrowser(System.getenv("APPLY_BROWSER_CDP_URL")).open { true }
+        try {
+            page.goto("$base/login")
+            val snap = page.snapshot()
+            val google = snap.elements.filter { it.google }
+            assertEquals(1, google.size, snap.elements.toString())
+            assertEquals("button", google.single().kind)
+            assertFalse(snap.elements.first { it.label == "Email" }.google, "a field is never a Google button")
+            page.goto("$base/login2")
+            assertEquals("Continue with Google", page.snapshot().elements.single { it.google }.text)
+        } finally {
+            page.close()
+        }
+    }
+
+    @Test
+    fun `Sign in with Google through the popup, with the password route refused`() {
+        val creds = Credentials(dir.resolve("site-credentials.json"), "dkkytech@gmail.com")
+        val prompts = mutableListOf<String>()
+        val model = object : Llm {
+            override fun json(system: String, user: String): JsonObject {
+                prompts += user
+                val json = when {
+                    "/apply" in user.substringBefore("\"elements\"") -> """{"status":"ready","note":"signed in"}"""
+                    prompts.size == 1 -> """{"status":"continue","actions":[{"do":"email","id":"${idWhere(user, "\"label\":\"Email\"")}"},""" +
+                        """{"do":"password","id":"${idWhere(user, "\"label\":\"Password\"")}","purpose":"login"}]}"""
+                    else -> """{"status":"continue","actions":[{"do":"google_sign_in","id":"${idWhere(user, "\"google\":true")}"}]}"""
+                }
+                return com.jd.jobbot.llm.OpenAiCompatibleLlm.parseJsonObject(json)
+            }
+        }
+        val job = JobContext("#J9", "Acme", "Staff SDET", "$base/login", "dkkytech@gmail.com", null, null, null, null)
+        val page = PlaywrightApplyBrowser(System.getenv("APPLY_BROWSER_CDP_URL")).open { SitePolicy.navigationAllowed(it, job.jobUrl, job.company) }
+        try {
+            val r = FillAgent(model, creds, null).run(page, job)
+            assertTrue(r is FillResult.Ready, r.toString())
+            assertTrue(page.url.contains("/apply?google=1"), page.url)
+            assertTrue(prompts[1].contains("offers Sign in with Google"), "the password route was refused")
+            assertTrue(prompts.last().contains("signed in with Google"), prompts.last())
+            assertEquals("google", creds.get(Credentials.siteKey(job.jobUrl)!!)?.method)
+            assertEquals(null, creds.passwordFor(Credentials.siteKey(job.jobUrl)!!), "no password was made")
+        } finally {
+            page.close()
+        }
+    }
+
+    @Test
+    fun `a Google popup that opens somewhere forbidden is closed at once`() {
+        val cdp = System.getenv("APPLY_BROWSER_CDP_URL")
+        val page = PlaywrightApplyBrowser(cdp).open { SitePolicy.navigationAllowed(it, "$base/login3", "Acme") }
+        try {
+            page.goto("$base/login3")
+            val gsi = page.snapshot().elements.single { it.google }
+            assertEquals(GoogleWindow.None, page.clickGoogle(gsi.id))
+            val tabs = java.net.URI("$cdp/json/list").toURL().readText()
+            assertFalse(tabs.contains("mail.google.com"), tabs)
+        } finally {
+            page.close()
+        }
     }
 }

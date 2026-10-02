@@ -66,7 +66,13 @@ class ApplyServiceTest {
         val page = FakePage(readyForm).also { p -> p.onClick = { if (it == "e3") p.snap = p.snap.copy(url = p.snap.url + "/confirmation", text = "Thank you for applying!") } }
         var opened = 0
         val lookup = Lookup(FakeBridge.event(9, jobUrl = "https://boards.greenhouse.io/acme/jobs/9"), trackStatus)
-        val service = ApplyService(
+        var service = newService()
+        var taps = newTaps()
+
+        /** JobBot restarted: same database and outbox, but no tabs and no workers. */
+        fun restart() { service = newService(); taps = newTaps() }
+
+        private fun newService() = ApplyService(
             browser = { _ -> opened++; page },
             fill = { p, _, _ -> outcome(p) },
             lookup = lookup,
@@ -75,7 +81,7 @@ class ApplyServiceTest {
             credentials = creds,
             clock = clock, worker = MoreExecutors.newDirectExecutorService(),
         )
-        val taps = TapService(lookup, store, mapOf("apply" to service.apply), setOf(user), setOf("apply"), false, Duration.ofDays(7), clock,
+        private fun newTaps() = TapService(lookup, store, mapOf("apply" to service.apply), setOf(user), setOf("apply"), false, Duration.ofDays(7), clock,
             idHandlers = mapOf("submit" to IdVerbHandler(service::submit), "discard" to IdVerbHandler(service::discard), "resume" to IdVerbHandler(service::resume)))
 
         fun tap(verb: String, n: Long = 9) = taps.tap(TapRequest(verb, n, user, user, 5, clock.now.epochSecond))
@@ -149,6 +155,40 @@ class ApplyServiceTest {
         assertEquals(Outcomes.DONE, rig.tap("resume", rig.fillId()).outcome)
         assertEquals(1, rig.opened, "the same tab is reused")
         assertTrue(rig.review().buttons.any { it.text == "✅ Submit" })
+    }
+
+    @Test
+    fun `a hand-off left by a restarted JobBot is restarted by the next Apply tap`() {
+        var calls = 0
+        val rig = Rig(outcome = { p -> if (calls++ == 0) FillResult.NeedsHuman("No saved password.", null) else FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(1), "") })
+        rig.tap("apply")
+        val stale = rig.fillId()
+        rig.restart()
+        assertEquals(Outcomes.DONE, rig.tap("apply").outcome, "not 'waiting on you' forever")
+        assertEquals(ApplyService.EXPIRED, rig.store.byId(stale)?.status)
+        assertTrue(rig.review().buttons.any { it.text == "✅ Submit" })
+        assertEquals(2, rig.opened)
+    }
+
+    @Test
+    fun `Continue after a restart expires the hand-off so Apply can start again`() {
+        val rig = Rig(outcome = { FillResult.NeedsHuman("CAPTCHA", null) })
+        rig.tap("apply")
+        val stale = rig.fillId()
+        rig.restart()
+        val r = rig.tap("resume", stale)
+        assertEquals(Outcomes.REFUSED, r.outcome)
+        assertTrue(r.toast!!.contains("Tap Apply"))
+        assertEquals(ApplyService.EXPIRED, rig.store.byId(stale)?.status)
+        assertEquals(Outcomes.DONE, rig.tap("apply").outcome)
+    }
+
+    @Test
+    fun `a fill still running in this process is not restarted`() {
+        val rig = Rig(outcome = { FillResult.NeedsHuman("CAPTCHA", null) })
+        rig.tap("apply")
+        assertEquals(Outcomes.ALREADY, rig.tap("apply").outcome, "its tab is alive: Continue, don't restart")
+        assertEquals(1, rig.opened)
     }
 
     @Test
