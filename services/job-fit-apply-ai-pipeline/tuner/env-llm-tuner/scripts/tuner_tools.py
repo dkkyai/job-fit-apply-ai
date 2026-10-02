@@ -48,7 +48,9 @@ def parse_env(path):
     out = {}
     if not os.path.exists(path):
         return out
-    for line in open(path, encoding="utf-8"):
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.readlines()
+    for line in lines:
         m = re.match(r"^([A-Z_]+)=(.*)$", line.rstrip("\n"))
         if m:
             out[m.group(1)] = m.group(2).strip()

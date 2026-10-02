@@ -425,6 +425,24 @@ jobs:
       - name: Unit + integration tests
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v
 
+  env-llm-tuner:
+    name: Env-llm-tuner — unittest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/job-fit-apply-ai-pipeline/tuner/env-llm-tuner
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      # Stdlib-only and offline: the llm-stats fetch is stubbed in the tests.
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+
   # ── 5. E2E — Bridge → Processor → Notifier against the compose slice ────────
   # Fake LLM + notification sink run inside the test JVM (services/job-fit-apply-ai-e2e);
   # containers reach them via host.docker.internal. Blocking as of 2026-08-03: 13 consecutive
