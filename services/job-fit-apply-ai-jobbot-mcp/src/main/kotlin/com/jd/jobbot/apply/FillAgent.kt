@@ -44,6 +44,7 @@ sealed interface FillResult {
  *  - it never clicks a submit control (SitePolicy.isSubmitControl) — submitting is a ✅ Submit tap;
  *  - it never sees a password: `password` actions are filled from the credential store, bound to
  *    the current site, and a new site gets a freshly generated, saved-before-use password;
+ *  - a site that offers Sign in with Google gets Google, never a password account;
  *  - Google consent is approved only for basic sign-in scopes; anything else is a hand-off;
  *  - verification codes and links come only from that site's own email;
  *  - a CAPTCHA, phone or ID check stops the loop and hands off to Richard.
@@ -152,6 +153,11 @@ class FillAgent(
                 el ?: return "error: no element $id"
                 if (el.type != "password") return "refused: ${el.id} is not a password field"
                 val site = Credentials.siteKey(page.url) ?: return "error: no site for ${page.url}"
+                // Richard's rule: Google wherever it is offered. A site already holding a password account keeps it.
+                val google = snap.elements.firstOrNull { it.google }
+                if (google != null && credentials.get(site)?.method != "password") {
+                    return "refused: $site offers Sign in with Google (${google.id}) — use google_sign_in on it, not a password"
+                }
                 val pw = when (a.text("purpose")) {
                     "login" -> credentials.passwordFor(site)
                         ?: return "handoff: I have no saved password for $site, and it wants one to sign in. Sign in in the viewer, then tap Continue."
@@ -185,8 +191,16 @@ class FillAgent(
             }
             "google_sign_in" -> {
                 el ?: return "error: no element $id"
-                Credentials.siteKey(page.url)?.let { credentials.recordGoogle(it, page.url, job.ref) }
-                page.click(el.id); "ok"
+                // Not a way around the click rules: only a control the snapshot marked as Google sign-in.
+                if (!el.google) return "refused: ${el.id} is not a Sign in with Google control"
+                val site = Credentials.siteKey(page.url)
+                val result = when (val w = page.clickGoogle(el.id)) {
+                    GoogleWindow.None -> "ok"
+                    is GoogleWindow.Popup -> googlePopup(w.page, job)
+                    is GoogleWindow.FedCm -> fedCm(w, job)
+                }
+                if (site != null && !result.startsWith("handoff:")) credentials.recordGoogle(site, page.url, job.ref)
+                result
             }
             else -> "error: unknown action ${a.text("do")}"
         }
@@ -197,23 +211,67 @@ class FillAgent(
         data class Handoff(val reason: String) : GoogleOutcome
     }
 
-    /** Google's own pages are handled by rule, never by the model: pick the account, approve basic consent only. */
+    /**
+     * Google's own pages are handled by rule, never by the model: approve basic consent only, pick
+     * the account. Consent is checked first — a consent screen also shows the account, as a chip
+     * that would reopen the chooser.
+     */
     private fun handleGoogle(page: ApplyPage, snap: Snapshot, job: JobContext): GoogleOutcome? {
         if (host(snap.url) != "accounts.google.com") return null
-        val account = snap.elements.firstOrNull { it.text.contains(job.accountEmail, ignoreCase = true) || it.label.contains(job.accountEmail, ignoreCase = true) }
-        if (account != null) {
-            page.click(account.id)
-            return GoogleOutcome.Continued
-        }
-        val consentButton = snap.elements.firstOrNull { it.kind == "button" && Regex("""^(continue|allow)$""", RegexOption.IGNORE_CASE).matches(it.text.trim()) }
+        val consentButton = snap.elements.firstOrNull { it.kind == "button" && CONSENT_BUTTON.matches(it.text.trim()) }
         if (consentButton != null) {
-            if (!SitePolicy.consentIsBasic(snap.text)) {
+            val path = runCatching { java.net.URI(snap.url).path.orEmpty() }.getOrDefault("")
+            // Google Identity Services (/gsi/) only ever returns a sign-in identity, so its screen is basic unless it says otherwise.
+            val basic = SitePolicy.consentIsBasic(snap.text) || (path.startsWith("/gsi/") && !SitePolicy.consentIsSensitive(snap.text))
+            if (!basic) {
                 return GoogleOutcome.Handoff("Google is asking for more than sign-in (e.g. Gmail or Drive access). Review it in the viewer.")
             }
             page.click(consentButton.id)
             return GoogleOutcome.Continued
         }
+        val account = snap.elements.firstOrNull { it.text.contains(job.accountEmail, ignoreCase = true) || it.label.contains(job.accountEmail, ignoreCase = true) }
+        if (account != null) {
+            page.click(account.id)
+            return GoogleOutcome.Continued
+        }
         return GoogleOutcome.Handoff("Google wants you to confirm the sign-in for ${job.accountEmail}. Do it in the viewer, then tap Continue.")
+    }
+
+    /**
+     * Drives Google's sign-in popup by the same rules until it closes itself (signed in) or needs
+     * Richard. Bounded twice: at most [POPUP_STEPS] Google screens, and [POPUP_POLLS] half-second
+     * waits for the popup to move on by itself (a redirect to the site, then closing).
+     */
+    private fun googlePopup(popup: ApplyPage, job: JobContext): String {
+        var screens = 0
+        repeat(POPUP_POLLS) {
+            if (popup.isClosed) return SIGNED_IN
+            popup.settle()
+            val snap = runCatching { popup.snapshot() }.getOrElse { return if (popup.isClosed) SIGNED_IN else "error: ${it.message?.take(120)}" }
+            // Off Google (the site's callback, which closes the popup once it has the sign-in), or still loading.
+            if (host(snap.url) != "accounts.google.com" || snap.elements.isEmpty()) {
+                popup.pause(500)
+                return@repeat
+            }
+            if (++screens > POPUP_STEPS) return@repeat
+            when (val outcome = handleGoogle(popup, snap, job)) {
+                is GoogleOutcome.Handoff -> return "handoff: ${outcome.reason}"
+                else -> {}
+            }
+        }
+        return if (popup.isClosed) SIGNED_IN
+        else "handoff: The Google sign-in window didn't finish. Finish it in the viewer, then tap Continue."
+    }
+
+    /** Chrome's FedCM dialog shares only name, email and picture by design, so picking the account is the whole consent. */
+    private fun fedCm(dialog: GoogleWindow.FedCm, job: JobContext): String {
+        if (dialog.dialogType !in setOf("AccountChooser", "AutoReauthn")) {
+            return "handoff: Chrome's Google sign-in dialog needs you (${dialog.dialogType}). Finish it in the viewer, then tap Continue."
+        }
+        val index = dialog.accountEmails.indexOfFirst { it.equals(job.accountEmail, ignoreCase = true) }
+        if (index < 0) return "handoff: Chrome's Google sign-in dialog doesn't offer ${job.accountEmail}. Sign in to Google as ${job.accountEmail} in the viewer, then tap Continue."
+        dialog.select(index)
+        return SIGNED_IN
     }
 
     private fun shot(page: ApplyPage) = runCatching { page.screenshot() }.getOrNull()
@@ -241,6 +299,10 @@ class FillAgent(
 
     companion object {
         const val RESUME_NAME = "RichardHatcherResume.pdf"
+        private const val SIGNED_IN = "ok (signed in with Google)"
+        private const val POPUP_STEPS = 10
+        private const val POPUP_POLLS = 120
+        private val CONSENT_BUTTON = Regex("""^(continue|allow|confirm)$""", RegexOption.IGNORE_CASE)
         private val JSON = Json { encodeDefaults = false; explicitNulls = false }
 
         /** The filled fields for the review card (password values never appear). */
@@ -270,12 +332,13 @@ class FillAgent(
               {"do":"goto","url":"..."}                         only the posting or its application page
               {"do":"email","id":"e18"}                         the account email into a field
               {"do":"password","id":"e19","purpose":"login"|"new"|"confirm"}   NEVER type a password yourself
-              {"do":"google_sign_in","id":"e20"}               a "Sign in with Google" / "Continue with Google" button
+              {"do":"google_sign_in","id":"e20"}               an element marked "google": true (Sign in / Continue with Google)
               {"do":"verification_code","id":"e21"}            fills the code the site emailed
               {"do":"open_verification_link"}                   opens the link the site emailed
 
             Rules:
-            - Prefer "Sign in with Google" whenever the site offers it. Otherwise create an account or sign in with the account email and the password action.
+            - Sign in and sign up with Google: if any element has "google": true, use google_sign_in on it — never the email + password route on that site. Only when no element is marked google, create an account or sign in with the account email and the password action.
+            - If Google sign-in fails or Google asks for something unusual, return need_human.
             - NEVER click the final submit (Submit, Submit application, Send, Finish, Apply at the end of a filled form). When the form is complete and only submitting remains, return status "ready" with no actions.
             - Answer every question ONLY from candidate_profile_yaml, tailored_resume_yaml and cover_letter. Never invent employment, years of experience (it is 15+, never 20+), rates, salary, degrees, certifications, clearances or references.
             - If a required answer is not in those sources (or is a legal attestation such as visa sponsorship or demographic data not in the profile), return status "need_human" and say which question.
