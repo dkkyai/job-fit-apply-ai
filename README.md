@@ -441,6 +441,6 @@ CI runs the test suites on every push to `main` and publishes a combined Allure 
 - **LinkedIn scraping requires a logged-in Chrome profile** reachable over CDP. Set `CHROME_PROFILE_DIRECTORY` / `CHROME_CDP_ENDPOINT` in `.env`.
 - **Local LLM quality scales with model size.** The 6-node tailoring subgraph produces significantly better results with dense ≥27B models; smaller models tend to hallucinate resume content.
 - **Containers are tailnet-only.** They bind `127.0.0.1` and are exposed via Tailscale Serve — not reachable from the LAN or the public internet. Run `make serve` if a service isn't reachable on the tailnet.
-- **Gmail OAuth tokens expire.** Refresh from the Poller container: `docker compose run --rm poller --reauth` (browser-free — it prints the consent URL, you paste the redirect URL back); `--check-token` verifies status without a full run.
+- **Gmail OAuth tokens can be revoked.** The OAuth app is in Production, so the refresh token has no fixed lifetime, but revoking access, a password change, or ~6 months unused kills it; `make doctor` reports a rejected grant. Re-auth from the Poller container: `docker compose run --rm poller --reauth` (browser-free — it prints the consent URL, you paste the redirect URL back); `--check-token` verifies status without a full run.
 - **Fit scores are LLM-generated and model-dependent.** Tune the scoring rubric in `SCORE_SKILL.md` until scores feel calibrated to your profile.
 - **Draft replies are not sent automatically.** Review every draft in Gmail before sending.

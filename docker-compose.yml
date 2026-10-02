@@ -132,7 +132,7 @@ services:
       INTAKE_MAX_SCAN: "${INTAKE_MAX_SCAN:-100}"
       INTAKE_INTER_SUBMIT_DELAY_MS: "${INTAKE_INTER_SUBMIT_DELAY_MS:-15000}"
     volumes:
-      # Gmail credentials + token. RW so the ~weekly OAuth refresh persists across restarts.
+      # Gmail credentials + token. RW so --reauth and a rotated refresh token persist across restarts.
       # Seed once from the existing token; the container is the sole Gmail owner after cutover.
       - "${JD_POLLER_SECRETS_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/poller-secrets}:/secrets"
     # No ports — the Poller only makes outbound calls (Gmail + bridge). Healthcheck (exec `--health`)

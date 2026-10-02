@@ -288,8 +288,10 @@ object GmailAuth {
     /**
      * Write a rotated refresh token back to [tokenPath]. Only rotation is persisted — rewriting on
      * every access-token refresh would be pointless (startup always refreshes) — and the file's
-     * mtime is preserved because scripts/doctor.sh reads it as "time since consent" to warn before
-     * the Testing-mode ~7-day refresh-token expiry.
+     * mtime is preserved so it keeps meaning "time of consent", which scripts/doctor.sh shows as
+     * the token's consent date. That date is context only: the OAuth app is in Production, so the
+     * refresh token has no fixed lifetime, and doctor judges auth health by the poller's
+     * auth-failure mark ([Heartbeat.markAuthFailed]) instead.
      */
     internal fun persistRotatedRefreshToken(tokenPath: Path, tokenResponse: TokenResponse) {
         try {
