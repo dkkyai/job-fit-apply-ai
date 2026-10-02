@@ -1,32 +1,89 @@
 {
   "_comment": "Alert template rules shared by the notifier (AlertTemplate) and jobbot-mcp (the template tools). Both test suites must pass every case.",
-  "placeholders": ["company", "title", "company_link", "title_link", "score", "action", "ref"],
+  "placeholders": [
+    "company",
+    "title",
+    "company_link",
+    "title_link",
+    "score",
+    "action",
+    "ref"
+  ],
   "max_length": 1000,
-  "allowed_tags": ["b", "i", "u", "s", "code", "pre", "blockquote"],
+  "allowed_tags": [
+    "b",
+    "i",
+    "u",
+    "s",
+    "code",
+    "pre",
+    "blockquote"
+  ],
   "valid": [
     "High-fit: {company_link} — {title_link} — {score}\n{ref}",
     "<b>{score}</b> {company} · {title}\n{ref}",
-    "<blockquote>{title_link}</blockquote>\n<i>{action}</i> {ref}"
+    "<blockquote>{title_link}</blockquote>\n<i>{action}</i> {ref}",
+    "<b><i>{score}</i></b> {title}\n{ref}"
   ],
   "invalid": [
-    {"template": "High-fit: {company} — {score}", "why": "no {ref}"},
-    {"template": "{ref} <a href=\"https://evil.example\">click</a>", "why": "links are built in code only"},
-    {"template": "{ref} {salary}", "why": "unknown placeholder"},
-    {"template": "{ref} <script>x</script>", "why": "tag not allowed"},
-    {"template": "{ref} <b>unclosed", "why": "unbalanced tag"},
-    {"template": "{ref} </i>", "why": "unbalanced tag"},
-    {"template": "", "why": "empty"}
+    {
+      "template": "High-fit: {company} — {score}",
+      "why": "no {ref}"
+    },
+    {
+      "template": "{ref} <a href=\"https://evil.example\">click</a>",
+      "why": "links are built in code only"
+    },
+    {
+      "template": "{ref} {salary}",
+      "why": "unknown placeholder"
+    },
+    {
+      "template": "{ref} <script>x</script>",
+      "why": "tag not allowed"
+    },
+    {
+      "template": "{ref} <b>unclosed",
+      "why": "unbalanced tag"
+    },
+    {
+      "template": "{ref} </i>",
+      "why": "unbalanced tag"
+    },
+    {
+      "template": "",
+      "why": "empty"
+    },
+    {
+      "template": "{ref} <b><i>x</b></i>",
+      "why": "mis-nested tags"
+    }
   ],
   "render": [
     {
       "template": "<b>{score}</b> {company_link} — {title_link} ({action})\n{ref}",
-      "event": {"company": "Acme & Co", "title": "Staff <SDET>", "score": "72", "action": "TAILOR", "ref": "#J9",
-                "job_url": "https://acme.co/j?a=1&b=2", "report_url": "http://host:8081/x/report.md"},
+      "event": {
+        "company": "Acme & Co",
+        "title": "Staff <SDET>",
+        "score": "72",
+        "action": "TAILOR",
+        "ref": "#J9",
+        "job_url": "https://acme.co/j?a=1&b=2",
+        "report_url": "http://host:8081/x/report.md"
+      },
       "expected": "<b>72</b> <a href=\"https://acme.co/j?a=1&amp;b=2\">Acme &amp; Co</a> — <a href=\"http://host:8081/x/report.md\">Staff &lt;SDET&gt;</a> (TAILOR)\n#J9"
     },
     {
       "template": "{company_link} · {title_link}\n{ref}",
-      "event": {"company": "Beta", "title": "QA", "score": "60", "action": "TAILOR", "ref": "#J10", "job_url": null, "report_url": null},
+      "event": {
+        "company": "Beta",
+        "title": "QA",
+        "score": "60",
+        "action": "TAILOR",
+        "ref": "#J10",
+        "job_url": null,
+        "report_url": null
+      },
       "expected": "Beta · QA\n#J10"
     }
   ]

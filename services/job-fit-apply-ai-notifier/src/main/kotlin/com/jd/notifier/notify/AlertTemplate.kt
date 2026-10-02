@@ -49,16 +49,20 @@ class AlertTemplate(private val file: Path?) {
             if (Regex("""<\s*a[\s>]""", RegexOption.IGNORE_CASE).containsMatchIn(template)) {
                 return "links are built in code — use {company_link} / {title_link}"
             }
-            val depth = mutableMapOf<String, Int>()
+            // A stack, not per-tag counts: <b><i></b></i> is mis-nested and Telegram rejects it.
+            val open = ArrayDeque<String>()
             for (m in TAG.findAll(template)) {
                 val (closing, name) = m.destructured
                 val tag = name.lowercase()
                 if (tag !in ALLOWED_TAGS) return "tag <$tag> not allowed; allowed: ${ALLOWED_TAGS.joinToString()}"
-                val d = depth.getOrDefault(tag, 0) + if (closing == "/") -1 else 1
-                if (d < 0) return "unbalanced </$tag>"
-                depth[tag] = d
+                if (closing != "/") {
+                    open.addLast(tag)
+                } else {
+                    val top = open.removeLastOrNull() ?: return "unbalanced </$tag>"
+                    if (top != tag) return "mis-nested </$tag> (expected </$top>)"
+                }
             }
-            depth.entries.firstOrNull { it.value != 0 }?.let { return "unbalanced <${it.key}>" }
+            open.lastOrNull()?.let { return "unbalanced <$it>" }
             return null
         }
 
