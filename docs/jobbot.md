@@ -104,11 +104,21 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 
 ## Card template
 
-Richard can ask JobBot to change how high-fit cards look.
+Richard can ask JobBot to change how high-fit cards look. Without a template, the built-in card has these lines:
+1. `High-fit: Company — Title — score`
+2. location · salary · via source
+3. **Why it fits**, with the top three strengths
+4. **Gap:**, with the main gap
+5. **Skipped:** with the reason, when it applies
+6. the `#J` ref
+
+Each line is left out when its value is unknown.
 - **Tools:** `get_alert_template` and `preview_alert_template` (with a real `#J` or a sample), then `update_alert_template`, which `revert_alert_template` undoes.
 - **Storage:** the template lives in `jobbot-templates/high-fit.html`. jobbot-mcp writes it; the notifier mounts it read-only and re-reads it per card once `NOTIFIER_TELEGRAM_TEMPLATE_FILE=/templates/high-fit.html` is set.
 - **Rules:**
-  - `{placeholder}` substitution only: `{company} {title} {company_link} {title_link} {score} {action} {ref}`
+  - `{placeholder}` substitution only: `{company} {title} {company_link} {title_link} {score} {action} {ref} {details} {strengths} {gap}`
+  - `{details}` is location · remote policy · salary · via source (whatever is known), `{strengths}` is the top three as bullets, and `{gap}` is the first gap
+  - a line whose placeholders all render empty is dropped, so `<b>Gap:</b> {gap}` disappears when there is no gap
   - values are HTML-escaped
   - links are built in code, and `<a>` is refused
   - tags allowed: `b i u s code pre blockquote`, balanced

@@ -73,7 +73,7 @@ class Notifier(
         val score = event.fitScore?.toString() ?: "?"
         val action = event.pipelineAction ?: "?"
         val discordResult = discord("• ${discordJobLabel(event)} — **$score** ($action)")
-        val builtIn = "High-fit: ${telegramJobLabel(event)} — ${event.fitScore}" + skipLine(event) + jobRefLine(event)
+        val builtIn = "High-fit: ${telegramJobLabel(event)} — ${event.fitScore}" + detailsBlock(event) + skipLine(event) + jobRefLine(event)
         // The skip reason rides under any template too: a card without a resume must say why.
         val templated = templated(event)?.let { it + skipLine(event) }
         fun send(text: String) = if (buttonsEnabled) client.postTelegramHtmlWithButtons(text, buttonsFor(event)) else client.postTelegramHtml(text)
@@ -115,17 +115,7 @@ class Notifier(
     /** The ping from the editable template, or null for the built-in format (no template, or any problem). */
     private fun templated(e: CompletedEvent): String? = runCatching {
         if (e.completedSeq <= 0) return null
-        template.render(
-            AlertTemplate.Values(
-                company = e.company ?: "",
-                title = (e.roleTitle ?: "").ifBlank { "(no title)" },
-                score = e.fitScore?.toString() ?: "?",
-                action = e.pipelineAction ?: "",
-                ref = "#J${e.completedSeq}",
-                jobUrl = e.jobUrl,
-                reportUrl = e.artifactUrl?.takeIf { it.isNotBlank() }?.let { "${it.trimEnd('/')}/report.md" },
-            ),
-        )
+        template.render(values(e))
     }.getOrNull()
 
     /** Enabled actions this event qualifies for, in display order. */
@@ -135,6 +125,35 @@ class Notifier(
         } else {
             TelegramButtons.Action.entries.filter { it in actions && eligible(it, event) }
         }
+
+    private fun values(e: CompletedEvent) = AlertTemplate.Values(
+        company = e.company ?: "",
+        title = (e.roleTitle ?: "").ifBlank { "(no title)" },
+        score = e.fitScore?.toString() ?: "?",
+        action = e.pipelineAction ?: "",
+        ref = "#J${e.completedSeq}",
+        jobUrl = e.jobUrl,
+        reportUrl = reportUrlOf(e),
+        location = e.location,
+        remotePolicy = e.remotePolicy,
+        salary = e.salaryRange,
+        source = e.source,
+        strengths = e.strengths.orEmpty(),
+        gaps = e.gaps.orEmpty(),
+    )
+
+    /**
+     * Location · salary · source, the top strengths and the main gap, each on its own lines and
+     * left out when unknown — the Muse card's facts as Telegram text.
+     */
+    private fun detailsBlock(e: CompletedEvent): String {
+        val v = values(e)
+        return buildString {
+            AlertTemplate.details(v).takeIf { it.isNotEmpty() }?.let { append("\n").append(htmlEscape(it)) }
+            AlertTemplate.strengths(v).takeIf { it.isNotEmpty() }?.let { append("\n<b>Why it fits</b>\n").append(htmlEscape(it)) }
+            AlertTemplate.gap(v).takeIf { it.isNotEmpty() }?.let { append("\n<b>Gap:</b> ").append(htmlEscape(it)) }
+        }
+    }
 
     /** "Skipped: <reason>" on its own line for a scored job that was not tailored, else nothing. */
     private fun skipLine(e: CompletedEvent): String =

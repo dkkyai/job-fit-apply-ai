@@ -36,6 +36,13 @@ data class CompletedEvent(
     val terminalLabel: String? = null,
     /** Why a scored job was not tailored (e.g. "Pay $85K is below your $145K target"); null when tailored. */
     val skipReason: String? = null,
+    // Card details (absent on events completed before the pipeline sent them).
+    val location: String? = null,
+    val remotePolicy: String? = null,
+    val salaryRange: String? = null,
+    val source: String? = null,
+    val strengths: List<String>? = null,
+    val gaps: List<String>? = null,
 ) {
     /** Scored but not tailored (e.g. pay-gated): no resume exists, so no resume button and no Apply. */
     fun skipped(): Boolean = pipelineAction.equals("SKIP", ignoreCase = true)

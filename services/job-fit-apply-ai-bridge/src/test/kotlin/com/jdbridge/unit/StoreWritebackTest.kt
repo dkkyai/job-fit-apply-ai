@@ -132,6 +132,30 @@ class StoreWritebackTest {
     }
 
     @Test
+    fun `card details round-trip through the feed, and an old row has none`() = runTest {
+        val id = enqueue("{}", null, "card1")
+        recordResult(id, ResultRequest(
+            pipeline_action = "TAILOR", fit_score = 72, location = "Seattle, WA", remote_policy = "hybrid",
+            salary_range = "\$150K–\$180K", source = "jobright.ai",
+            strengths = listOf("Kotlin test infrastructure", "CI/CD ownership"), gaps = listOf("No Pact experience"),
+        ))
+        val job = completedJobs(0, all = true).single { it.job_id == id }
+        assertEquals("Seattle, WA", job.location)
+        assertEquals("hybrid", job.remote_policy)
+        assertEquals("\$150K–\$180K", job.salary_range)
+        assertEquals("jobright.ai", job.source)
+        assertEquals(listOf("Kotlin test infrastructure", "CI/CD ownership"), job.strengths)
+        assertEquals(listOf("No Pact experience"), job.gaps)
+
+        val bare = enqueue("{}", null, "card2")
+        recordResult(bare, ResultRequest(pipeline_action = "SKIP", fit_score = 10))
+        val old = completedJobs(0, all = true).single { it.job_id == bare }
+        assertNull(old.location)
+        assertEquals(emptyList(), old.strengths)
+        assertEquals(emptyList(), old.gaps)
+    }
+
+    @Test
     fun `a result without track_id surfaces a null track_id`() = runTest {
         val id = enqueue("{}", null, "ev3")
         completeSkip(id)

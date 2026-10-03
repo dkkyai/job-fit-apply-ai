@@ -76,6 +76,13 @@ internal object Jobs : Table("jobs") {
     val trackId         = integer("track_id").nullable()
     // Why a scored job was not tailored. Nullable, so it ALTERs onto an existing queue database.
     val skipReason      = text("skip_reason").nullable()
+    // Card details (nullable, ALTERed onto an existing queue database). Lists are JSON arrays.
+    val location        = text("location").nullable()
+    val remotePolicy    = text("remote_policy").nullable()
+    val salaryRange     = text("salary_range").nullable()
+    val jobSource       = text("source").nullable()   // not `source`: that name is Table's own
+    val strengthsJson   = text("strengths_json").nullable()
+    val gapsJson        = text("gaps_json").nullable()
     val error           = text("error").nullable()
     val retryCount      = integer("retry_count").default(0)
     val nextAttemptAt   = long("next_attempt_at").nullable()
@@ -354,6 +361,12 @@ private suspend fun recordTerminalResult(jobId: String, req: ResultRequest, now:
             req.artifact_url?.let { row[Jobs.artifactUrl] = it }
             req.track_id?.let { row[Jobs.trackId] = it }
             row[Jobs.skipReason]      = req.skip_reason
+            row[Jobs.location]        = req.location
+            row[Jobs.remotePolicy]    = req.remote_policy
+            row[Jobs.salaryRange]     = req.salary_range
+            row[Jobs.jobSource]       = req.source
+            row[Jobs.strengthsJson]   = req.strengths.takeIf { it.isNotEmpty() }?.let { Json.encodeToString(it) }
+            row[Jobs.gapsJson]        = req.gaps.takeIf { it.isNotEmpty() }?.let { Json.encodeToString(it) }
             row[Jobs.claimedAt]       = null
             row[Jobs.claimToken]      = null
             row[Jobs.nextAttemptAt]   = null
@@ -408,9 +421,19 @@ suspend fun completedJobs(since: Long, limit: Int = 50, all: Boolean = false): L
                 artifact_url    = row[Jobs.artifactUrl],
                 track_id        = row[Jobs.trackId],
                 skip_reason     = row[Jobs.skipReason],
+                location        = row[Jobs.location],
+                remote_policy   = row[Jobs.remotePolicy],
+                salary_range    = row[Jobs.salaryRange],
+                source          = row[Jobs.jobSource],
+                strengths       = stringList(row[Jobs.strengthsJson]),
+                gaps            = stringList(row[Jobs.gapsJson]),
             )
         }
 }
+
+/** A stored JSON string array; anything unreadable is an empty list (the card just shows less). */
+private fun stringList(json: String?): List<String> =
+    json?.let { runCatching { Json.decodeFromString<List<String>>(it) }.getOrNull() }.orEmpty()
 
 /** The current max completed_seq — a cursor consumer seeds here on cold start to skip history. */
 fun latestCompletedSeq(): Long = completedSeqCounter.get()

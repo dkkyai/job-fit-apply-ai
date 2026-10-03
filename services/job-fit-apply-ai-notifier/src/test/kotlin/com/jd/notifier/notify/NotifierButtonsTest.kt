@@ -118,6 +118,47 @@ class NotifierButtonsTest {
     }
 
     @Test
+    @DisplayName("the card carries location · salary · source, the top three strengths and the main gap")
+    fun cardCarriesDetails() {
+        val c = client()
+        notifier(c).notify(event().copy(
+            location = "Seattle, WA", remotePolicy = "hybrid", salaryRange = "\$150K–\$180K", source = "jobright.ai",
+            strengths = listOf("Kotlin & CI ownership", "Espresso", "XCUITest", "Fourth"), gaps = listOf("No Pact experience", "Other"),
+        ))
+        val lines = sent(c).first.lines()
+        assertTrue(lines[0].startsWith("High-fit: ") && lines[0].endsWith("— 80"), lines.toString())
+        assertEquals(
+            listOf(
+                "Seattle, WA · hybrid · \$150K–\$180K · via jobright.ai",
+                "<b>Why it fits</b>", "• Kotlin &amp; CI ownership", "• Espresso", "• XCUITest",
+                "<b>Gap:</b> No Pact experience",
+                "#J7663",
+            ),
+            lines.drop(1),
+        )
+    }
+
+    @Test
+    @DisplayName("an event from before the details existed keeps the two-line card")
+    fun oldEventKeepsShortCard() {
+        val c = client()
+        notifier(c).notify(event())
+        assertEquals(2, sent(c).first.lines().size)
+    }
+
+    @Test
+    @DisplayName("a skipped high fit shows its details, then why it was skipped, then the ref")
+    fun gatedCardWithDetails() {
+        val c = client()
+        notifier(c).notify(gated().copy(location = "Remote", strengths = listOf("API automation"), gaps = listOf("Mid-level scope")))
+        assertEquals(
+            listOf("Remote", "<b>Why it fits</b>", "• API automation", "<b>Gap:</b> Mid-level scope",
+                "Skipped: Posted pay (max \$85K) is below the \$145K target", "#J7708"),
+            sent(c).first.lines().drop(1),
+        )
+    }
+
+    @Test
     @DisplayName("a tailored job's card has no Skipped line")
     fun tailoredCardHasNoSkipLine() {
         val c = client()

@@ -47,7 +47,10 @@ class AlertTemplatesTest {
             DynamicTest.dynamicTest("render $i") {
                 val e = c.jsonObject["event"]!!.jsonObject
                 fun s(k: String) = (e[k] as? JsonPrimitive)?.takeIf { it.isString }?.content
-                val values = AlertTemplates.Values(s("company")!!, s("title")!!, s("score")!!, s("action")!!, s("ref")!!, s("job_url"), s("report_url"))
+                fun list(k: String) = (e[k] as? kotlinx.serialization.json.JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
+                    val values = AlertTemplates.Values(s("company")!!, s("title")!!, s("score")!!, s("action")!!, s("ref")!!, s("job_url"), s("report_url"),
+                        location = s("location"), remotePolicy = s("remote_policy"), salary = s("salary"), source = s("source"),
+                        strengths = list("strengths"), gaps = list("gaps"))
                 assertEquals(c.jsonObject["expected"]!!.jsonPrimitive.content, AlertTemplates.render(c.jsonObject["template"]!!.jsonPrimitive.content, values))
             }
         }

@@ -22,6 +22,13 @@ class AlertTemplate(private val file: Path?) {
         val ref: String,
         val jobUrl: String?,
         val reportUrl: String?,
+        // Card details (null or empty when unknown — e.g. jobs completed before they existed).
+        val location: String? = null,
+        val remotePolicy: String? = null,
+        val salary: String? = null,
+        val source: String? = null,
+        val strengths: List<String> = emptyList(),
+        val gaps: List<String> = emptyList(),
     )
 
     /** The rendered text, or null to fall back to the built-in format. */
@@ -33,7 +40,7 @@ class AlertTemplate(private val file: Path?) {
     }
 
     companion object {
-        val PLACEHOLDERS = listOf("company", "title", "company_link", "title_link", "score", "action", "ref")
+        val PLACEHOLDERS = listOf("company", "title", "company_link", "title_link", "score", "action", "ref", "details", "strengths", "gap")
         val ALLOWED_TAGS = setOf("b", "i", "u", "s", "code", "pre", "blockquote")
         const val MAX_LENGTH = 1000
         private val PLACEHOLDER = Regex("""\{([a-z_]+)\}""")
@@ -66,16 +73,43 @@ class AlertTemplate(private val file: Path?) {
             return null
         }
 
+        /**
+         * A line whose placeholders all render empty is dropped, so `<b>Gap:</b> {gap}` disappears
+         * for a job with no gap instead of leaving a bare label.
+         */
         fun renderTemplate(template: String, v: Values): String {
             val company = esc(v.company)
             val title = esc(v.title)
-            val links = mapOf(
+            val values = mapOf(
                 "company_link" to (v.jobUrl?.takeIf { it.isNotBlank() }?.let { "<a href=\"${esc(it)}\">$company</a>" } ?: company),
                 "title_link" to (v.reportUrl?.takeIf { it.isNotBlank() }?.let { "<a href=\"${esc(it)}\">$title</a>" } ?: title),
+                "company" to company, "title" to title, "score" to esc(v.score), "action" to esc(v.action), "ref" to esc(v.ref),
+                "details" to esc(details(v)), "strengths" to esc(strengths(v)), "gap" to esc(gap(v)),
             )
-            val plain = mapOf("company" to company, "title" to title, "score" to esc(v.score), "action" to esc(v.action), "ref" to esc(v.ref))
-            return PLACEHOLDER.replace(template) { m -> links[m.groupValues[1]] ?: plain[m.groupValues[1]] ?: m.value }
+            return template.split("\n").mapNotNull { line ->
+                val names = PLACEHOLDER.findAll(line).map { it.groupValues[1] }.toList()
+                if (names.isNotEmpty() && names.all { values[it].isNullOrEmpty() }) return@mapNotNull null
+                PLACEHOLDER.replace(line) { m -> values[m.groupValues[1]] ?: m.value }
+            }.joinToString("\n")
         }
+
+        /** "Seattle, WA · hybrid · $150K–$180K · via jobright.ai" — whatever is known, in that order. */
+        fun details(v: Values): String = listOfNotNull(
+            v.location.clean(), v.remotePolicy.clean()?.takeUnless { it.equals("unknown", ignoreCase = true) },
+            v.salary.clean(), v.source.clean()?.let { "via $it" },
+        ).joinToString(" · ")
+
+        /** The top three strengths as bullet lines. */
+        fun strengths(v: Values): String =
+            v.strengths.mapNotNull { it.clean() }.take(MAX_STRENGTHS).joinToString("\n") { "• " + clip(it, 120) }
+
+        /** The main gap (the first one the scorer listed). */
+        fun gap(v: Values): String = v.gaps.firstNotNullOfOrNull { it.clean() }?.let { clip(it, 160) }.orEmpty()
+
+        const val MAX_STRENGTHS = 3
+
+        private fun String?.clean(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
+        private fun clip(s: String, max: Int) = if (s.length <= max) s else s.take(max - 1).trimEnd() + "…"
 
         private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
     }
