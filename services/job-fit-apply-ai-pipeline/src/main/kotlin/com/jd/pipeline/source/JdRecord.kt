@@ -66,4 +66,12 @@ data class ProcessingResult(
     @get:JsonIgnore val scrapePath: String = "",
     /** Why a scored job was not tailored (serialized → skip_reason); null when tailored. */
     val skipReason: String? = null,
+    // Card details for the Telegram high-fit ping (serialized → location / remote_policy /
+    // salary_range / source / gaps; strengths above). Null or empty when unknown.
+    val location: String? = null,
+    val remotePolicy: String? = null,
+    val salaryRange: String? = null,
+    /** Where the job came from: the job board ("jobright.ai") or "recruiter email". */
+    val source: String? = null,
+    val gaps: List<String> = emptyList(),
 )

@@ -104,11 +104,27 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 
 ## Card template
 
-Richard can ask JobBot to change how high-fit cards look.
+Richard can ask JobBot to change how high-fit cards look. Without a template, the built-in card reads:
+```
+Sparksoft: Automation Engineer (63)
+Remote · $80K–$85K · via jobright.ai
+
+Fit:
+• Web/API automation tools match
+• Healthcare domain expertise overlap
+• Core tech stack overlap
+
+Gap: Seniority level is a step down
+Skipped: Posted pay (max $85K) is below the $145K target
+#J7708
+```
+The company links to the posting and the title to the report. A missing company or title reads "Unknown". Each line is left out when its value is unknown, and the blank lines only frame the Fit block.
 - **Tools:** `get_alert_template` and `preview_alert_template` (with a real `#J` or a sample), then `update_alert_template`, which `revert_alert_template` undoes.
 - **Storage:** the template lives in `jobbot-templates/high-fit.html`. jobbot-mcp writes it; the notifier mounts it read-only and re-reads it per card once `NOTIFIER_TELEGRAM_TEMPLATE_FILE=/templates/high-fit.html` is set.
 - **Rules:**
-  - `{placeholder}` substitution only: `{company} {title} {company_link} {title_link} {score} {action} {ref}`
+  - `{placeholder}` substitution only: `{company} {title} {company_link} {title_link} {score} {action} {ref} {details} {strengths} {gap}`
+  - `{details}` is location · remote policy · salary · via source (whatever is known), `{strengths}` is the top three as bullets, and `{gap}` is the first gap
+  - a line whose placeholders all render empty is dropped, so `<b>Gap:</b> {gap}` disappears when there is no gap
   - values are HTML-escaped
   - links are built in code, and `<a>` is refused
   - tags allowed: `b i u s code pre blockquote`, balanced

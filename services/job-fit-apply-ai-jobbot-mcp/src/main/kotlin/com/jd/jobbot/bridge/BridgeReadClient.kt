@@ -95,6 +95,10 @@ open class BridgeReadClient(
 internal fun JsonObject.str(key: String): String? =
     (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
 
+/** A JSON array of strings; anything else (absent, null, wrong type) is null. */
+internal fun JsonObject.strings(key: String): List<String>? =
+    (this[key] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+
 internal fun JsonObject.long(key: String): Long? = (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.longOrNull
 
 internal fun JsonObject.bool(key: String): Boolean =

@@ -11,7 +11,11 @@ import java.nio.file.StandardCopyOption
  * notifier will use. The notifier mounts the file read-only and re-reads it per event.
  */
 class AlertTemplates(private val file: Path) {
-    data class Values(val company: String, val title: String, val score: String, val action: String, val ref: String, val jobUrl: String?, val reportUrl: String?)
+    data class Values(
+        val company: String, val title: String, val score: String, val action: String, val ref: String, val jobUrl: String?, val reportUrl: String?,
+        val location: String? = null, val remotePolicy: String? = null, val salary: String? = null, val source: String? = null,
+        val strengths: List<String> = emptyList(), val gaps: List<String> = emptyList(),
+    )
 
     private val prev: Path get() = file.resolveSibling(file.fileName.toString() + ".prev")
 
@@ -42,10 +46,11 @@ class AlertTemplates(private val file: Path) {
     }
 
     companion object {
-        val PLACEHOLDERS = listOf("company", "title", "company_link", "title_link", "score", "action", "ref")
+        val PLACEHOLDERS = listOf("company", "title", "company_link", "title_link", "score", "action", "ref", "details", "strengths", "gap")
         val ALLOWED_TAGS = setOf("b", "i", "u", "s", "code", "pre", "blockquote")
         const val MAX_LENGTH = 1000
-        const val BUILT_IN = "High-fit: {company_link} — {title_link} — {score}\n{ref}"
+        /** The notifier's built-in card, as a template (lines with only empty placeholders drop out). */
+        const val BUILT_IN = "{company_link}: {title_link} ({score})\n{details}\n\nFit:\n{strengths}\n\nGap: {gap}\n{ref}"
         private val PLACEHOLDER = Regex("""\{([a-z_]+)\}""")
         private val TAG = Regex("""<\s*(/?)\s*([a-zA-Z0-9]+)[^>]*>""")
 
@@ -75,16 +80,35 @@ class AlertTemplates(private val file: Path) {
             return null
         }
 
+        /** Same rules as the notifier's AlertTemplate.renderTemplate, pinned by the shared vectors. */
         fun render(template: String, v: Values): String {
             val company = esc(v.company)
             val title = esc(v.title)
-            val links = mapOf(
+            val values = mapOf(
                 "company_link" to (v.jobUrl?.takeIf { it.isNotBlank() }?.let { "<a href=\"${esc(it)}\">$company</a>" } ?: company),
                 "title_link" to (v.reportUrl?.takeIf { it.isNotBlank() }?.let { "<a href=\"${esc(it)}\">$title</a>" } ?: title),
+                "company" to company, "title" to title, "score" to esc(v.score), "action" to esc(v.action), "ref" to esc(v.ref),
+                "details" to esc(details(v)), "strengths" to esc(strengths(v)), "gap" to esc(gap(v)),
             )
-            val plain = mapOf("company" to company, "title" to title, "score" to esc(v.score), "action" to esc(v.action), "ref" to esc(v.ref))
-            return PLACEHOLDER.replace(template) { m -> links[m.groupValues[1]] ?: plain[m.groupValues[1]] ?: m.value }
+            // A line whose placeholders all render empty is dropped (no bare "Gap:" label).
+            return template.split("\n").mapNotNull { line ->
+                val names = PLACEHOLDER.findAll(line).map { it.groupValues[1] }.toList()
+                if (names.isNotEmpty() && names.all { values[it].isNullOrEmpty() }) return@mapNotNull null
+                PLACEHOLDER.replace(line) { m -> values[m.groupValues[1]] ?: m.value }
+            }.joinToString("\n")
         }
+
+        fun details(v: Values): String = listOfNotNull(
+            v.location.clean(), v.remotePolicy.clean()?.takeUnless { it.equals("unknown", ignoreCase = true) },
+            v.salary.clean(), v.source.clean()?.let { "via $it" },
+        ).joinToString(" · ")
+
+        fun strengths(v: Values): String = v.strengths.mapNotNull { it.clean() }.take(3).joinToString("\n") { "• " + clip(it, 120) }
+
+        fun gap(v: Values): String = v.gaps.firstNotNullOfOrNull { it.clean() }?.let { clip(it, 160) }.orEmpty()
+
+        private fun String?.clean(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
+        private fun clip(s: String, max: Int) = if (s.length <= max) s else s.take(max - 1).trimEnd() + "…"
 
         private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
     }

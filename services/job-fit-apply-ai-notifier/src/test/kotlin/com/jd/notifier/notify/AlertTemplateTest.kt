@@ -47,7 +47,10 @@ class AlertTemplateTest {
                 DynamicTest.dynamicTest("render $i") {
                     val e = c["event"]
                     fun s(k: String) = e[k]?.takeIf { !it.isNull }?.asText()
-                    val values = AlertTemplate.Values(s("company")!!, s("title")!!, s("score")!!, s("action")!!, s("ref")!!, s("job_url"), s("report_url"))
+                    fun list(k: String) = e[k]?.takeIf { it.isArray }?.map { it.asText() }.orEmpty()
+                    val values = AlertTemplate.Values(s("company")!!, s("title")!!, s("score")!!, s("action")!!, s("ref")!!, s("job_url"), s("report_url"),
+                        location = s("location"), remotePolicy = s("remote_policy"), salary = s("salary"), source = s("source"),
+                        strengths = list("strengths"), gaps = list("gaps"))
                     assertEquals(c["expected"].asText(), AlertTemplate.renderTemplate(c["template"].asText(), values))
                 }
             }
@@ -57,6 +60,9 @@ class AlertTemplateTest {
     fun `too long is invalid`() {
         assertNotNull(AlertTemplate.validate("{ref}" + "x".repeat(AlertTemplate.MAX_LENGTH)))
     }
+
+    /** The built-in card's first line for [event]: "Company: Title (score)", company → posting, title → report. */
+    private val BUILT_IN_FIRST_LINE = "<a href=\"https://acme.co/j\">Acme</a>: <a href=\"http://host:8081/x/report.md\">Staff SDET</a> (72)"
 
     private val event = CompletedEvent(
         jobId = "j", completedSeq = 9, status = "done", company = "Acme", roleTitle = "Staff SDET", fitScore = 72,
@@ -90,7 +96,7 @@ class AlertTemplateTest {
             notifier(c, f).notify(event)
             val text = argumentCaptor<String>()
             verify(c).postTelegramHtml(text.capture())
-            assertEquals(true, text.firstValue.startsWith("High-fit: "), "fallback for $f: ${text.firstValue}")
+            assertEquals(BUILT_IN_FIRST_LINE, text.firstValue.lines().first(), "fallback for $f: ${text.firstValue}")
         }
     }
 
@@ -107,7 +113,7 @@ class AlertTemplateTest {
         val text = argumentCaptor<String>()
         verify(c, times(2)).postTelegramHtml(text.capture())
         assertEquals("Acme #J9", text.firstValue)
-        assertEquals(true, text.secondValue.startsWith("High-fit: "))
+        assertEquals(BUILT_IN_FIRST_LINE, text.secondValue.lines().first())
         assertEquals(DeliveryResult.DELIVERED, outcome.telegram)
     }
 

@@ -10,3 +10,4 @@
 
 - "Make the cards show X" → `mcp__jfaa__get_alert_template`, draft a template, `mcp__jfaa__preview_alert_template` (with a recent `#J` if he named one), show him the preview, and only on his OK `mcp__jfaa__update_alert_template`. `mcp__jfaa__revert_alert_template` undoes the last change.
 - Links are `{company_link}` / `{title_link}` only; every card must keep `{ref}`.
+- `{details}` (location · salary · source), `{strengths}` (top three, as bullets) and `{gap}` (main gap) add the job's facts. A line whose placeholders are all empty is left out.

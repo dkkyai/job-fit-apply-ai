@@ -120,6 +120,12 @@ class ExistingProductPathsE2ETest {
 
         val card = result.telegramMessages.single()
         assertTrue(card.lines().any { it == "Skipped: Posted pay (max \$90K) is below the \$150K target" }, card)
+        // The card's details come through processor → bridge → notifier (the fixture's strengths and gap).
+        assertTrue(card.lines().first().endsWith("(72)"), "Company: Title (score): $card")
+        assertTrue(card.contains("\n\nFit:\n• Espresso and XCUITest framework ownership\n• CI/CD pipeline ownership\n\n"), card)
+        assertTrue(card.lines().any { it == "Gap: Contract testing experience" }, card)
+        assertEquals(listOf("Espresso and XCUITest framework ownership", "CI/CD pipeline ownership"),
+            result.completedEvent.path("strengths").map { it.asText() })
         assertEquals(
             listOf("View Report" to artifactUrl.trimEnd('/') + "/report.md"),
             result.telegramButtons,

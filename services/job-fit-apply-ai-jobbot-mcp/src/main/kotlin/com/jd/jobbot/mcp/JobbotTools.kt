@@ -9,6 +9,7 @@ import com.jd.jobbot.gmail.GmailClient
 import com.jd.jobbot.bridge.bool
 import com.jd.jobbot.bridge.long
 import com.jd.jobbot.bridge.str
+import com.jd.jobbot.bridge.strings
 import com.jd.jobbot.files.OutputFiles
 import com.jd.jobbot.jobs.Eligibility
 import com.jd.jobbot.jobs.JobLookup
@@ -225,11 +226,16 @@ class JobbotTools(
         AlertTemplates.validate(template)?.let { return err("Invalid template: $it") }
         val event = req.string("ref")?.let { JobRef.parse(it) }?.let { lookup.event(it) }
         val values = AlertTemplates.Values(
-            company = event?.str("company") ?: "Acme", title = event?.str("role_title") ?: "Staff SDET",
+            // A job's missing company or title reads "Unknown", as on the notifier's card.
+            company = if (event == null) "Acme" else event.str("company") ?: "Unknown",
+            title = if (event == null) "Staff SDET" else event.str("role_title") ?: "Unknown",
             score = event?.long("fit_score")?.toString() ?: "72", action = event?.str("pipeline_action") ?: "TAILOR",
             ref = event?.long("completed_seq")?.let { JobRef.format(it) } ?: "#J1234",
             jobUrl = event?.str("job_url") ?: "https://example.com/job",
             reportUrl = event?.str("artifact_url")?.let { "${it.trimEnd('/')}/report.md" } ?: "https://example.com/report.md",
+            location = event?.str("location"), remotePolicy = event?.str("remote_policy"),
+            salary = event?.str("salary_range"), source = event?.str("source"),
+            strengths = event?.strings("strengths").orEmpty(), gaps = event?.strings("gaps").orEmpty(),
         )
         return CallToolResult(content = listOf(TextContent("Valid. Rendered (Telegram HTML):\n" + AlertTemplates.render(template, values))))
     }
@@ -339,6 +345,10 @@ class JobbotTools(
             put("fit_score", e.long("fit_score"))
             put("pipeline_action", e.str("pipeline_action"))
             put("skip_reason", e.str("skip_reason"))
+            put("location", e.str("location"))
+            put("remote_policy", e.str("remote_policy"))
+            put("salary_range", e.str("salary_range"))
+            put("source", e.str("source"))
             put("job_url", e.str("job_url"))
             put("from_recruiter_email", e.bool("is_recruiter"))
             put("has_source_email", e.str("message_id") != null)

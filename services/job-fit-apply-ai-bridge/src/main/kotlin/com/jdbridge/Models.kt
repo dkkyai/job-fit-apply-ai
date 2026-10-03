@@ -116,6 +116,12 @@ data class ResultRequest(
     val artifact_url: String?     = null,          // markserv report URL (was previously dropped)
     val track_id: Int?            = null,          // the `tracks` row the Processor wrote (Postgres id)
     val skip_reason: String?      = null,          // why a scored job was not tailored (e.g. pay below target)
+    // Card details for the Telegram ping (strengths is above; it used to be accepted but dropped):
+    val location: String?         = null,
+    val remote_policy: String?    = null,
+    val salary_range: String?     = null,
+    val source: String?           = null,          // job board ("jobright.ai") or "recruiter email"
+    val gaps: List<String>        = emptyList(),
     // Gmail write-back payload (Poller acts on these via the completed feed):
     val terminal_label: String?   = null,          // label the Poller should apply to message_id
     val draft_text: String?       = null,          // LLM-generated recruiter reply (Processor makes it)
@@ -171,6 +177,13 @@ data class CompletedJob(
     val track_id: Int?           = null,
     // Why a scored job was not tailored — the Telegram card says it ("Skipped: …"). Null when tailored.
     val skip_reason: String?     = null,
+    // Card details for the Telegram ping. Null or empty for jobs completed before they existed.
+    val location: String?        = null,
+    val remote_policy: String?   = null,
+    val salary_range: String?    = null,
+    val source: String?          = null,
+    val strengths: List<String>  = emptyList(),
+    val gaps: List<String>       = emptyList(),
 )
 
 @Serializable

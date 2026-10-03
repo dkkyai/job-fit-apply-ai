@@ -89,7 +89,7 @@ class NotifierButtonsTest {
             actions = TelegramButtons.parseActions("apply,reply,archive"), links = noLookup).notify(gated())
         val (text, rows) = sent(c)
         val lines = text.lines()
-        assertTrue(lines[0].startsWith("High-fit: ") && lines[0].endsWith("— 63"), text)
+        assertEquals("<a href=\"https://jobright.ai/jobs/info/6abf\">Sparksoft</a>: <a href=\"http://host:8081/20261002_132538_sparksoft_automation_engineer/report.md\">Automation Engineer</a> (63)", lines[0])
         assertEquals("Skipped: Posted pay (max \$85K) is below the \$145K target", lines[1])
         assertEquals("#J7708", lines.last())
         assertEquals(listOf(listOf("View Report")), rows.map { r -> r.map { it.text } }, "no resume, no Apply: $rows")
@@ -115,6 +115,78 @@ class NotifierButtonsTest {
         Notifier(client = c, fitThreshold = 55, buttonsEnabled = true, linkButtonsEnabled = true,
             actions = TelegramButtons.parseActions("apply"), links = noLookup, template = AlertTemplate(file)).notify(gated())
         assertEquals(listOf("<b>63</b> Sparksoft", "#J7708", "Skipped: Posted pay (max \$85K) is below the \$145K target"), sent(c).first.lines())
+    }
+
+    @Test
+    @DisplayName("the card carries location · salary · source, the top three strengths and the main gap")
+    fun cardCarriesDetails() {
+        val c = client()
+        notifier(c).notify(event().copy(
+            location = "Seattle, WA", remotePolicy = "hybrid", salaryRange = "\$150K–\$180K", source = "jobright.ai",
+            strengths = listOf("Kotlin & CI ownership", "Espresso", "XCUITest", "Fourth"), gaps = listOf("No Pact experience", "Other"),
+        ))
+        val lines = sent(c).first.lines()
+        assertTrue(lines[0].startsWith("<a href=") && lines[0].endsWith("</a> (80)"), lines.toString())
+        assertEquals(
+            listOf(
+                "Seattle, WA · hybrid · \$150K–\$180K · via jobright.ai",
+                "", "Fit:", "• Kotlin &amp; CI ownership", "• Espresso", "• XCUITest", "",
+                "Gap: No Pact experience",
+                "#J7663",
+            ),
+            lines.drop(1),
+        )
+    }
+
+    @Test
+    @DisplayName("an event from before the details existed keeps the two-line card")
+    fun oldEventKeepsShortCard() {
+        val c = client()
+        notifier(c).notify(event())
+        assertEquals(2, sent(c).first.lines().size)
+    }
+
+    @Test
+    @DisplayName("a skipped high fit shows its details, then why it was skipped, then the ref")
+    fun gatedCardWithDetails() {
+        val c = client()
+        notifier(c).notify(gated().copy(location = "Remote", strengths = listOf("API automation"), gaps = listOf("Mid-level scope")))
+        assertEquals(
+            listOf("Remote", "", "Fit:", "• API automation", "", "Gap: Mid-level scope",
+                "Skipped: Posted pay (max \$85K) is below the \$145K target", "#J7708"),
+            sent(c).first.lines().drop(1),
+        )
+    }
+
+    @Test
+    @DisplayName("Richard's layout exactly, with no strengths the card stays compact, and a missing company or title is Unknown")
+    fun layoutAndUnknown() {
+        val c1 = client()
+        notifier(c1).notify(gated().copy(
+            jobUrl = null, artifactUrl = null, location = "Remote", salaryRange = "\$80K–\$85K", source = "jobright.ai",
+            strengths = listOf("Web/API automation tools match", "Healthcare domain expertise overlap", "Core tech stack overlap"),
+            gaps = listOf("Seniority level is a step down"),
+        ))
+        assertEquals(
+            """
+            Sparksoft: Automation Engineer (63)
+            Remote · ${'$'}80K–${'$'}85K · via jobright.ai
+
+            Fit:
+            • Web/API automation tools match
+            • Healthcare domain expertise overlap
+            • Core tech stack overlap
+
+            Gap: Seniority level is a step down
+            Skipped: Posted pay (max ${'$'}85K) is below the ${'$'}145K target
+            #J7708
+            """.trimIndent(),
+            sent(c1).first,
+        )
+
+        val c2 = client()
+        notifier(c2).notify(gated().copy(jobUrl = null, artifactUrl = null, company = "  ", roleTitle = null, location = "Remote", gaps = listOf("Mid-level")))
+        assertEquals(listOf("Unknown: Unknown (63)", "Remote", "Gap: Mid-level"), sent(c2).first.lines().take(3), "no blank lines without a Fit block")
     }
 
     @Test
@@ -147,9 +219,9 @@ class NotifierButtonsTest {
         val c = client()
         notifier(c).notify(event())
         val (text, _) = sent(c)
-        assertTrue(text.startsWith("High-fit: "), text)
+        assertTrue(text.startsWith("<a href=\"https://acme.co/j\">Acme</a>: "), "\"Company: Title (score)\", no prefix: $text")
         assertEquals("#J7663", text.lines().last(), "job ref must be its own last line: $text")
-        assertTrue(text.lines().first().endsWith("— 80"), "score stays on the first line: $text")
+        assertTrue(text.lines().first().endsWith("</a> (80)"), "score stays on the first line: $text")
     }
 
     @Test

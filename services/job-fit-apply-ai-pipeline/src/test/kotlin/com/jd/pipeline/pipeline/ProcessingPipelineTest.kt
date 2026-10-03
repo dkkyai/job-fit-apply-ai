@@ -383,6 +383,45 @@ class ProcessingPipelineTest {
     }
 
     @Test
+    @DisplayName("the result carries the card details: location, remote policy, salary, source, strengths, gaps")
+    fun resultCarriesCardDetails() {
+        val pipeline = ProcessingPipeline()
+        injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
+        injectNode(pipeline, "scoreFit", Node { state ->
+            state.copy(
+                pipelineAction = PipelineAction.SKIP, fitScore = 30f, remotePolicy = "hybrid", salaryRange = "\$150K–\$180K",
+                strengths = listOf("Kotlin test infrastructure"), gaps = listOf("No Pact experience", "Mid-level scope"),
+            )
+        })
+        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+
+        val result = pipeline.invoke(minimalRecord().copy(jobUrl = "https://www.jobright.ai/jobs/info/abc"))
+
+        assertEquals("Seattle, WA", result.location)
+        assertEquals("hybrid", result.remotePolicy)
+        assertEquals("\$150K–\$180K", result.salaryRange)
+        assertEquals("jobright.ai", result.source)
+        assertEquals(listOf("Kotlin test infrastructure"), result.strengths)
+        assertEquals(listOf("No Pact experience", "Mid-level scope"), result.gaps)
+    }
+
+    @Test
+    @DisplayName("card details: an unknown remote policy and a blank salary are null; a recruiter email is the source")
+    fun cardDetailsUnknownsAndRecruiter() {
+        val pipeline = ProcessingPipeline()
+        injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
+        injectNode(pipeline, "scoreFit", Node { state -> state.copy(pipelineAction = PipelineAction.SKIP, fitScore = 30f) })
+        injectNode(pipeline, "tailorSubgraph", Node { state -> state.copy(error = "stop here") })
+        injectNode(pipeline, "supabaseTrack", Node { state -> state })
+
+        val plain = pipeline.invoke(minimalRecord())
+        assertNull(plain.remotePolicy, "\"unknown\" is not shown")
+        assertNull(plain.salaryRange)
+        assertNull(plain.source, "no job board, no URL")
+        assertEquals("recruiter email", pipeline.invoke(recruiterRecord()).source)
+    }
+
+    @Test
     @DisplayName("invoke writes metadata with correct pipeline action in result")
     fun invokeWritesMetadataWithCorrectPipelineAction(@TempDir tempDir: Path) {
         val pipeline = ProcessingPipeline()

@@ -190,8 +190,17 @@ class ProcessingPipeline(
             scrapePath     = state.scrapePath,
             // Why a scored job was not tailored — the card says it (all gates, not just the first).
             skipReason     = skipReasonOf(state),
+            location       = state.location.takeIf { it.isNotBlank() },
+            remotePolicy   = state.remotePolicy.takeIf { it.isNotBlank() && it != "unknown" },
+            salaryRange    = state.salaryRange.takeIf { it.isNotBlank() },
+            source         = sourceOf(state),
+            gaps           = state.gaps,
         )
     }
+
+    /** The job board it came from, or "recruiter email"; null when neither is known. */
+    private fun sourceOf(state: JDState): String? =
+        if (state.isRecruiterEmail) "recruiter email" else MetadataUtils.jobBoard(state).takeIf { it.isNotBlank() }
 
     private fun skipReasonOf(state: JDState): String? = when {
         state.pipelineAction == PipelineAction.TAILOR -> null
