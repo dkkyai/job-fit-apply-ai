@@ -91,6 +91,7 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 **JobBot's browser** (`docker/jobbot-browser`, profile `jobbot-browser`; called `apply-browser` before 2026-10-02)
 - **Image:** `linuxserver/chromium`, pinned by digest. Its Selkies web viewer streams over WebRTC/websockets.
 - **CDP:** socat exposes Chromium's DevTools on `:9223`, reachable only on the private `jobbot-browser` network (jobbot-browser + jobbot-mcp). DevTools rejects non-IP Host headers, so jobbot-mcp resolves the address first.
+- **Google session:** a managed policy turns browser sign-in off (`BrowserSignin: 0`, `SyncDisabled`). Without it, this Chromium (no Google API keys) signed dkkytech@ out of Google on every restart: DICE failed to fetch a browser token after each web sign-in, and the startup reconcile then cleared the web session. Sign in on the web (accounts.google.com) only. Doctor checks the policy is present.
 - **Viewer:** published on `127.0.0.1:3200` behind `JOBBOT_BROWSER_PASSWORD` (user `JOBBOT_BROWSER_USER`, default `richard`). `scripts/setup-tailscale-serve.sh` serves it as `https://<tailnet-name>:3200`. The container **refuses to start** without the password.
 - **Profile lock:** cleared at init. A stale `SingletonLock` from a previous container made Chromium skip DevTools; this was caught in the spike.
 - **Accepted risk:** the image runs Chromium with `--no-sandbox`. The container is the boundary: it has its own network, no host mounts beyond its profile, and a 3 GB memory limit.
