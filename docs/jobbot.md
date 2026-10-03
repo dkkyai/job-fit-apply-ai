@@ -104,15 +104,21 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 
 ## Card template
 
-Richard can ask JobBot to change how high-fit cards look. Without a template, the built-in card has these lines:
-1. `Company — Title — score`, with the company linked to the posting and the title to the report
-2. location · salary · via source
-3. **Why it fits**, with the top three strengths
-4. **Gap:**, with the main gap
-5. **Skipped:** with the reason, when it applies
-6. the `#J` ref
+Richard can ask JobBot to change how high-fit cards look. Without a template, the built-in card reads:
+```
+Sparksoft: Automation Engineer (63)
+Remote · $80K–$85K · via jobright.ai
 
-Each line is left out when its value is unknown.
+Fit:
+• Web/API automation tools match
+• Healthcare domain expertise overlap
+• Core tech stack overlap
+
+Gap: Seniority level is a step down
+Skipped: Posted pay (max $85K) is below the $145K target
+#J7708
+```
+The company links to the posting and the title to the report. A missing company or title reads "Unknown". Each line is left out when its value is unknown, and the blank lines only frame the Fit block.
 - **Tools:** `get_alert_template` and `preview_alert_template` (with a real `#J` or a sample), then `update_alert_template`, which `revert_alert_template` undoes.
 - **Storage:** the template lives in `jobbot-templates/high-fit.html`. jobbot-mcp writes it; the notifier mounts it read-only and re-reads it per card once `NOTIFIER_TELEGRAM_TEMPLATE_FILE=/templates/high-fit.html` is set.
 - **Rules:**

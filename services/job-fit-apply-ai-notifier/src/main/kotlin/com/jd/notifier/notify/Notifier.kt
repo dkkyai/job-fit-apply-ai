@@ -58,9 +58,10 @@ class Notifier(
      */
     fun notify(event: CompletedEvent, alreadyDelivered: Set<String> = emptySet()): NotifyOutcome {
         if (!client.discordConfigured && !client.telegramConfigured) return NotifyOutcome()
-        // Non-job terminal events (digest parents, not-a-job) carry no company and no error — the
-        // old Processor never notified these; skip them. Error events (company may be null) still send.
-        if (event.company.isNullOrBlank() && event.error == null) return NotifyOutcome()
+        // Non-job terminal events (digest parents, not-a-job) carry no company, no error and no
+        // fit — the old Processor never notified these; skip them. Error events still send, and so
+        // does a high fit whose company was not extracted: its card reads "Unknown".
+        if (event.company.isNullOrBlank() && event.error == null && (event.fitScore ?: 0) < fitThreshold) return NotifyOutcome()
 
         fun discord(text: String) =
             if ("discord" in alreadyDelivered) DeliveryResult.DELIVERED else client.postDiscord(text)
@@ -73,9 +74,9 @@ class Notifier(
         val score = event.fitScore?.toString() ?: "?"
         val action = event.pipelineAction ?: "?"
         val discordResult = discord("• ${discordJobLabel(event)} — **$score** ($action)")
-        val builtIn = "${telegramJobLabel(event)} — ${event.fitScore}" + detailsBlock(event) + skipLine(event) + jobRefLine(event)
+        val builtIn = builtInCard(event)
         // The skip reason rides under any template too: a card without a resume must say why.
-        val templated = templated(event)?.let { it + skipLine(event) }
+        val templated = templated(event)?.let { t -> skipText(event)?.let { "$t\n$it" } ?: t }
         fun send(text: String) = if (buttonsEnabled) client.postTelegramHtmlWithButtons(text, buttonsFor(event)) else client.postTelegramHtml(text)
         val telegramResult = when {
             (event.fitScore ?: 0) < fitThreshold -> DeliveryResult.SKIPPED
@@ -127,8 +128,8 @@ class Notifier(
         }
 
     private fun values(e: CompletedEvent) = AlertTemplate.Values(
-        company = e.company ?: "",
-        title = (e.roleTitle ?: "").ifBlank { "(no title)" },
+        company = e.company.orUnknown(),
+        title = e.roleTitle.orUnknown(),
         score = e.fitScore?.toString() ?: "?",
         action = e.pipelineAction ?: "",
         ref = "#J${e.completedSeq}",
@@ -143,31 +144,38 @@ class Notifier(
     )
 
     /**
-     * Location · salary · source, the top strengths and the main gap, each on its own lines and
-     * left out when unknown — the Muse card's facts as Telegram text.
+     * The built-in card (Richard's layout, 2026-10-02):
+     *
+     *     Sparksoft: Automation Engineer (63)
+     *     Remote · $80K–$85K · via jobright.ai
+     *
+     *     Fit:
+     *     • …
+     *
+     *     Gap: …
+     *     Skipped: …
+     *     #J7708
+     *
+     * Each line is left out when unknown; the blank lines frame the Fit block only, so a card
+     * without strengths stays compact (an old event is just the first line and the ref).
      */
-    private fun detailsBlock(e: CompletedEvent): String {
+    private fun builtInCard(e: CompletedEvent): String {
         val v = values(e)
-        return buildString {
-            AlertTemplate.details(v).takeIf { it.isNotEmpty() }?.let { append("\n").append(htmlEscape(it)) }
-            AlertTemplate.strengths(v).takeIf { it.isNotEmpty() }?.let { append("\n<b>Why it fits</b>\n").append(htmlEscape(it)) }
-            AlertTemplate.gap(v).takeIf { it.isNotEmpty() }?.let { append("\n<b>Gap:</b> ").append(htmlEscape(it)) }
-        }
+        val lines = mutableListOf("${telegramJobLabel(e)} (${e.fitScore ?: "?"})")
+        AlertTemplate.details(v).takeIf { it.isNotEmpty() }?.let { lines += htmlEscape(it) }
+        AlertTemplate.strengths(v).takeIf { it.isNotEmpty() }?.let { lines += listOf("", "Fit:", htmlEscape(it), "") }
+        AlertTemplate.gap(v).takeIf { it.isNotEmpty() }?.let { lines += "Gap: " + htmlEscape(it) }
+        skipText(e)?.let { lines += it }
+        if (e.completedSeq > 0) lines += "#J${e.completedSeq}"
+        return lines.joinToString("\n").trimEnd()
     }
 
-    /** "Skipped: <reason>" on its own line for a scored job that was not tailored, else nothing. */
-    private fun skipLine(e: CompletedEvent): String =
-        if (!e.skipped()) "" else "\nSkipped: " + htmlEscape(e.skipReason?.trim()?.ifBlank { null } ?: "not tailored, so there's no resume")
+    /** "Skipped: <reason>" for a scored job that was not tailored, else null. */
+    private fun skipText(e: CompletedEvent): String? =
+        if (!e.skipped()) null else "Skipped: " + htmlEscape(e.skipReason?.trim()?.ifBlank { null } ?: "not tailored, so there's no resume")
 
     private fun reportUrlOf(e: CompletedEvent): String? =
         e.artifactUrl?.takeIf { it.isNotBlank() }?.let { "${it.trimEnd('/')}/report.md" }
-
-    /**
-     * `#J<completed_seq>` on its own line: the job reference the agent resolves when the user
-     * replies to the ping, and a Telegram hashtag that gathers every message about the job.
-     */
-    private fun jobRefLine(e: CompletedEvent): String =
-        if (e.completedSeq > 0) "\n#J${e.completedSeq}" else ""
 
     /** `Company — [Title](artifactUrl)` — the title links to its report when present. */
     private fun discordJobLabel(e: CompletedEvent): String {
@@ -175,25 +183,29 @@ class Notifier(
         val title = role.ifBlank { "*(no title)*" }
         val url = e.artifactUrl?.takeIf { it.isNotBlank() }
         val titlePart = if (url != null && role.isNotBlank()) "[$title]($url)" else title
-        return "${e.company ?: ""} — $titlePart"
+        return "${e.company.orUnknown()} — $titlePart"
     }
 
-    /** `<a href=jobUrl>Company</a> — <a href=report>Title</a>` (HTML for Telegram). */
+    /** `<a href=jobUrl>Company</a>: <a href=report>Title</a>` (HTML for Telegram), "Unknown" for either when blank. */
     private fun telegramJobLabel(e: CompletedEvent): String {
-        val company = htmlEscape(e.company ?: "")
-        val title = htmlEscape((e.roleTitle ?: "").ifBlank { "(no title)" })
+        val company = htmlEscape(e.company.orUnknown())
+        val title = htmlEscape(e.roleTitle.orUnknown())
         val reportUrl = e.artifactUrl?.takeIf { it.isNotBlank() }?.let { "${it.trimEnd('/')}/report.md" }
         val jobUrl = e.jobUrl?.takeIf { it.isNotBlank() }
         val companyPart = if (jobUrl != null) "<a href=\"${htmlEscape(jobUrl)}\">$company</a>" else company
         val titlePart = if (reportUrl != null) "<a href=\"${htmlEscape(reportUrl)}\">$title</a>" else title
-        return "$companyPart — $titlePart"
+        return "$companyPart: $titlePart"
     }
+
+    /** A blank company or title reads "Unknown" on the card. */
+    private fun String?.orUnknown(): String = this?.trim()?.takeIf { it.isNotEmpty() } ?: UNKNOWN
 
     private fun htmlEscape(s: String): String = s
         .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
     companion object {
         const val TAILOR = "TAILOR"
+        const val UNKNOWN = "Unknown"
 
         /**
          * Terminal labels whose email the poller leaves in the inbox (LabelApplier). Everything

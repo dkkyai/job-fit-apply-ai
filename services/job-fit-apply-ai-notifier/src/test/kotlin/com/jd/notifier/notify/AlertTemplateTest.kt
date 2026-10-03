@@ -61,8 +61,8 @@ class AlertTemplateTest {
         assertNotNull(AlertTemplate.validate("{ref}" + "x".repeat(AlertTemplate.MAX_LENGTH)))
     }
 
-    /** The built-in card's first line for [event]: no "High-fit:" prefix, company → posting, title → report. */
-    private val BUILT_IN_FIRST_LINE = "<a href=\"https://acme.co/j\">Acme</a> — <a href=\"http://host:8081/x/report.md\">Staff SDET</a> — 72"
+    /** The built-in card's first line for [event]: "Company: Title (score)", company → posting, title → report. */
+    private val BUILT_IN_FIRST_LINE = "<a href=\"https://acme.co/j\">Acme</a>: <a href=\"http://host:8081/x/report.md\">Staff SDET</a> (72)"
 
     private val event = CompletedEvent(
         jobId = "j", completedSeq = 9, status = "done", company = "Acme", roleTitle = "Staff SDET", fitScore = 72,

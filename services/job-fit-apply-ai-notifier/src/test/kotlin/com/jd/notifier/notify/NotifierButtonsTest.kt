@@ -89,7 +89,7 @@ class NotifierButtonsTest {
             actions = TelegramButtons.parseActions("apply,reply,archive"), links = noLookup).notify(gated())
         val (text, rows) = sent(c)
         val lines = text.lines()
-        assertEquals("<a href=\"https://jobright.ai/jobs/info/6abf\">Sparksoft</a> — <a href=\"http://host:8081/20261002_132538_sparksoft_automation_engineer/report.md\">Automation Engineer</a> — 63", lines[0])
+        assertEquals("<a href=\"https://jobright.ai/jobs/info/6abf\">Sparksoft</a>: <a href=\"http://host:8081/20261002_132538_sparksoft_automation_engineer/report.md\">Automation Engineer</a> (63)", lines[0])
         assertEquals("Skipped: Posted pay (max \$85K) is below the \$145K target", lines[1])
         assertEquals("#J7708", lines.last())
         assertEquals(listOf(listOf("View Report")), rows.map { r -> r.map { it.text } }, "no resume, no Apply: $rows")
@@ -126,12 +126,12 @@ class NotifierButtonsTest {
             strengths = listOf("Kotlin & CI ownership", "Espresso", "XCUITest", "Fourth"), gaps = listOf("No Pact experience", "Other"),
         ))
         val lines = sent(c).first.lines()
-        assertTrue(lines[0].startsWith("<a href=") && lines[0].endsWith("— 80"), lines.toString())
+        assertTrue(lines[0].startsWith("<a href=") && lines[0].endsWith("</a> (80)"), lines.toString())
         assertEquals(
             listOf(
                 "Seattle, WA · hybrid · \$150K–\$180K · via jobright.ai",
-                "<b>Why it fits</b>", "• Kotlin &amp; CI ownership", "• Espresso", "• XCUITest",
-                "<b>Gap:</b> No Pact experience",
+                "", "Fit:", "• Kotlin &amp; CI ownership", "• Espresso", "• XCUITest", "",
+                "Gap: No Pact experience",
                 "#J7663",
             ),
             lines.drop(1),
@@ -152,10 +152,41 @@ class NotifierButtonsTest {
         val c = client()
         notifier(c).notify(gated().copy(location = "Remote", strengths = listOf("API automation"), gaps = listOf("Mid-level scope")))
         assertEquals(
-            listOf("Remote", "<b>Why it fits</b>", "• API automation", "<b>Gap:</b> Mid-level scope",
+            listOf("Remote", "", "Fit:", "• API automation", "", "Gap: Mid-level scope",
                 "Skipped: Posted pay (max \$85K) is below the \$145K target", "#J7708"),
             sent(c).first.lines().drop(1),
         )
+    }
+
+    @Test
+    @DisplayName("Richard's layout exactly, with no strengths the card stays compact, and a missing company or title is Unknown")
+    fun layoutAndUnknown() {
+        val c1 = client()
+        notifier(c1).notify(gated().copy(
+            jobUrl = null, artifactUrl = null, location = "Remote", salaryRange = "\$80K–\$85K", source = "jobright.ai",
+            strengths = listOf("Web/API automation tools match", "Healthcare domain expertise overlap", "Core tech stack overlap"),
+            gaps = listOf("Seniority level is a step down"),
+        ))
+        assertEquals(
+            """
+            Sparksoft: Automation Engineer (63)
+            Remote · ${'$'}80K–${'$'}85K · via jobright.ai
+
+            Fit:
+            • Web/API automation tools match
+            • Healthcare domain expertise overlap
+            • Core tech stack overlap
+
+            Gap: Seniority level is a step down
+            Skipped: Posted pay (max ${'$'}85K) is below the ${'$'}145K target
+            #J7708
+            """.trimIndent(),
+            sent(c1).first,
+        )
+
+        val c2 = client()
+        notifier(c2).notify(gated().copy(jobUrl = null, artifactUrl = null, company = "  ", roleTitle = null, location = "Remote", gaps = listOf("Mid-level")))
+        assertEquals(listOf("Unknown: Unknown (63)", "Remote", "Gap: Mid-level"), sent(c2).first.lines().take(3), "no blank lines without a Fit block")
     }
 
     @Test
@@ -188,9 +219,9 @@ class NotifierButtonsTest {
         val c = client()
         notifier(c).notify(event())
         val (text, _) = sent(c)
-        assertTrue(text.startsWith("<a href=\"https://acme.co/j\">Acme</a> — "), "no \"High-fit:\" prefix: $text")
+        assertTrue(text.startsWith("<a href=\"https://acme.co/j\">Acme</a>: "), "\"Company: Title (score)\", no prefix: $text")
         assertEquals("#J7663", text.lines().last(), "job ref must be its own last line: $text")
-        assertTrue(text.lines().first().endsWith("— 80"), "score stays on the first line: $text")
+        assertTrue(text.lines().first().endsWith("</a> (80)"), "score stays on the first line: $text")
     }
 
     @Test

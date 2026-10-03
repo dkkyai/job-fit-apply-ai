@@ -226,7 +226,9 @@ class JobbotTools(
         AlertTemplates.validate(template)?.let { return err("Invalid template: $it") }
         val event = req.string("ref")?.let { JobRef.parse(it) }?.let { lookup.event(it) }
         val values = AlertTemplates.Values(
-            company = event?.str("company") ?: "Acme", title = event?.str("role_title") ?: "Staff SDET",
+            // A job's missing company or title reads "Unknown", as on the notifier's card.
+            company = if (event == null) "Acme" else event.str("company") ?: "Unknown",
+            title = if (event == null) "Staff SDET" else event.str("role_title") ?: "Unknown",
             score = event?.long("fit_score")?.toString() ?: "72", action = event?.str("pipeline_action") ?: "TAILOR",
             ref = event?.long("completed_seq")?.let { JobRef.format(it) } ?: "#J1234",
             jobUrl = event?.str("job_url") ?: "https://example.com/job",

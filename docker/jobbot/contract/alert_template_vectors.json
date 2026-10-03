@@ -27,7 +27,7 @@
     "<b>{score}</b> {company} · {title}\n{ref}",
     "<blockquote>{title_link}</blockquote>\n<i>{action}</i> {ref}",
     "<b><i>{score}</i></b> {title}\n{ref}",
-    "{company_link} — {title_link} — {score}\n{details}\n<b>Why it fits</b>\n{strengths}\n<b>Gap:</b> {gap}\n{ref}"
+    "{company_link}: {title_link} ({score})\n{details}\n\nFit:\n{strengths}\n\nGap: {gap}\n{ref}"
   ],
   "invalid": [
     {
@@ -91,7 +91,7 @@
       "expected": "Beta · QA\n#J10"
     },
     {
-      "template": "{company_link} — {title_link} — {score}\n{details}\n<b>Why it fits</b>\n{strengths}\n<b>Gap:</b> {gap}\n{ref}",
+      "template": "{company_link}: {title_link} ({score})\n{details}\n\nFit:\n{strengths}\n\nGap: {gap}\n{ref}",
       "event": {
         "company": "Acme",
         "title": "Staff SDET",
@@ -117,7 +117,7 @@
           "Second gap"
         ]
       },
-      "expected": "Acme — Staff SDET — 72\nSeattle, WA · hybrid · $150K–$180K · via jobright.ai\n<b>Why it fits</b>\n• Kotlin &amp; CI &lt;ownership&gt;\n• Espresso\n• XCUITest\n<b>Gap:</b> No Pact experience\n#J11"
+      "expected": "Acme: Staff SDET (72)\nSeattle, WA · hybrid · $150K–$180K · via jobright.ai\n\nFit:\n• Kotlin &amp; CI &lt;ownership&gt;\n• Espresso\n• XCUITest\n\nGap: No Pact experience\n#J11"
     },
     {
       "template": "{title}\n{details}\n<b>Gap:</b> {gap}\n{strengths}\n{ref}",
