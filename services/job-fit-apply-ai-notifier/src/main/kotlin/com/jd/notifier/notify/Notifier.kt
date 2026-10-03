@@ -73,7 +73,7 @@ class Notifier(
         val score = event.fitScore?.toString() ?: "?"
         val action = event.pipelineAction ?: "?"
         val discordResult = discord("• ${discordJobLabel(event)} — **$score** ($action)")
-        val builtIn = "High-fit: ${telegramJobLabel(event)} — ${event.fitScore}" + detailsBlock(event) + skipLine(event) + jobRefLine(event)
+        val builtIn = "${telegramJobLabel(event)} — ${event.fitScore}" + detailsBlock(event) + skipLine(event) + jobRefLine(event)
         // The skip reason rides under any template too: a card without a resume must say why.
         val templated = templated(event)?.let { it + skipLine(event) }
         fun send(text: String) = if (buttonsEnabled) client.postTelegramHtmlWithButtons(text, buttonsFor(event)) else client.postTelegramHtml(text)

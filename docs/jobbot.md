@@ -105,7 +105,7 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 ## Card template
 
 Richard can ask JobBot to change how high-fit cards look. Without a template, the built-in card has these lines:
-1. `High-fit: Company — Title — score`
+1. `Company — Title — score`, with the company linked to the posting and the title to the report
 2. location · salary · via source
 3. **Why it fits**, with the top three strengths
 4. **Gap:**, with the main gap

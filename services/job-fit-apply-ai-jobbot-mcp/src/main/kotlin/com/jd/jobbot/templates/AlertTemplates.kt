@@ -50,7 +50,7 @@ class AlertTemplates(private val file: Path) {
         val ALLOWED_TAGS = setOf("b", "i", "u", "s", "code", "pre", "blockquote")
         const val MAX_LENGTH = 1000
         /** The notifier's built-in card, as a template (lines with only empty placeholders drop out). */
-        const val BUILT_IN = "High-fit: {company_link} — {title_link} — {score}\n{details}\n<b>Why it fits</b>\n{strengths}\n<b>Gap:</b> {gap}\n{ref}"
+        const val BUILT_IN = "{company_link} — {title_link} — {score}\n{details}\n<b>Why it fits</b>\n{strengths}\n<b>Gap:</b> {gap}\n{ref}"
         private val PLACEHOLDER = Regex("""\{([a-z_]+)\}""")
         private val TAG = Regex("""<\s*(/?)\s*([a-zA-Z0-9]+)[^>]*>""")
 

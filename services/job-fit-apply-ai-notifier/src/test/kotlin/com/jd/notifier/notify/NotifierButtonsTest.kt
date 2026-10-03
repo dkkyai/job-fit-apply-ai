@@ -89,7 +89,7 @@ class NotifierButtonsTest {
             actions = TelegramButtons.parseActions("apply,reply,archive"), links = noLookup).notify(gated())
         val (text, rows) = sent(c)
         val lines = text.lines()
-        assertTrue(lines[0].startsWith("High-fit: ") && lines[0].endsWith("— 63"), text)
+        assertEquals("<a href=\"https://jobright.ai/jobs/info/6abf\">Sparksoft</a> — <a href=\"http://host:8081/20261002_132538_sparksoft_automation_engineer/report.md\">Automation Engineer</a> — 63", lines[0])
         assertEquals("Skipped: Posted pay (max \$85K) is below the \$145K target", lines[1])
         assertEquals("#J7708", lines.last())
         assertEquals(listOf(listOf("View Report")), rows.map { r -> r.map { it.text } }, "no resume, no Apply: $rows")
@@ -126,7 +126,7 @@ class NotifierButtonsTest {
             strengths = listOf("Kotlin & CI ownership", "Espresso", "XCUITest", "Fourth"), gaps = listOf("No Pact experience", "Other"),
         ))
         val lines = sent(c).first.lines()
-        assertTrue(lines[0].startsWith("High-fit: ") && lines[0].endsWith("— 80"), lines.toString())
+        assertTrue(lines[0].startsWith("<a href=") && lines[0].endsWith("— 80"), lines.toString())
         assertEquals(
             listOf(
                 "Seattle, WA · hybrid · \$150K–\$180K · via jobright.ai",
@@ -188,7 +188,7 @@ class NotifierButtonsTest {
         val c = client()
         notifier(c).notify(event())
         val (text, _) = sent(c)
-        assertTrue(text.startsWith("High-fit: "), text)
+        assertTrue(text.startsWith("<a href=\"https://acme.co/j\">Acme</a> — "), "no \"High-fit:\" prefix: $text")
         assertEquals("#J7663", text.lines().last(), "job ref must be its own last line: $text")
         assertTrue(text.lines().first().endsWith("— 80"), "score stays on the first line: $text")
     }

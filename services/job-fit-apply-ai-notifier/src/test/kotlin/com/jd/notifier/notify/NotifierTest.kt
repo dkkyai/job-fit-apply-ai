@@ -69,7 +69,7 @@ class NotifierTest {
         val c = client()
         Notifier(c, fitThreshold = 50).notify(job(fit = 80))
         verify(c).postDiscord(any())
-        verify(c).postTelegramHtml(argThat { contains("High-fit") && contains("80") })
+        verify(c).postTelegramHtml(argThat { startsWith("Acme — ") && contains("— 80") && !contains("High-fit") })
     }
 
     @Test

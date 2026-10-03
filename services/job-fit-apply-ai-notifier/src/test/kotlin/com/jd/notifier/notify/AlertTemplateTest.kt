@@ -61,6 +61,9 @@ class AlertTemplateTest {
         assertNotNull(AlertTemplate.validate("{ref}" + "x".repeat(AlertTemplate.MAX_LENGTH)))
     }
 
+    /** The built-in card's first line for [event]: no "High-fit:" prefix, company → posting, title → report. */
+    private val BUILT_IN_FIRST_LINE = "<a href=\"https://acme.co/j\">Acme</a> — <a href=\"http://host:8081/x/report.md\">Staff SDET</a> — 72"
+
     private val event = CompletedEvent(
         jobId = "j", completedSeq = 9, status = "done", company = "Acme", roleTitle = "Staff SDET", fitScore = 72,
         pipelineAction = "TAILOR", jobUrl = "https://acme.co/j", artifactUrl = "http://host:8081/x/",
@@ -93,7 +96,7 @@ class AlertTemplateTest {
             notifier(c, f).notify(event)
             val text = argumentCaptor<String>()
             verify(c).postTelegramHtml(text.capture())
-            assertEquals(true, text.firstValue.startsWith("High-fit: "), "fallback for $f: ${text.firstValue}")
+            assertEquals(BUILT_IN_FIRST_LINE, text.firstValue.lines().first(), "fallback for $f: ${text.firstValue}")
         }
     }
 
@@ -110,7 +113,7 @@ class AlertTemplateTest {
         val text = argumentCaptor<String>()
         verify(c, times(2)).postTelegramHtml(text.capture())
         assertEquals("Acme #J9", text.firstValue)
-        assertEquals(true, text.secondValue.startsWith("High-fit: "))
+        assertEquals(BUILT_IN_FIRST_LINE, text.secondValue.lines().first())
         assertEquals(DeliveryResult.DELIVERED, outcome.telegram)
     }
 
