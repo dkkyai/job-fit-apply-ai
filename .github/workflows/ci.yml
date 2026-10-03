@@ -752,3 +752,29 @@ jobs:
           publish_dir: allure-report
           keep_files: true
           commit_message: "ci: publish Allure report for ${{ github.sha }}"
+
+  # ── CI green → PR comment ─────────────────────────────────────────────────
+  # The desktop app's PR monitor wakes Claude on failed checks and new PR comments, never on
+  # passing checks. This comment is the "it's green" signal: Claude then checks PR-Agent's
+  # threads, merges, deploys and verifies. PRs only; a newer push cancels the run (no comment).
+  ci-green:
+    name: CI green → PR comment
+    runs-on: ubuntu-latest
+    needs: [web-app, extension, bridge, pipeline, poller, jsearch, notifier, jobbot-mcp, jobbot-agent, compose-data-root, run-analyzer, e2e]
+    if: >-
+      always() && github.event_name == 'pull_request' &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Comment on the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh pr comment "$PR" --repo "$REPO" --body "✅ All CI checks passed for \`${SHA:0:9}\` ([run]($RUN_URL)).
+          <!-- ci-green:$SHA -->"
