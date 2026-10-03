@@ -234,6 +234,9 @@ else
     if running "$P-jobbot-browser"; then
       if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-jobbot-browser" 2>/dev/null)" = "healthy" ]; then
         ok "jobbot-browser healthy (Chromium DevTools answering)"
+        docker exec "$P-jobbot-browser" test -f /etc/chromium/policies/managed/jobbot.json 2>/dev/null \
+          && ok "jobbot-browser sign-in policy present (Google web session survives restarts)" \
+          || warn "jobbot-browser has no BrowserSignin policy — the Google session is lost on every restart (rebuild the image)"
       else warn "jobbot-browser up but not healthy  →  docker logs $P-jobbot-browser"; fi
     else bad "jobbot-browser not running  →  docker compose --profile jobbot-browser up -d jobbot-browser"; fi
   else ok "Apply not enabled — an Apply tap answers \"Not implemented yet\""; fi

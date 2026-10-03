@@ -10,6 +10,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY svc-cdp/ /etc/s6-overlay/s6-rc.d/svc-cdp/
 COPY custom-cont-init.d/ /custom-cont-init.d/
+# Browser sign-in off. This Chromium has no Google API keys, so every Google web sign-in makes
+# DICE try (and fail) to fetch a browser token, and the next startup's reconcile signs the account
+# out of the web: the dkkytech@ session died on every restart. With BrowserSignin 0 there is no
+# DICE, and a website sign-in is just cookies that persist like any other site's.
+COPY policies/jobbot.json /etc/chromium/policies/managed/jobbot.json
 RUN chmod +x /etc/s6-overlay/s6-rc.d/svc-cdp/run \
     && touch /etc/s6-overlay/s6-rc.d/user/contents.d/svc-cdp
 
