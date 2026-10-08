@@ -20,6 +20,17 @@ object BoardRegistry {
 
     val DOMAINS: Set<String> = GROUPS.flatMap { it.domains }.toSet()
 
+    /**
+     * Board subdomains that relay one recruiter's own message rather than send the board's alerts.
+     * A "Dice Private Email" arrives from `<alias>@user.dice.com` with the whole JD in the body and
+     * no job link; read as a Dice digest it became a stub child the bridge rejected (422), so the
+     * email was labelled JD_Error. These go through recruiter extraction instead.
+     */
+    val RECRUITER_RELAY_DOMAINS: Set<String> = setOf("user.dice.com")
+
+    fun isRecruiterRelay(domain: String?): Boolean =
+        !domain.isNullOrBlank() && domain.lowercase() in RECRUITER_RELAY_DOMAINS
+
     val STRATEGIES: Map<String, BoardDigestStrategy> = mapOf(
         "linkedin" to LinkedInDigestStrategy,
         "jobleads" to JobLeadsDigestStrategy,

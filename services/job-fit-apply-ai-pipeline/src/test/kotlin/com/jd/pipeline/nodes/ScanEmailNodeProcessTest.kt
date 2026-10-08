@@ -147,6 +147,66 @@ class ScanEmailNodeProcessTest {
         }
 
         @Test
+        @DisplayName("an unparseable reply is retried once and the retry's JSON is used")
+        fun unparseableReplyIsRetriedOnce() {
+            // glm-5.2 occasionally drops the opening `{"` of its JSON (Randstad, Lead .NET —
+            // 2026-10-05/06). Re-asking the same prompt parses; a JD_Error does not.
+            val replies = ArrayDeque(listOf(
+                "is_job_posting\": true, \"role_title\": \"Lead .NET Developer\"}",
+                """{"is_job_posting": true, "role_title": "Lead .NET Developer"}""",
+            ))
+            var calls = 0
+            val llm = LlmCaller { calls++; replies.removeFirst() }
+
+            val result = ScanEmailNode(llm = llm).process(recruiterEmail())
+
+            assertEquals(2, calls)
+            assertEquals("", result.error)
+            assertTrue(result.isJobPosting)
+            assertEquals("Lead .NET Developer", result.roleTitle)
+        }
+
+        @Test
+        @DisplayName("a reply that lost its opening brace is a parse error, not a non-posting")
+        fun headlessJsonIsAParseError() {
+            // Single-line, so Jackson reads `": true, "` as a bare string instead of failing.
+            val result = ScanEmailNode(llm = RecordingLlm(""": true, "role_title": "SDET"}""")).process(recruiterEmail())
+
+            assertTrue(result.error.contains("JSON parse failed"), "error was: ${result.error}")
+        }
+
+        @Test
+        @DisplayName("a parseable reply is not retried")
+        fun parseableReplyIsNotRetried() {
+            var calls = 0
+            val llm = LlmCaller { calls++; """{"is_job_posting": false}""" }
+
+            ScanEmailNode(llm = llm).process(recruiterEmail())
+
+            assertEquals(1, calls)
+        }
+
+        @Test
+        @DisplayName("a Dice Private Email relay goes through recruiter extraction, not the Dice digest")
+        fun diceRelayIsARecruiterEmail() {
+            // `<alias>@user.dice.com` is one recruiter's message with the JD in the body. Read as a
+            // Dice digest it became a stub child the bridge rejected (422) — JD_Error.
+            val llm = RecordingLlm("""{"is_job_posting": true, "role_title": "SDET", "jd_text": "Design automation frameworks"}""")
+
+            val result = ScanEmailNode(llm = llm).process(recruiterEmail(
+                subject = "Immediate opening for SDET @ Plano, TX",
+                rawBody = "This is a trusted Dice Private Email. Job Title: SDET. Job Type: Contract role.",
+                from = "Anuj Verma <pap-hi0-sah@user.dice.com>",
+            ))
+
+            assertTrue(llm.lastPrompt != null, "the recruiter LLM path must run")
+            assertFalse(result.isDigest)
+            assertTrue(result.isJobPosting)
+            assertTrue(result.isRecruiterEmail)
+            assertEquals("SDET", result.roleTitle)
+        }
+
+        @Test
         @DisplayName("an LLM exception is caught and recorded on the state")
         fun llmExceptionIsCaught() {
             val throwing = LlmCaller { error("backend down") }
@@ -219,6 +279,20 @@ class ScanEmailNodeProcessTest {
             val result = ScanEmailNode(llm = throwing).process(boardEmail("careers@lever.co", body))
 
             assertEquals(1, result.digestJobs.count { it.jobUrl == url })
+        }
+
+        @Test
+        @DisplayName("a Workday candidate-account activation link is not a job")
+        fun workdayActivationLinkIsNotAJob() {
+            // "Verify your candidate account" (2026-10-05): the activation link passed the workday
+            // URL rule, was scraped as a job, and hit the sign-in wall.
+            val body = "Activate your account: https://premera.wd5.myworkdayjobs.com/premera/activate/" +
+                "mlbauv8q7b5lfp4ts3y/?redirect=%2Fen-US%2Fpremera%2Fjob%2FTelecommuter%2FSoftware-Development-Engineer-IV_R29090%2Fapply"
+
+            val result = ScanEmailNode(llm = throwing).process(boardEmail("premera@otp.workday.com", body))
+
+            assertFalse(result.isJobPosting)
+            assertTrue(result.digestJobs.isEmpty(), "jobs: ${result.digestJobs.map { it.jobUrl }}")
         }
 
         @Test

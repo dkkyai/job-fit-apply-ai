@@ -329,6 +329,52 @@ class ProcessorCommandHandlerTest {
             verify(pipeline, never()).invoke(any())
         }
 
+        /** Run one EMAIL_RAW claim whose ingestion returns [ingestedState]; returns the bridge mock. */
+        private fun runIngestionError(ingestedState: JDState): BridgeClient {
+            val bridge = mock<BridgeClient>()
+            val pipeline = mock<ProcessingPipeline>()
+            val ingestion = mock<IngestionPipeline>()
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
+            val posted = CountDownLatch(1)
+
+            whenever(bridge.claim()).doReturn(emailClaim()).doAnswer { processorThread.interrupt(); null }
+            whenever(ingestion.invoke(any())).doReturn(ingestedState)
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
+
+            processorThread.isDaemon = true
+            processorThread.start()
+
+            assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should complete the ingestion error within 5s")
+            verify(pipeline, never()).invoke(any())
+            return bridge
+        }
+
+        @Test
+        @DisplayName("a browser outage recorded by the scrape is retried, not labelled JD_Error")
+        fun browserOutageIsRetryable() {
+            val bridge = runIngestionError(ingested(isJobPosting = true).copy(
+                jobUrl = "https://jobs.example.com/123",
+                error = "scrape_jd: Error {\n  message='Target page, context or browser has been closed",
+                scrapePath = "cdp_fallback",
+            ))
+
+            verify(bridge).postResult(eq("job-email"), argThat {
+                retryable && terminalLabel == null && scrapePath == "cdp_fallback"
+            }, anyOrNull())
+        }
+
+        @Test
+        @DisplayName("a non-transient ingestion error is still labelled JD_Error")
+        fun nonTransientIngestionErrorIsJdError() {
+            val bridge = runIngestionError(ingested(isJobPosting = false).copy(
+                error = "scan_email: JSON parse failed — \": true,",
+            ))
+
+            verify(bridge).postResult(eq("job-email"), argThat {
+                !retryable && terminalLabel == TerminalLabel.JD_ERROR
+            }, anyOrNull())
+        }
+
         @Test
         @DisplayName("posts a skip when an EMAIL_RAW claim has no email payload")
         fun skipsWhenEmailPayloadMissing() {

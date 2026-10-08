@@ -226,7 +226,12 @@ class LlmClient(private val config: LlmConfig) : LlmCaller {
                 throw TransientLlmFailure("LLM call to $url exceeded hard timeout of ${hardTimeoutSeconds}s", e)
             } catch (e: ExecutionException) {
                 future.cancel(true)
-                throw RuntimeException("LLM call to $url failed: ${e.cause?.message ?: e.message}")
+                val message = "LLM call to $url failed: ${e.cause?.message ?: e.message}"
+                // Transport failures — HttpRequest.timeout()'s "request timed out", a reset or
+                // refused connection — say nothing about the request itself, so they are as
+                // retryable as a 5xx. Left as a plain RuntimeException, nodes that only rethrow
+                // TransientLlmFailure recorded them as a terminal JD_Error instead.
+                throw if (e.cause is java.io.IOException) TransientLlmFailure(message, e.cause) else RuntimeException(message)
             }
             if (response.statusCode() < 400) {
                 return response.body()

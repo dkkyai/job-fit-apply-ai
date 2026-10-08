@@ -18,6 +18,10 @@ internal fun isEligibleJobUrl(url: String?, senderDomain: String): Boolean {
     if (lower.contains("unsubscribe") || lower.contains("optout") || lower.contains("opt-out") ||
         lower.contains("manage-pref") || lower.contains("privacy") || lower.contains("/account") ||
         lower.contains("/login") || lower.contains("/signin") ||
+        // Candidate-account activation / verification links (Workday's "Verify your candidate
+        // account" mail). Every myworkdayjobs.com URL passes the workday rule below, so this one
+        // was scraped as a job, hit the sign-in wall, and left a stub child the bridge rejected.
+        lower.contains("/activate/") || lower.contains("/verify") ||
         lower.matches(Regex(".*\\.(png|jpg|gif|jpeg|svg|css|js|ico)(\\?.*)?$"))) return false
 
     val group = BoardRegistry.groupFor(host.takeIf { it.isNotBlank() } ?: senderDomain)
