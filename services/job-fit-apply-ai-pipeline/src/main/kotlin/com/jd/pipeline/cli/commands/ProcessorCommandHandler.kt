@@ -329,11 +329,19 @@ object ProcessorCommandHandler {
                 // Scan/scrape FAILED (e.g. a transient LLM 507) — not a verdict that this isn't a
                 // job. Label JD_Error, never JD_Not_Found: mislabeling a real recruiter email as
                 // "not found" silently drops it (the intake query excludes JD_Not_Found) and the
-                // user has no signal it needs a retry.
+                // user has no signal it needs a retry. A transient failure a node caught into
+                // state.error (Steel down, a timed-out LLM call) first gets the same bridge retry a
+                // thrown one does; the bridge applies JD_Error once the retry budget is spent.
                 System.err.println("[processor] ingestion error for ${claimed.jobId}: ${disposition.message}")
+                val retryable = TransientFailureClassifier.isRetryableMessage(disposition.message)
                 postTerminal(
                     bridge, claimed, logRecordOf(ingState, IngestionSource.EMAIL),
-                    skipResult(disposition.message, TerminalLabel.JD_ERROR, ingState.scrapePath),
+                    skipResult(
+                        disposition.message,
+                        if (retryable) null else TerminalLabel.JD_ERROR,
+                        ingState.scrapePath,
+                        retryable = retryable,
+                    ),
                 )
             }
             is EmailDisposition.ReEnqueueChildren -> {

@@ -258,6 +258,45 @@ class ProcessingPipelineTest {
     }
 
     @Test
+    @DisplayName("a failed draft reply keeps the tailored job and still flags it Recruiter_Response_Required")
+    fun draftFailureKeepsTheJob(@TempDir tempDir: Path) {
+        // The draft is composed after the résumé and cover letter exist. A draft-model timeout
+        // used to fail the whole job as JD_Error and throw that work away.
+        val pipeline = tailorPipeline(tempDir, DraftReplyComposer(generate = {
+            throw com.jd.pipeline.client.TransientLlmFailure("LLM call to https://ollama.com/api/chat failed: request timed out")
+        }))
+
+        val result = pipeline.invoke(recruiterRecord())
+
+        assertNull(result.error)
+        assertNull(result.draftText)
+        assertEquals("TAILOR", result.pipelineAction)
+        assertEquals(TerminalLabel.RECRUITER, result.terminalLabel)
+        assertEquals(tempDir.toString(), result.outputPath)
+    }
+
+    @Test
+    @DisplayName("a transient failure is returned retryable with no terminal label, not as JD_Error")
+    fun transientFailureIsRetryable() {
+        // ScoreFitNode wraps a provider timeout in RetryableLlmError so the bridge can retry it.
+        // invoke() used to catch it and label it JD_Error, so it never reached the retry queue.
+        val pipeline = ProcessingPipeline()
+        injectNode(pipeline, "checkDuplicate", Node { state -> state.copy(isDuplicate = false) })
+        injectNode(pipeline, "scoreFit", Node { _ ->
+            throw com.jd.pipeline.client.RetryableLlmError(
+                "score_fit: LLM call to http://llm/v1/chat/completions exceeded hard timeout of 195s",
+                com.jd.pipeline.client.TransientLlmFailure("exceeded hard timeout of 195s"),
+            )
+        })
+
+        val result = pipeline.invoke(minimalRecord())
+
+        assertTrue(result.retryable)
+        assertNull(result.terminalLabel)
+        assertNotNull(result.error)
+    }
+
+    @Test
     @DisplayName("invoke calls MetadataUtils.writeMetadata after addArtifactUrl")
     fun invokeCallsWriteMetadataAfterAddArtifactUrl(@TempDir tempDir: Path) {
         val pipeline = ProcessingPipeline()

@@ -28,6 +28,16 @@ object TransientFailureClassifier {
             "request timed out" in normalized ||
             "timed out" in normalized ||
             "hard timeout" in normalized ||
-            "timeout" in normalized && "llm" in normalized
+            "timeout" in normalized && "llm" in normalized ||
+            BROWSER_OUTAGE_MARKERS.any { it in normalized }
     }
+
+    /**
+     * The scraping browser (Steel) being down or losing its session mid-page. That is an outage
+     * of ours, not a verdict on the job page, so the next attempt can succeed.
+     */
+    private val BROWSER_OUTAGE_MARKERS = listOf(
+        "steel browser not available",
+        "target page, context or browser has been closed",
+    )
 }

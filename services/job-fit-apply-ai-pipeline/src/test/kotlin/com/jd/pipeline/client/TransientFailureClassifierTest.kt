@@ -14,8 +14,17 @@ class TransientFailureClassifierTest {
     }
 
     @Test
+    fun `classifies a scraping-browser outage as retryable`() {
+        assertTrue(TransientFailureClassifier.isRetryableMessage("scrape_jd: Steel browser not available — call isAvailable() first"))
+        assertTrue(TransientFailureClassifier.isRetryableMessage(
+            "scrape_jd: Error {\n  message='Target page, context or browser has been closed\n  name='TargetClosedError",
+        ))
+    }
+
+    @Test
     fun `does not classify permanent provider failures as retryable`() {
         assertFalse(TransientFailureClassifier.isRetryable(RuntimeException("LLM HTTP 400 invalid request")))
         assertFalse(TransientFailureClassifier.isRetryable(RuntimeException("pipeline validation failed")))
+        assertFalse(TransientFailureClassifier.isRetryableMessage("scan_email: JSON parse failed — \": true,"))
     }
 }

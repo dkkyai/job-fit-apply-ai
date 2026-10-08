@@ -73,7 +73,7 @@ class ScanEmailNode(
 
         if (input.isJobPosting) return input
 
-        if (isJobBoardDomain(senderDomain)) {
+        if (isJobBoardDomain(senderDomain) && !BoardRegistry.isRecruiterRelay(senderDomain)) {
             println("[scan_email] Job board email from domain: $senderDomain")
             return processJobBoardEmail(input, senderDomain, email.rawBody)
         }
@@ -135,7 +135,13 @@ class ScanEmailNode(
         }
 
         return try {
-            parseLlmResponse(input, llm.call(prompt))
+            // One retry on an unparseable reply, as in ScrapeJdNode: glm occasionally drops the
+            // opening `{"` of its JSON. A re-ask of the same prompt parses; a JD_Error does not.
+            parseLlmResponse(input, llm.call(prompt)).takeIf { it.error.isEmpty() }
+                ?: run {
+                    println("[scan_email] Unparseable LLM reply — retrying once")
+                    parseLlmResponse(input, llm.call(prompt))
+                }
         } catch (e: com.jd.pipeline.client.TransientLlmFailure) {
             println("[scan_email] Transient LLM failure: ${e.message}")
             throw com.jd.pipeline.client.RetryableLlmError("scan_email: ${e.message}", e)
@@ -217,7 +223,9 @@ class ScanEmailNode(
         val cleaned = responseText.replace(Regex("```(?:json)?"), "").trim()
             .let { if (it.endsWith("`")) it.dropLast(1).trim() else it }
         return try {
-            val node = mapper.readTree(cleaned)
+            // readTree reads one value and ignores the rest, so a reply that lost its opening `{`
+            // can parse as a bare string; with no is_job_posting it would read as "not a job".
+            val node = mapper.readTree(cleaned).also { require(it.isObject) { "not a JSON object" } }
             // An application update wins over is_job_posting: interview confirmations often attach
             // the JD, and treating them as recruiter outreach re-tailored the same role every round.
             val isApplicationUpdate = node.path("is_application_update").asBoolean(false)

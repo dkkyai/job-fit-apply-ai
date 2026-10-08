@@ -16,6 +16,7 @@ import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.state.emailIntake
 import com.jd.pipeline.state.isRecruiterEmail
+import com.jd.pipeline.client.TransientFailureClassifier
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.utils.MetadataUtils
 import com.jd.pipeline.utils.OutputUtils
@@ -43,6 +44,11 @@ class ProcessingPipeline(
             invokeInternal(record)
         } catch (e: Exception) {
             System.err.println("[processing_pipeline] ERROR: ${e.message}")
+            // A transient provider failure (ScoreFitNode's RetryableLlmError, an LLM timeout) goes
+            // back to the bridge's retry queue. Catching it here without this check is what turned
+            // every one of them into a terminal JD_Error — the processor's own retry classification
+            // never saw the exception.
+            val retryable = TransientFailureClassifier.isRetryable(e)
             ProcessingResult(
                 pipelineAction = PipelineAction.SKIP.name,
                 fitScore       = 0,
@@ -51,9 +57,12 @@ class ProcessingPipeline(
                 outputPath     = null,
                 hasCoverLetter = false,
                 error          = e.message ?: "ProcessingPipeline failed",
+                retryable      = retryable,
                 // A processing failure is never evidence that the email is not a job. Without an
                 // explicit label the Poller's compatibility fallback converts this into JD_Not_Found.
-                terminalLabel  = TerminalLabel.JD_ERROR,
+                // A retryable one carries no label: the bridge defers it, or applies JD_Error itself
+                // once the retry budget is spent.
+                terminalLabel  = if (retryable) null else TerminalLabel.JD_ERROR,
                 company        = record.company,
                 roleTitle      = record.roleTitle,
                 jobUrl         = record.jobUrl,
@@ -127,16 +136,28 @@ class ProcessingPipeline(
         state = addArtifactUrl.process(state)
 
         // 5. Recruiter reply: compose the draft body Gmail-free (the Poller delivers it).
-        if (isRecruiter) {
-            draftComposer.compose(state)?.let { body ->
-                state = state.copy(draftText = body, isRecruiterResponseRequired = true)
-            }
-        }
+        if (isRecruiter) state = composeDraft(state)
 
         MetadataUtils.writeMetadata(state)
         state = supabaseTrack.process(state)
 
         return toResult(state)
+    }
+
+    /**
+     * The reply is the last, cheapest step of a recruiter job, after the résumé and cover letter
+     * are already built. A draft-model failure must not throw those away: before this, a slow
+     * DRAFT_REPLY_MODEL call that timed out failed the whole job as JD_Error. Without a draft the
+     * email is still labelled Recruiter_Response_Required, so it stays flagged for a reply.
+     */
+    private fun composeDraft(state: JDState): JDState {
+        val body = try {
+            draftComposer.compose(state) ?: return state
+        } catch (e: Exception) {
+            System.err.println("[processing_pipeline] WARN: draft reply failed, labelling without a draft: ${e.message}")
+            return state.copy(isRecruiterResponseRequired = true)
+        }
+        return state.copy(draftText = body, isRecruiterResponseRequired = true)
     }
 
     /**
