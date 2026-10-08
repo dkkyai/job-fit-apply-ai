@@ -63,7 +63,7 @@ object ScrapeOutcome {
             error.contains("bot-block") ||
             error.contains("cloudflare browser challenge")
 
-    private fun isHttpUrl(url: String): Boolean = runCatching {
+    internal fun isHttpUrl(url: String): Boolean = runCatching {
         if (url.any(Char::isWhitespace)) return false
         val uri = URI(url)
         uri.host != null && uri.scheme?.lowercase() in setOf("http", "https")

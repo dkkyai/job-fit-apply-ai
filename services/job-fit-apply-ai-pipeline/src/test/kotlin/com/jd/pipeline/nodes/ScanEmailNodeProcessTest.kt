@@ -296,6 +296,15 @@ class ScanEmailNodeProcessTest {
         }
 
         @Test
+        @DisplayName("a posting whose slug starts with \"verify\" is still a job")
+        fun verifySlugIsStillAJob() {
+            val url = "https://jobs.lever.co/acme/verify-test-engineer-123/apply"
+            val result = ScanEmailNode(llm = throwing).process(boardEmail("careers@lever.co", "Apply: $url"))
+
+            assertEquals(listOf(url), result.digestJobs.map { it.jobUrl })
+        }
+
+        @Test
         @DisplayName("board email with no eligible URLs is marked non-posting with a reason")
         fun noUrlsFound() {
             val result = ScanEmailNode(llm = throwing).process(

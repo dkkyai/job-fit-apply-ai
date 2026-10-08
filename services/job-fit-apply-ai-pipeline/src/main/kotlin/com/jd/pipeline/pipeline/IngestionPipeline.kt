@@ -66,7 +66,9 @@ class IngestionPipeline {
             "[ingestion] Scrape of ${beforeScrape.jobUrl} failed (${scraped.error.lineSequence().first().take(160)}) " +
                 "— using the JD from the email body (${beforeScrape.jdText.length} chars)",
         )
-        return scraped.copy(error = "")
+        // A job_url the scan could not make a URL of ("N/A", prose) would still classify the email
+        // MALFORMED_URL (JD_Scrape_Failed) after the error is cleared; it carries nothing to keep.
+        return scraped.copy(error = "", jobUrl = scraped.jobUrl.takeIf { ScrapeOutcome.isHttpUrl(it) } ?: "")
     }
 
     companion object {

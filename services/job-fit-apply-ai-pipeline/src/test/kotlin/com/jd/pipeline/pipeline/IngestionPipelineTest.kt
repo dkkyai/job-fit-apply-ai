@@ -223,6 +223,26 @@ class IngestionPipelineTest {
     }
 
     @Test
+    @DisplayName("the fallback drops a job_url that is not a URL, so the email is not MALFORMED_URL")
+    fun fallbackDropsNonHttpJobUrl() {
+        val pipeline = IngestionPipeline()
+        injectScanNode(pipeline, Node { state ->
+            state.copy(isJobPosting = true, jdText = "Senior SDET. ".repeat(60), jobUrl = "see link below")
+        })
+        val mockScrape = mock<ScrapeJdNode>()
+        whenever(mockScrape.process(any())).doAnswer { inv ->
+            (inv.arguments[0] as JDState).copy(error = "scrape_jd: Illegal character in path")
+        }
+        pipeline.scrapeNode = mockScrape
+        injectSaveNode(pipeline, Node { state -> state })
+
+        val result = pipeline.invoke(JDState(isJobPosting = false))
+
+        assertEquals("", result.jobUrl)
+        assertEquals(EmailDisposition.Process, EmailResolution.classify(result))
+    }
+
+    @Test
     @DisplayName("a failed scrape keeps its error when the email holds only a blurb")
     fun failedScrapeWithThinEmailJdStillErrors() {
         val pipeline = failingScrapePipeline("SDET role, see link", "scrape_jd: Steel browser not available")
