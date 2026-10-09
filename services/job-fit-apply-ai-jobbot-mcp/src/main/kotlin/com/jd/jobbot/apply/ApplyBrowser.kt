@@ -12,7 +12,6 @@ import com.microsoft.playwright.options.LoadState
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
-import java.net.InetAddress
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -114,18 +113,15 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
     /**
      * DevTools rejects any Host that is not an IP or localhost (DNS-rebinding guard), so the
      * service name is resolved to its address first — the processor's SteelBrowser does the same.
+     * See [CdpEndpoint].
      */
     private fun wsEndpoint(): String {
-        val uri = URI(cdpUrl)
-        val ip = InetAddress.getByName(uri.host).hostAddress
-        val base = "${uri.scheme}://$ip:${uri.port}"
+        val base = CdpEndpoint.base(cdpUrl)
         val body = HttpClient.newHttpClient().send(
             HttpRequest.newBuilder(URI.create("$base/json/version")).timeout(Duration.ofSeconds(10)).GET().build(),
             HttpResponse.BodyHandlers.ofString(),
         ).body()
-        val ws = Regex(""""webSocketDebuggerUrl"\s*:\s*"([^"]+)"""").find(body)?.groupValues?.get(1)
-            ?: error("apply browser /json/version had no webSocketDebuggerUrl")
-        return ws.replace(Regex("""^ws://[^/]+"""), "ws://$ip:${uri.port}")
+        return CdpEndpoint.wsFromVersionBody(body, base)
     }
 
     override fun open(guard: (String) -> Boolean): ApplyPage {
