@@ -196,7 +196,7 @@ npm_prefetch() {
      [ "$dir/node_modules/.package-lock.json" -nt "$dir/package-lock.json" ]; then
     log "npm deps current: $dir"; return 0
   fi
-  if (cd "$dir" && npm ci --no-audit --no-fund --loglevel=error >/dev/null); then
+  if (cd "$dir" && npm ci --no-audit --no-fund --no-update-notifier --loglevel=error >/dev/null); then
     log "npm deps ready: $dir"
   else
     warn "npm ci failed in $dir"; return 1
