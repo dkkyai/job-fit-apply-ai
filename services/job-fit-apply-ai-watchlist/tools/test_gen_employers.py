@@ -217,6 +217,16 @@ class MoreEmployersTest(unittest.TestCase):
         self.assertNotRegex("https://www.valvesoftware.com/en/jobs", e["link_pattern"])
 
 
+class OracleSearchTest(unittest.TestCase):
+    def test_every_area_city_in_the_location_text_is_searched_and_may_be_empty_is_kept(self):
+        # Molina: "Bothell" alone matched nothing in its Oracle keyword search; "Seattle" finds its WA postings.
+        e = gen_employers.entry(row(ats="oracle_hcm", may_be_empty="yes",
+                                    seattle_area_location="Seattle / Bothell (WA plan); IT remote",
+                                    api_endpoint="https://hckd.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1"))
+        self.assertEqual(["Seattle", "Bothell"], e["search"])
+        self.assertIs(True, e["may_be_empty"])
+
+
 class CommittedYamlTest(unittest.TestCase):
     def test_committed_employers_yaml_matches_the_generator_output(self):
         here = os.path.dirname(os.path.abspath(__file__))
