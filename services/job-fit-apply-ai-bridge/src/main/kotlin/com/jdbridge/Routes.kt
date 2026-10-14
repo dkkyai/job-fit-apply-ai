@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory
 private val log = LoggerFactory.getLogger("com.jdbridge.Routes")
 
 private suspend fun enqueueOne(body: SubmitJobRequest): SubmitJobResponse {
-    val existing = findActiveDuplicate(body.job_url, body.idempotency_key)
+    val existing = findActiveDuplicate(body.job_url, body.idempotency_key, body.source)
     if (existing != null) {
         log.info("Dedup hit for ${body.job_url ?: body.idempotency_key} → $existing")
         return SubmitJobResponse(job_id = existing, status = JobStatus.PENDING.value, deduped = true)

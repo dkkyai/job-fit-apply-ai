@@ -39,6 +39,19 @@ val JOBS_DIR get() = STORE_DIR.resolve("jobs")
 private val DEDUP_WINDOW_HOURS =
     (System.getenv("JD_BRIDGE_DEDUP_WINDOW_HOURS")?.toLongOrNull() ?: 72L)
 
+// Per-source windows. Career-site postings stay open for weeks and the watchlist re-lists them
+// daily, so the global 72h window would re-score every open posting every three days.
+// JD_BRIDGE_DEDUP_WINDOW_HOURS_<SOURCE> overrides (e.g. ..._CAREER_SITE=720).
+private val DEFAULT_SOURCE_WINDOW_HOURS = mapOf("CAREER_SITE" to 60L * 24L)
+
+/** Dedup window for a submission from [source]; unknown/absent sources use the global window. */
+internal fun dedupWindowHours(source: String?, env: (String) -> String? = System::getenv): Long {
+    val s = source?.trim()?.uppercase()?.takeIf { it.isNotEmpty() } ?: return DEDUP_WINDOW_HOURS
+    return env("JD_BRIDGE_DEDUP_WINDOW_HOURS_$s")?.toLongOrNull()
+        ?: DEFAULT_SOURCE_WINDOW_HOURS[s]
+        ?: DEDUP_WINDOW_HOURS
+}
+
 // Stale claim threshold: claimed rows older than this are re-queued. Configurable because a
 // 30-minute default makes stale-claim recovery untestable — see StoreTest.
 private val STALE_CLAIM_MILLIS =
@@ -140,10 +153,10 @@ suspend fun initDb() = withContext(Dispatchers.IO) {
 
 /**
  * Return an existing job_id if a non-ERROR row matching [key] or [jobUrl]
- * already exists within the dedup window. Returns null otherwise.
+ * already exists within the dedup window for [source]. Returns null otherwise.
  */
-suspend fun findActiveDuplicate(jobUrl: String?, key: String?): String? = dbQuery {
-    val cutoff = System.currentTimeMillis() / 1000L - DEDUP_WINDOW_HOURS * 3600L
+suspend fun findActiveDuplicate(jobUrl: String?, key: String?, source: String? = null): String? = dbQuery {
+    val cutoff = System.currentTimeMillis() / 1000L - dedupWindowHours(source) * 3600L
     val terminal = listOf(JobStatus.ERROR.value)
 
     if (!key.isNullOrBlank()) {

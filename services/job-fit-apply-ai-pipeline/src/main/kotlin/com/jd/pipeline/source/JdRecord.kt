@@ -2,7 +2,7 @@ package com.jd.pipeline.source
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 
-enum class IngestionSource { EMAIL, JSEARCH, MANUAL, EXTENSION }
+enum class IngestionSource { EMAIL, JSEARCH, MANUAL, EXTENSION, CAREER_SITE }
 
 data class JdRecord(
     val jdText: String,

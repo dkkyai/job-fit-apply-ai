@@ -79,6 +79,11 @@ services:
     volumes:
       - ${E2E_STATE_DIR:-./.e2e}/jsearch-state:/state
 
+  watchlist:
+    profiles: ["e2e-disabled"]
+    volumes:
+      - ${E2E_STATE_DIR:-./.e2e}/watchlist-state:/state
+
   processor:
     container_name: "${COMPOSE_PROJECT_NAME:-jobfit-e2e}-processor"
     restart: "no"

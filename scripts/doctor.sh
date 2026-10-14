@@ -24,7 +24,7 @@ export JFAA_ENV_FILE="$ROOT/$ENV_FILE"
 # shellcheck disable=SC1091
 . "$ROOT/scripts/jfaa-data-root.sh"
 
-# Instance identity: container names carry the prefix; intake services (poller/jsearch)
+# Instance identity: container names carry the prefix; intake services (poller/jsearch/watchlist)
 # exist only where COMPOSE_PROFILES activates them — a test instance sets it empty.
 P="${CONTAINER_PREFIX:-jobfit}"
 case "${COMPOSE_PROFILES-intake}" in
@@ -82,9 +82,24 @@ if [ "$INTAKE" = "1" ]; then
       ok "jsearch ($P-jsearch) healthy — daily JSearch API intake"
     else warn "jsearch container up but not healthy (needs JSEARCH_API_KEY?  →  docker logs $P-jsearch)"; fi
   else warn "jsearch ($P-jsearch) not running  →  set JSEARCH_API_KEY in .env, then make up"; fi
+  if running "$P-watchlist"; then
+    if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-watchlist" 2>/dev/null)" = "healthy" ]; then
+      ok "watchlist ($P-watchlist) healthy — daily employer job-feed intake"
+    else warn "watchlist container up but not healthy  →  docker logs $P-watchlist"; fi
+    # Feeds rot quietly (rebrands, ATS moves): surface employers whose feed failed last run.
+    WL_FAILING=$(docker exec "$P-watchlist" cat /state/watchlist-health.json 2>/dev/null | python3 -c '
+import json,sys
+try: h=json.load(sys.stdin)
+except Exception: sys.exit(0)
+emps=h.get("employers",[])
+bad=[e["company"] for e in emps if e.get("error")]
+if bad: print("%d/%d: %s%s" % (len(bad), len(emps), ", ".join(bad[:8]), " …" if len(bad) > 8 else ""))
+' 2>/dev/null)
+    if [ -n "$WL_FAILING" ]; then warn "watchlist feeds failing ($WL_FAILING)  →  re-check those employers.yaml entries"; fi
+  else warn "watchlist ($P-watchlist) not running  →  make up"; fi
 else
-  ok "intake services (poller/jsearch) intentionally absent — COMPOSE_PROFILES has no 'intake' (jobs enter via make replay)"
-  if running "$P-poller" || running "$P-jsearch"; then
+  ok "intake services (poller/jsearch/watchlist) intentionally absent — COMPOSE_PROFILES has no 'intake' (jobs enter via make replay)"
+  if running "$P-poller" || running "$P-jsearch" || running "$P-watchlist"; then
     bad "intake container running for prefix $P but COMPOSE_PROFILES excludes intake — a second poller races prod on Gmail"
   fi
 fi

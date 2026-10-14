@@ -29,6 +29,17 @@ class BridgeClientClaimTest {
     }
 
     @Test
+    fun `JD_SCRAPED claim from the watchlist parses with source CAREER_SITE`() {
+        val dto = parseClaimTree(mapper.readTree(
+            """{"job_id":"j2","type":"JD_SCRAPED","jd_record":
+               {"jd_text":"hello","company":"Costco IT","role_title":"Quality Engineer","location":"Issaquah, WA",
+                "job_url":"https://example.com/1","source":"CAREER_SITE","idempotency_key":"watchlist:rss:phf.tbe.taleo.net:10965"}}"""
+        ))
+        assertEquals(com.jd.pipeline.source.IngestionSource.CAREER_SITE, dto.jdRecord!!.source)
+        assertEquals("watchlist:rss:phf.tbe.taleo.net:10965", dto.jdRecord!!.idempotencyKey)
+    }
+
+    @Test
     fun `EMAIL_RAW claim parses a ClaimedEmail (snake_case)`() {
         val dto = parseClaimTree(mapper.readTree(
             """{"job_id":"j2","type":"EMAIL_RAW","jd_record":

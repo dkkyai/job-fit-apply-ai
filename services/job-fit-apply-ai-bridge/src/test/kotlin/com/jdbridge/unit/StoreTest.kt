@@ -361,6 +361,29 @@ class StoreDedupTest {
     }
 
     @Test
+    fun `career-site submissions dedup against month-old jobs, other sources do not`() = runTest {
+        val jobId = enqueue(defaultJdJson(), null, "watchlist:greenhouse:acme:42")
+        val thirtyDaysAgo = System.currentTimeMillis() / 1000L - 30L * 24 * 3600
+        transaction { Jobs.update({ Jobs.id eq jobId }) { it[Jobs.createdAt] = thirtyDaysAgo } }
+
+        assertEquals(jobId, findActiveDuplicate(null, "watchlist:greenhouse:acme:42", "CAREER_SITE"))
+        assertNull(findActiveDuplicate(null, "watchlist:greenhouse:acme:42", "JSEARCH"))
+        assertNull(findActiveDuplicate(null, "watchlist:greenhouse:acme:42"))
+    }
+
+    @Test
+    fun `dedupWindowHours uses per-source default, env override, then global`() {
+        val noEnv: (String) -> String? = { null }
+        assertEquals(72L, dedupWindowHours(null, noEnv))
+        assertEquals(72L, dedupWindowHours("JSEARCH", noEnv))
+        assertEquals(1440L, dedupWindowHours("CAREER_SITE", noEnv))
+        assertEquals(1440L, dedupWindowHours(" career_site ", noEnv))
+        val env = mapOf("JD_BRIDGE_DEDUP_WINDOW_HOURS_CAREER_SITE" to "720", "JD_BRIDGE_DEDUP_WINDOW_HOURS_EMAIL" to "24")
+        assertEquals(720L, dedupWindowHours("CAREER_SITE", env::get))
+        assertEquals(24L, dedupWindowHours("EMAIL", env::get))
+    }
+
+    @Test
     fun `findActiveDuplicate returns null for error status job`() = runTest {
         val jobId = enqueue(defaultJdJson(), "https://ex.com/2", null)
         claimNext()

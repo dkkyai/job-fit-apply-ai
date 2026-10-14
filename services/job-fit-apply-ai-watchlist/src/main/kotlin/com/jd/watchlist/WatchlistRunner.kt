@@ -1,0 +1,107 @@
+package com.jd.watchlist
+
+import com.jd.watchlist.adapters.FeedAdapter
+import com.jd.watchlist.bridge.SubmitJobRequest
+import com.jd.watchlist.bridge.WatchlistBridgeClient
+import com.jd.watchlist.config.Config
+import com.jd.watchlist.filter.PostingFilter
+import com.jd.watchlist.model.Employer
+import com.jd.watchlist.state.EmployerHealth
+import com.jd.watchlist.state.HealthReport
+import com.jd.watchlist.state.RunHealth
+import com.jd.watchlist.state.RunState
+
+/**
+ * One watchlist pass, gated by the persisted last-run: if the last real poll was < [intervalMs]
+ * ago, skip. Otherwise, for each enabled employer whose platform has an adapter: list postings,
+ * pre-filter on title + location, fetch descriptions only for the survivors, and submit each to
+ * the bridge as source CAREER_SITE. One employer's failure never stops the sweep.
+ */
+class WatchlistRunner(
+    private val employers: List<Employer>,
+    private val adapters: Map<String, FeedAdapter>,
+    private val filter: PostingFilter,
+    private val bridge: WatchlistBridgeClient,
+    private val state: RunState,
+    private val health: HealthReport,
+    private val intervalMs: Long = Config.WATCHLIST_INTERVAL_MS,
+    private val interEmployerDelayMs: Long = Config.INTER_EMPLOYER_DELAY_MS,
+    private val sleep: (Long) -> Unit = { Thread.sleep(it) },
+) {
+    sealed interface Outcome
+    data class Skipped(val ageMs: Long) : Outcome
+    data class Ran(val health: RunHealth) : Outcome
+
+    fun runOnce(now: Long): Outcome {
+        val last = state.lastRun()
+        if (last != null && now - last < intervalMs) {
+            val ageMs = now - last
+            println("[watchlist] last run ${ageMs / 3_600_000}h ago (< ${intervalMs / 3_600_000}h window) — skipping")
+            return Skipped(ageMs)
+        }
+
+        val active = employers.filter { it.enabled && it.ats in adapters }
+        val unsupported = employers.count { it.enabled && it.ats !in adapters }
+        println("[watchlist] polling ${active.size} employers ($unsupported on platforms without an adapter yet)")
+
+        val results = active.mapIndexed { i, e ->
+            if (i > 0 && interEmployerDelayMs > 0) sleep(interEmployerDelayMs)
+            pollEmployer(e, adapters.getValue(e.ats))
+        }
+        val run = RunHealth(ranAt = now, employers = results, unsupported = unsupported)
+        health.write(run)
+
+        // A sweep where every feed failed is an outage (network, DNS), not a run: don't advance the
+        // gate, so the next hourly tick retries instead of waiting a day.
+        if (results.isEmpty() || results.any { it.error == null }) state.recordRun(now)
+
+        println(
+            "[watchlist] done — ${results.sumOf { it.listed }} listed, ${results.sumOf { it.matched }} matched, " +
+                "${results.sumOf { it.queued }} queued, ${results.sumOf { it.deduped }} deduped; " +
+                "${run.failing.size} feeds failing, ${run.empty.size} empty"
+        )
+        if (run.failing.isNotEmpty()) println("[watchlist] failing: ${run.failing.joinToString()}")
+        if (run.empty.isNotEmpty()) println("[watchlist] empty: ${run.empty.joinToString()}")
+        return Ran(run)
+    }
+
+    private fun pollEmployer(e: Employer, adapter: FeedAdapter): EmployerHealth {
+        val listed = try {
+            adapter.list(e)
+        } catch (ex: Exception) {
+            System.err.println("[watchlist] ${e.company} (${e.ats}) list failed: ${ex.message}")
+            return EmployerHealth(e.company, e.ats, error = ex.message ?: ex.javaClass.simpleName)
+        }
+        val matched = listed.filter(filter::matches)
+        var queued = 0; var deduped = 0; var skipped = 0
+        for (p in matched) {
+            val text = runCatching { adapter.describe(e, p) }
+                .onFailure { System.err.println("[watchlist] ${e.company} describe failed for ${p.url}: ${it.message}") }
+                .getOrNull()
+            if (text == null || text.length < MIN_JD_CHARS) { skipped++; continue }   // bridge rejects < 150 chars
+            val resp = runCatching {
+                bridge.submit(
+                    SubmitJobRequest(
+                        jdText = text, roleTitle = p.title, company = e.company,
+                        location = p.location.ifBlank { null }, jobUrl = p.url.ifBlank { null },
+                        idempotencyKey = idempotencyKey(e, p.externalId),
+                    )
+                )
+            }.onFailure { System.err.println("[watchlist] bridge submit failed for ${p.url}: ${it.message}") }.getOrNull()
+            when {
+                resp == null -> skipped++
+                resp.deduped -> deduped++
+                else -> queued++
+            }
+        }
+        if (matched.isNotEmpty()) println("[watchlist] ${e.company}: ${listed.size} listed, ${matched.size} matched, $queued queued, $deduped deduped")
+        return EmployerHealth(e.company, e.ats, listed.size, matched.size, queued, deduped, skipped)
+    }
+
+    companion object {
+        const val MIN_JD_CHARS = 150
+
+        /** Stable across runs and company renames: platform + board + the employer's own posting id. */
+        fun idempotencyKey(e: Employer, externalId: String): String = "watchlist:${e.ats}:${e.boardKey}:$externalId"
+    }
+}

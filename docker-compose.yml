@@ -162,6 +162,29 @@ services:
     # No ports — outbound only (JSearch API + bridge). Shell-loop entrypoint + heartbeat healthcheck
     # are baked into the image; the JVM only runs ~once/day and exits.
 
+  watchlist:
+    build: ./services/job-fit-apply-ai-watchlist
+    container_name: ${CONTAINER_PREFIX:-jobfit}-watchlist
+    restart: unless-stopped
+    # Intake source like poller/jsearch: profile-gated so test instances don't poll employer feeds.
+    profiles: ["intake"]
+    depends_on:
+      bridge:
+        condition: service_healthy
+    environment:
+      # Heap cap (see bridge). A once/day sweep over ~115 employer feeds — small.
+      JAVA_TOOL_OPTIONS: "-Xmx384m -XX:MaxMetaspaceSize=128m -XX:+ExitOnOutOfMemoryError"
+      JD_BRIDGE_URL: "http://bridge:8765"
+      # Once/day sweep. Feeds are free; the persisted last-run keeps restarts from re-polling.
+      WATCHLIST_INTERVAL_MS: "${WATCHLIST_INTERVAL_MS:-86400000}"
+      # Optional overrides of the QE title pre-filter (regexes; see the service's .env.example).
+      WATCHLIST_TITLE_INCLUDE: "${WATCHLIST_TITLE_INCLUDE:-}"
+      WATCHLIST_TITLE_EXCLUDE: "${WATCHLIST_TITLE_EXCLUDE:-}"
+    volumes:
+      # Last-run state + watchlist-health.json (per-employer outcome, read by doctor.sh).
+      - "${JD_WATCHLIST_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/watchlist-state}:/state"
+    # No ports — outbound only (employer job feeds + bridge). Same shell-loop + heartbeat pattern as jsearch.
+
   # Self-hosted Steel Browser — the CDP scraping backend (replaces host Chrome).
   # Built FROM SOURCE at a pinned commit: the prebuilt steel-browser images fail to launch Chrome
   # on Apple Silicon under Docker Desktop (bundled Chromium SIGTRAPs); Steel's own api/Dockerfile
