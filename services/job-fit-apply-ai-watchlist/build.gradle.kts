@@ -44,6 +44,10 @@ tasks.named<JavaExec>("run") {
 
 tasks.test {
     useJUnitPlatform()
+    // Files some tests read from disk rather than the classpath: a change to one must rerun the
+    // tests instead of leaving the task up to date.
+    inputs.files("docker-entrypoint.sh", "README.md", "../../docker-compose.yml").withPropertyName("testedFiles")
+    inputs.dir("contract").withPropertyName("contract")
     extensions.configure(JacocoTaskExtension::class) {
         isIncludeNoLocationClasses = true
         excludes = listOf("jdk.internal.*")

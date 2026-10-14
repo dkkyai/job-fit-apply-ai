@@ -40,7 +40,7 @@ class StaleFeedAlertTest {
             employers = employers, adapters = mapOf("greenhouse" to adapter),
             filter = PostingFilter(Config.TITLE_INCLUDE, Config.TITLE_EXCLUDE), bridge = bridge,
             state = RunState(dir.resolve("state.json")), health = HealthReport(dir.resolve("health.json")),
-            intervalMs = day, interEmployerDelayMs = 0, alerts = AlertSink { alerts += it }, alertAfterRuns = 2,
+            schedule = com.jd.watchlist.state.RunSchedule(day), interEmployerDelayMs = 0, alerts = AlertSink { alerts += it }, alertAfterRuns = 2,
         )
 
     @Test

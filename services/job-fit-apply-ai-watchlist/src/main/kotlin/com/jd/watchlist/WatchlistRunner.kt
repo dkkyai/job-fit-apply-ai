@@ -10,11 +10,14 @@ import com.jd.watchlist.model.Employer
 import com.jd.watchlist.state.EmployerHealth
 import com.jd.watchlist.state.HealthReport
 import com.jd.watchlist.state.RunHealth
+import com.jd.watchlist.state.RunSchedule
 import com.jd.watchlist.state.RunState
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
- * One watchlist pass, gated by the persisted last-run: if the last real poll was < [intervalMs]
- * ago, skip. Otherwise, for each enabled employer whose platform has an adapter: list postings,
+ * One watchlist pass, gated by the persisted last-run: if no sweep is due under [schedule]
+ * (fixed local times, or an interval), skip. Otherwise, for each enabled employer whose platform has an adapter: list postings,
  * pre-filter on title + location, fetch descriptions only for the survivors, and submit each to
  * the bridge as source CAREER_SITE. One employer's failure never stops the sweep.
  */
@@ -25,7 +28,9 @@ class WatchlistRunner(
     private val bridge: WatchlistBridgeClient,
     private val state: RunState,
     private val health: HealthReport,
-    private val intervalMs: Long = Config.WATCHLIST_INTERVAL_MS,
+    private val schedule: RunSchedule = RunSchedule(Config.WATCHLIST_INTERVAL_MS, Config.RUN_AT, Config.TZ),
+    /** Gets the epoch second the next sweep is due, for the shell loop's sleep (null = don't write). */
+    private val nextDueFile: Path? = null,
     private val interEmployerDelayMs: Long = Config.INTER_EMPLOYER_DELAY_MS,
     private val sleep: (Long) -> Unit = { Thread.sleep(it) },
     private val alerts: AlertSink = AlertSink {},
@@ -37,9 +42,10 @@ class WatchlistRunner(
 
     fun runOnce(now: Long): Outcome {
         val last = state.lastRun()
-        if (last != null && now - last < intervalMs) {
+        if (last != null && !schedule.isDue(last, now)) {
             val ageMs = now - last
-            println("[watchlist] last run ${ageMs / 3_600_000}h ago (< ${intervalMs / 3_600_000}h window) — skipping")
+            writeNextDue(schedule.nextDue(last, now))
+            println("[watchlist] last run ${ageMs / 3_600_000}h ago; sweeps run ${schedule.describe()} — skipping")
             return Skipped(ageMs)
         }
 
@@ -59,6 +65,7 @@ class WatchlistRunner(
         // A sweep where every feed failed is an outage (network, DNS), not a run: don't advance the
         // gate, so the next hourly tick retries instead of waiting a day.
         if (results.isEmpty() || results.any { it.error == null }) state.recordRun(now)
+        writeNextDue(schedule.nextDue(state.lastRun(), now))
 
         println(
             "[watchlist] done — ${results.sumOf { it.listed }} listed, ${results.sumOf { it.matched }} matched, " +
@@ -68,6 +75,18 @@ class WatchlistRunner(
         if (run.failing.isNotEmpty()) println("[watchlist] failing: ${run.failing.joinToString()}")
         if (run.empty.isNotEmpty()) println("[watchlist] empty: ${run.empty.joinToString()}")
         return Ran(run)
+    }
+
+    /**
+     * Tells the shell loop when to wake: the due time rounded up to the second (waking a moment
+     * early would find nothing due). Removed when a sweep is due now (an outage didn't advance the
+     * gate), so the loop falls back to its regular tick instead of retrying at once.
+     */
+    private fun writeNextDue(dueMs: Long?) {
+        val file = nextDueFile ?: return
+        runCatching {
+            if (dueMs == null) Files.deleteIfExists(file) else Files.writeString(file, ((dueMs + 999) / 1000).toString())
+        }.onFailure { System.err.println("[watchlist] failed to write $file: ${it.message}") }
     }
 
     /**
