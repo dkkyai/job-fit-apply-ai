@@ -44,6 +44,8 @@ object Adapters {
         "adp" to AdpAdapter(http, pause),
         "phenom" to PhenomAdapter(http, searchTerms, pause),
         "tiktok" to TikTokAdapter(http, searchTerms, pause),
+        "icims" to IcimsClassicAdapter(http, pause),
+        "jobvite" to JobviteAdapter(http),
     )
 }
 

@@ -172,7 +172,7 @@ services:
       bridge:
         condition: service_healthy
     environment:
-      # Heap cap (see bridge). A once/day sweep over ~155 employer feeds — small.
+      # Heap cap (see bridge). A once/day sweep over ~160 employer feeds — small.
       JAVA_TOOL_OPTIONS: "-Xmx384m -XX:MaxMetaspaceSize=128m -XX:+ExitOnOutOfMemoryError"
       JD_BRIDGE_URL: "http://bridge:8765"
       # Once/day sweep. Feeds are free; the persisted last-run keeps restarts from re-polling.
