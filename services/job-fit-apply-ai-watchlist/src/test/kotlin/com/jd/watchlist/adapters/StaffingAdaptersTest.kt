@@ -68,3 +68,34 @@ class RobertHalfAdapterTest {
         assertFailsWith<IllegalStateException> { RobertHalfAdapter(FakeHttp(getHandler = { "<html></html>" })).list(rh) }
     }
 }
+
+class JobDivaAdapterTest {
+    private val aditi = Employer(company = "Aditi Consulting", ats = "jobdiva", board = "abc123token")
+    private val base = "https://www2.jobdiva.com/candidates/myjobs/getjobsrssfeed.jsp?a=abc123token&SearchString="
+
+    @Test
+    fun `reads the RSS feed once per term, splits the title, keys on the posting id`() {
+        var pauses = 0
+        val h = FakeHttp(gets = mapOf(base + "test" to resource("jobdiva_test.xml"), base + "quality%20assurance" to resource("jobdiva_qa.xml")))
+        val postings = JobDivaAdapter(h, listOf("test", "quality assurance")) { pauses++ }.list(aditi)
+
+        assertEquals(listOf("29401111", "29400001", "29400002", "29455555"), postings.map { it.externalId },
+            "a posting found by two terms is listed once; an item without an id is dropped")
+        assertEquals(1, pauses, "a pause between the two feed reads, none before the first")
+        val metrology = postings[0]
+        assertEquals("Optical Metrology and Test Engineer", metrology.title)
+        assertEquals("Redmond, WA", metrology.location)
+        assertEquals("https://www2.jobdiva.com/candidates/myjobs/openjob_outside.jsp?a=abc123token&id=29401111", metrology.url,
+            "no per-search or timestamp parameters, so the URL is stable")
+        assertTrue("Build automated test fixtures" in metrology.description!!, metrology.description)
+        assertEquals("Waterloo, IA", postings[1].location)
+        assertEquals("QA Lead - Remote", postings[2].title, "a title without the req/state/city shape is kept whole")
+        assertEquals("", postings[2].location)
+        assertEquals("REDMOND, WA", postings[3].location)
+    }
+
+    @Test
+    fun `a missing portal token is an error, not an empty board`() {
+        assertFailsWith<IllegalArgumentException> { JobDivaAdapter(FakeHttp(), listOf("qa")).list(aditi.copy(board = null)) }
+    }
+}

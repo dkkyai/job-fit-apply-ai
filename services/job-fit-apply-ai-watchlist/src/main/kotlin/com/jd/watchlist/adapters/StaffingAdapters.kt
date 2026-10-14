@@ -99,3 +99,43 @@ class RobertHalfAdapter(private val http: Http) : FeedAdapter {
         }
     }
 }
+
+/**
+ * JobDiva (Aditi Consulting): the candidate portal is a script-driven app, but JobDiva publishes an
+ * RSS feed per portal ([Employer.board] is the portal's `a` token). The feed holds the 20 newest
+ * postings matching `SearchString`, so it is read once per search term — weeks of matches for QE
+ * terms, so a daily run misses none. Titles carry the location: "QA Engineer (26-06479) - WA - Redmond".
+ */
+class JobDivaAdapter(private val http: Http, private val searchTerms: List<String>, private val pause: () -> Unit = {}) : FeedAdapter {
+    private val rss = RssAdapter(http)
+
+    override fun list(employer: Employer): List<Posting> {
+        val token = requireNotNull(employer.board) { "jobdiva employer ${employer.company} has no board (portal token)" }
+        val found = LinkedHashMap<String, Posting>()
+        searchTerms.ifEmpty { listOf("") }.forEachIndexed { i, term ->
+            if (i > 0) pause()
+            val feed = "$BASE/getjobsrssfeed.jsp?a=${enc(token)}&SearchString=${enc(term)}"
+            for (p in rss.list(employer.copy(feed = feed))) {
+                val id = ID.find(p.url)?.groupValues?.get(1) ?: continue
+                if (id in found) continue
+                val m = TITLE.matchEntire(p.title)
+                found[id] = p.copy(
+                    externalId = id,
+                    title = m?.groupValues?.get(1) ?: p.title,
+                    location = m?.let { "${it.groupValues[3]}, ${it.groupValues[2]}" } ?: p.location,
+                    url = "$BASE/openjob_outside.jsp?a=${enc(token)}&id=$id",
+                )
+            }
+        }
+        return found.values.toList()
+    }
+
+    private fun enc(s: String) = URLEncoder.encode(s, Charsets.UTF_8).replace("+", "%20")
+
+    private companion object {
+        const val BASE = "https://www2.jobdiva.com/candidates/myjobs"
+        val ID = Regex("""[?&]id=(\d+)""")
+        /** "Title (req no.) - ST - City"; anything else keeps the feed's title and location. */
+        val TITLE = Regex("""^(.*?)\s*\([^()]*\)\s*-\s*([A-Za-z]{2})\s*-\s*(.+)$""")
+    }
+}

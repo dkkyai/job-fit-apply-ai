@@ -189,6 +189,13 @@ class StaffingTest(unittest.TestCase):
         self.assertEqual(("roberthalf", "https://www.roberthalf.com/us/en/jobs/all/seattle-wa?lobid=RHT"), (e["ats"], e["feed"]))
         self.assertNotIn("enabled", e)
 
+    def test_a_jobdiva_portal_is_read_by_its_token(self):
+        e = gen_employers.entry(row(ats="jobdiva", api_endpoint="https://www2.jobdiva.com/portal/?a=abc123token&compid=0"))
+        self.assertEqual(("jobdiva", "abc123token"), (e["ats"], e["board"]))
+        self.assertNotIn("enabled", e)
+        e = gen_employers.entry(row(ats="jobdiva", api_endpoint="https://www2.jobdiva.com/portal/?compid=0"))
+        self.assertEqual(False, e.get("enabled"), "no token, no feed")
+
 
 class CommittedYamlTest(unittest.TestCase):
     def test_committed_employers_yaml_matches_the_generator_output(self):

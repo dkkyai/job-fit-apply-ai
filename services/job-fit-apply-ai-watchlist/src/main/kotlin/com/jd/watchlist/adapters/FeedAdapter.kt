@@ -66,6 +66,7 @@ object Adapters {
         "html" to GenericHtmlAdapter(http, searchTerms, pause),
         "kforce" to KforceAdapter(http, searchTerms),
         "roberthalf" to RobertHalfAdapter(http),
+        "jobdiva" to JobDivaAdapter(http, searchTerms, pause),
     )
 }
 

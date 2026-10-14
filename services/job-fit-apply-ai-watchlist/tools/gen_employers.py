@@ -46,7 +46,8 @@ REQUIRED_PARAM = {"greenhouse": "board", "lever": "board", "ashby": "board", "wo
                   "workable": "board", "gem": "board", "rippling": "board", "adp": "feed", "phenom": "host", "tiktok": None,
                   "icims": "feed", "jobvite": "board", "apple": None, "capgemini": None, "jobsyn": "host", "epam": None,
                   "successfactors": "host", "ukg": "board", "paylocity": "board", "zoho": "host", "atlassian": None,
-                  "html": "link_pattern", "kforce": "location", "roberthalf": "feed"}
+                  "html": "link_pattern", "kforce": "location", "roberthalf": "feed",
+                  "jobdiva": "board"}
 
 
 def area_cities(text):
@@ -117,6 +118,9 @@ def by_url(url, ats, r):
         return {"ats": "kforce", "location": "WA"}
     if u.netloc == "www.roberthalf.com" and u.path.startswith("/us/en/jobs/all/"):
         return {"ats": "roberthalf", "feed": url}
+    # JobDiva candidate portal: the `a` token names the portal and its RSS feed.
+    if u.netloc.endswith(".jobdiva.com") and u.path.startswith("/portal") and q.get("a"):
+        return {"ats": "jobdiva", "board": q["a"][0]}
     return None
 
 
