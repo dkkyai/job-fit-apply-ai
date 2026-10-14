@@ -58,7 +58,12 @@ class GenericHtmlAdapter(
         val ld = jobPosting(doc)
         val text = ld?.path("description")?.asText(null)?.let { htmlToText(it, escaped = true) }
             ?: employer.detailSelector?.let { sel -> doc.selectFirst(sel)?.let { htmlToText(it.html()) } }
-        return PostingDetail(text, ld?.let(::ldLocation) ?: labelledLocation(doc, employer.locationLabel))
+        // The street address is a last resort: Experis fills it with its recruiting office (Nashville
+        // for a Seattle job) and puts the real place in a "Location:" label when there is one.
+        val location = ld?.let { ldLocation(it, streetFallback = false) }
+            ?: labelledLocation(doc, employer.locationLabel)
+            ?: ld?.let { ldLocation(it, streetFallback = true) }
+        return PostingDetail(text, location)
     }
 
     /** The page's schema.org JobPosting, if it publishes one. */
@@ -68,16 +73,20 @@ class GenericHtmlAdapter(
         .firstOrNull { it.path("@type").asText() == "JobPosting" }
 
     /**
-     * "City, Region, Country" per place. Unfilled template values ("[addressLocality]") are dropped,
-     * and a place that is only a country says nothing about the city, so it counts as unknown.
+     * "City, Region, Country" per place. Unfilled template values ("[addressLocality]") are dropped;
+     * with [streetFallback], a street address stands in when city and region both are (Experis's
+     * language-specialist roles carry their place, "Redmond, WA", only there). A place that is only
+     * a country says nothing about the city, so it counts as unknown.
      */
-    private fun ldLocation(ld: com.fasterxml.jackson.databind.JsonNode): String? {
+    private fun ldLocation(ld: com.fasterxml.jackson.databind.JsonNode, streetFallback: Boolean): String? {
         val places = ld.path("jobLocation").let { if (it.isArray) it.toList() else listOf(it) }
         val names = places.mapNotNull { p ->
             val a = p.path("address")
-            val (city, region) = listOf("addressLocality", "addressRegion").map { a.path(it).asText("").takeUnless { v -> PLACEHOLDER.matches(v) }.orEmpty() }
-            if (city.isBlank() && region.isBlank()) return@mapNotNull null
-            listOf(city, region, a.path("addressCountry").asText("")).filter { it.isNotBlank() && !PLACEHOLDER.matches(it) }.joinToString(", ")
+            val (city, region, street) = listOf("addressLocality", "addressRegion", "streetAddress")
+                .map { a.path(it).asText("").trim().takeUnless { v -> PLACEHOLDER.matches(v) }.orEmpty() }
+            val place = listOf(city, region).filter { it.isNotBlank() }.joinToString(", ").ifBlank { if (streetFallback) street else "" }
+            if (place.isBlank()) return@mapNotNull null
+            listOf(place, a.path("addressCountry").asText("")).filter { it.isNotBlank() && !PLACEHOLDER.matches(it) }.joinToString(", ")
         } + listOfNotNull("Remote".takeIf { ld.path("jobLocationType").asText("").contains("TELECOMMUTE", true) })
         return names.joinToString(" | ").ifBlank { null }
     }

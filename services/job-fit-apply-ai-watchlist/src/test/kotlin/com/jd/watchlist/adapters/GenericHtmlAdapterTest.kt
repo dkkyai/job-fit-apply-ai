@@ -5,6 +5,7 @@ import com.jd.watchlist.model.Employer
 import com.jd.watchlist.resource
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -73,6 +74,29 @@ class GenericHtmlAdapterTest {
         val qam = adapter.detail(ex, postings[2])
         assertNull(qam.location, "[addressLocality], [addressRegion] is an unfilled template, and 'US' alone is no location")
         assertTrue(qam.text!!.startsWith("Lead QA for a process-equipment maker"), "the JSON-LD description still counts")
+    }
+
+    @Test
+    fun `a template JSON-LD address - the Location label, else the street address, gives the place`() {
+        // Experis fills streetAddress ("Redmond, WA") and leaves the locality fields as template
+        // text; its "Location:" label is empty. Reading the street address keeps Quincy, MA (and
+        // Mexico, California, New Jersey…) from passing the location filter as "unknown".
+        val ex = Employer(company = "Experis", ats = "html", feed = "https://www.experis.com/en/all-jobs",
+            linkPattern = "/en/job/(\\d+)/", locationLabel = "Location:", detailSelector = ".details-rich-text")
+        val http = FakeHttp(gets = mapOf(
+            "https://www.experis.com/en/job/1/redmond" to resource("html_experis_street_redmond.html"),
+            "https://www.experis.com/en/job/2/quincy" to resource("html_experis_street_quincy.html"),
+            "https://www.experis.com/en/job/3/full" to resource("html_experis_street_full.html"),
+            "https://www.experis.com/en/job/4/office" to resource("html_experis_street_office.html"),
+        ))
+        val adapter = GenericHtmlAdapter(http, emptyList())
+        fun at(id: String, slug: String) = adapter.detail(ex, com.jd.watchlist.model.Posting("Experis", id, "QA", "", "https://www.experis.com/en/job/$id/$slug"))
+        assertEquals("Redmond, WA, US", at("1", "redmond").location)
+        val quincy = at("2", "quincy")
+        assertEquals("Quincy, MA, US", quincy.location)
+        assertEquals("Seattle, WA, US", at("3", "full").location, "a filled-in city and region win over a street address")
+        assertEquals("Seattle, WA, USA (Onsite)", at("4", "office").location, "the Location label wins over the street address (the recruiting office)")
+        assertFalse(com.jd.watchlist.filter.PostingFilter(com.jd.watchlist.config.Config.TITLE_INCLUDE, com.jd.watchlist.config.Config.TITLE_EXCLUDE).locationMatches(quincy.location!!))
     }
 
     @Test
