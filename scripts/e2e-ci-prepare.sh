@@ -74,6 +74,21 @@ cat > "$E2E_DIR/pipeline.env" <<EOF
 ARTIFACT_BASE_URL=http://127.0.0.1:${MARKSERV_PORT}
 EOF
 
+# Fake-LLM runs score through a pretend *cloud* model (the DeepSeek-style backend, pointed at
+# the fake) with a local fallback, so the cloud-quota → local-model path runs end to end. The
+# fake dispatches on the prompt, never the model, so every other scenario is unaffected.
+# A zero recheck window keeps one scenario's quota refusal from leaking into the next.
+# Under REAL_LLM=1 there is no fake to play the cloud, so score stays on the default local model.
+if [ "${E2E_REAL_LLM:-0}" != "1" ]; then
+  cat >> "$E2E_DIR/pipeline.env" <<EOF
+SCORE_MODEL=e2e-cloud-score:cloud
+DEEPSEEK_BASE_URL=http://host.docker.internal:${E2E_FAKE_LLM_PORT:-21436}
+DEEPSEEK_API_KEY=e2e-fake-cloud-key
+LOCAL_FALLBACK_MODEL=e2e-local-fallback
+CLOUD_QUOTA_RECHECK_MINUTES=0
+EOF
+fi
+
 # Fail fast if the committed fixture files the override bind-mounts are missing —
 # otherwise Docker would create directories in their place inside the container.
 for f in services/job-fit-apply-ai-e2e/fixtures/resume.yaml \

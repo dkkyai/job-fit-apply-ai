@@ -239,6 +239,18 @@ All node-level model variables default to `qwen3.5:9b-q4_K_M`. Override per node
 
 > Résumé HTML is now rendered deterministically from `resume.yaml` (no LLM), so the former `RESUME_GEN_MODEL` / `PROFILE_GEN_MODEL` are gone.
 
+### Cloud quota → local fallback (intake lane)
+
+When a cloud provider refuses a call because the account's usage quota is used up (HTTP 402/403/429 whose body talks about a quota, limit, plan or credits — not the ordinary "too many concurrent requests" 429), the intake lane keeps running on a local model instead of failing every job until the quota resets:
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOCAL_FALLBACK_MODEL` | *(blank — off)* | Local model (oMLX or local Ollama) that `ScanEmailNode`, the LLM digest strategy, `ScrapeJdNode` and `ScoreFitNode` use while the cloud quota is exhausted. Must be a local model; a cloud name is ignored. |
+| `LOCAL_FALLBACK_TIMEOUT_SECONDS` | `300` | Per-call timeout for the fallback (local models are slower, and the first call loads the model). |
+| `CLOUD_QUOTA_RECHECK_MINUTES` | `30` | After a quota refusal, skip the cloud for this long; the next call then probes it again. |
+
+The first refusal sends one WARN alert, and the first cloud success after it sends one INFO alert. Tailoring nodes are never redirected to the local model; they need the stronger cloud models.
+
 ### Backend routing (`:cloud` and `:ollama-cloud` suffixes)
 
 | Suffix | Routes to |

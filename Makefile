@@ -127,7 +127,7 @@ e2e: ## Full e2e cycle: up + run + down (REAL_LLM=1 for real local models)
 	  $(MAKE) e2e-up && $(MAKE) e2e-run REAL_LLM=$(REAL_LLM); s=$$?; $(MAKE) e2e-down; exit $$s
 
 e2e-up: ## Build + start the isolated e2e slice with fresh state, wait for health
-	./scripts/e2e-ci-prepare.sh --fresh
+	E2E_REAL_LLM=$(REAL_LLM) E2E_FAKE_LLM_PORT=$(E2E_FAKE_LLM_PORT) ./scripts/e2e-ci-prepare.sh --fresh
 	$(COMPOSE_E2E) up -d --build $(E2E_SERVICES)
 	@echo "[e2e] waiting for containers to report healthy…"
 	@for c in $(E2E_CONTAINERS); do \

@@ -24,7 +24,7 @@ import java.nio.file.Files
  * Uses LlmClient (temperature=0, no thinking) for deterministic output.
  */
 class ScoreFitNode(
-    private val llm: LlmCaller = LlmClient.fromModelString(Config.SCORE_MODEL, jsonMode = true, temperature = 0.0, nodeKey = "score_fit")
+    private val llm: LlmCaller = LlmClient.forIngest(Config.SCORE_MODEL, jsonMode = true, temperature = 0.0, nodeKey = "score_fit")
 ) : Node<JDState> {
 
     private val mapper = ObjectMapper()

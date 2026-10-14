@@ -27,7 +27,7 @@ import java.util.regex.Pattern
  * All JSON parsing uses Jackson — no regex field extraction.
  */
 class ScanEmailNode(
-    private val llm: LlmCaller = LlmClient.fromModelString(Config.SCAN_MODEL, jsonMode = true, temperature = 0.0, nodeKey = "scan_email"),
+    private val llm: LlmCaller = LlmClient.forIngest(Config.SCAN_MODEL, jsonMode = true, temperature = 0.0, nodeKey = "scan_email"),
     private val mapper: ObjectMapper = ObjectMapper()
 ) : Node<JDState> {
 

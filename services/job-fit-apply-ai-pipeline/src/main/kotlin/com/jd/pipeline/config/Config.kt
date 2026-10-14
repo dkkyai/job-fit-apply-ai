@@ -79,6 +79,14 @@ object Config {
     // Best local (oMLX): Qwen3.5-9B-OptiQ-4bit   Cloud: deepseek-v4-pro:ollama-cloud
     val SCORE_MODEL: String = get("SCORE_MODEL", "Qwen3.5-9B-OptiQ-4bit")
 
+    // When the cloud LLM quota is used up, the ingest/score lane (scan, digest, scrape, score_fit)
+    // switches to this local oMLX model instead of failing; tailoring stays cloud-only. Blank = off.
+    val LOCAL_FALLBACK_MODEL: String = get("LOCAL_FALLBACK_MODEL", "")
+    // Local models are slower than the cloud ones: the fallback gets at least this much time per call.
+    val LOCAL_FALLBACK_TIMEOUT_SECONDS: Long = get("LOCAL_FALLBACK_TIMEOUT_SECONDS", "300").toLongOrNull() ?: 300L
+    // After a quota refusal, skip the cloud for this long before trying it again.
+    val CLOUD_QUOTA_RECHECK_MINUTES: Long = get("CLOUD_QUOTA_RECHECK_MINUTES", "30").toLongOrNull() ?: 30L
+
     // Cover letter: prose writing quality — a dedicated prose model pays off here
     // Best local (oMLX): gemma-4-12B-it-qat-4bit   Cloud: glm-5.1:ollama-cloud
     val COVER_LETTER_MODEL: String = get("COVER_LETTER_MODEL", "gemma-4-12B-it-qat-4bit")

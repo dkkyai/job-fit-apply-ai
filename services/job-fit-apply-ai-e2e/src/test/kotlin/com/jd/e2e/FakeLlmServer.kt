@@ -95,12 +95,19 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
      */
     val calls: MutableList<String> = CopyOnWriteArrayList()
 
+    /**
+     * The `model` each call in [calls] asked for, index-aligned with it. Dispatch never looks at
+     * the model, but the quota→local fallback scenario must prove *which* model answered.
+     */
+    val callModels: MutableList<String> = CopyOnWriteArrayList()
+
     /** Per-route FIFO responses installed by one scenario; defaults resume when exhausted. */
     private val responsePlan = ConcurrentHashMap<String, ConcurrentLinkedQueue<PlannedResponse>>()
 
     /** Reset all observable state before a scenario and optionally install queued responses. */
     fun reset(responses: Map<String, List<PlannedResponse>> = emptyMap()) {
         calls.clear()
+        callModels.clear()
         responsePlan.clear()
         responses.forEach { (route, planned) ->
             responsePlan[route] = ConcurrentLinkedQueue(planned)
@@ -167,6 +174,7 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
                             // Recorded before the reply is shaped, so an injected fault still
                             // appears in the call sequence — a scenario asserting "score_fit ran
                             // and then nothing did" needs the failed call to be visible.
+                            callModels += model
                             calls += route
                             if (planned.delayMs > 0) delay(planned.delayMs)
                             val failing = planned.status !in 200..299
