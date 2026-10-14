@@ -46,6 +46,10 @@ object Adapters {
         "tiktok" to TikTokAdapter(http, searchTerms, pause),
         "icims" to IcimsClassicAdapter(http, pause),
         "jobvite" to JobviteAdapter(http),
+        "apple" to AppleAdapter(http, searchTerms, pause),
+        "capgemini" to CapgeminiAdapter(http, searchTerms, pause),
+        "jobsyn" to JobsynAdapter(http, searchTerms, pause),
+        "epam" to EpamAdapter(http, searchTerms, pause),
     )
 }
 

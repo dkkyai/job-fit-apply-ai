@@ -90,6 +90,17 @@ class EntryTest(unittest.TestCase):
         e = gen_employers.entry(row(ats="adp", api_endpoint="https://workforcenow.adp.com/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions?cid=abc&ccId=123_4&$top=20&timeStamp=1"))
         self.assertEqual("https://workforcenow.adp.com/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions?cid=abc&ccId=123_4&lang=en_US&locale=en_US", e["feed"])
 
+    def test_bespoke_employer_apis(self):
+        e = gen_employers.entry(row(ats="custom", api_endpoint="https://jobs.apple.com/en-us/search?location=seattle-SEA&search=test (SSR JSON in HTML)"))
+        self.assertEqual(("apple", "seattle-SEA"), (e["ats"], e["location"]))
+        e = gen_employers.entry(row(ats="successfactors", api_endpoint="https://cg-jobstream-api.azurewebsites.net/api/job-search?country_code=us-en&search=test"))
+        self.assertEqual(("capgemini", "us-en"), (e["ats"], e["location"]))
+        e = gen_employers.entry(row(ats="icims", careers_url="https://careers.alaskaair.com/jobs/?location=Seatac",
+                                    api_endpoint="https://prod-search-api.jobsyn.org/api/v1/solr/search?q=quality&page=1"))
+        self.assertEqual(("jobsyn", "careers.alaskaair.com"), (e["ats"], e["host"]))
+        e = gen_employers.entry(row(ats="custom", api_endpoint="https://careers.epam.com/api/jobs/v2/search/careers?lang=en&q=Seattle"))
+        self.assertEqual("epam", e["ats"])
+
     def test_rate_limited_during_research_still_counts_as_reachable(self):
         e = gen_employers.entry(row(ats="eightfold", api_status="429", api_endpoint="https://apply.careers.microsoft.com/api/pcsx/search?domain=microsoft.com&location=Redmond%2C%20WA"))
         self.assertNotIn("enabled", e)

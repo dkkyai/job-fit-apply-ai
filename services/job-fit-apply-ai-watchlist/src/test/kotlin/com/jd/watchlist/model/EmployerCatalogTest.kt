@@ -53,6 +53,8 @@ class EmployerCatalogTest {
             "workable" to { e: Employer -> e.board }, "gem" to { e: Employer -> e.board }, "rippling" to { e: Employer -> e.board },
             "adp" to { e: Employer -> e.feed }, "phenom" to { e: Employer -> e.host }, "tiktok" to { _: Employer -> "ok" },
             "icims" to { e: Employer -> e.feed }, "jobvite" to { e: Employer -> e.board },
+            "apple" to { _: Employer -> "ok" }, "capgemini" to { _: Employer -> "ok" },
+            "jobsyn" to { e: Employer -> e.host }, "epam" to { _: Employer -> "ok" },
         )
         assertEquals(
             com.jd.watchlist.adapters.Adapters.registry(com.jd.watchlist.FakeHttp(), emptyList()).keys, required.keys,
