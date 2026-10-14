@@ -1,6 +1,8 @@
 package com.jd.pipeline.pipeline
 
 import com.jd.pipeline.state.JDState
+import com.jd.pipeline.state.isDigest
+import com.jd.pipeline.state.isInlineDigest
 import java.net.URI
 
 /**
@@ -45,7 +47,9 @@ object ScrapeOutcome {
             return ScrapeTerminalReason.MALFORMED_URL
         }
 
-        if (state.isJobPosting && state.jobUrl.isNotBlank() && error.isBlank() &&
+        // A digest parent's text is the summary of its children, not a scraped page: a one-job
+        // digest copies the child's URL up with a one-line summary, which is no scrape verdict.
+        if (state.isJobPosting && state.jobUrl.isNotBlank() && error.isBlank() && !state.isDigest && !state.isInlineDigest &&
             state.jdText.isNotBlank() && state.jdText.length < BRIDGE_MIN_JD_TEXT_LENGTH) {
             return ScrapeTerminalReason.INSUFFICIENT_JD_TEXT
         }

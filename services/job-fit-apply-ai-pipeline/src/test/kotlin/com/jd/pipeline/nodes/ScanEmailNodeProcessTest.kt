@@ -341,6 +341,9 @@ class ScanEmailNodeProcessTest {
             assertTrue(child.submitAsUrl)
             assertEquals("watchlist:eightfold:apply.careers.microsoft.com:1970393556874530", child.postingKey)
             assertNull(llm.lastPrompt, "the alert is parsed, not sent to the LLM")
+            // A one-link alert still fans out: its one-line summary is not a failed scrape.
+            val disposition = com.jd.pipeline.pipeline.EmailResolution.classify(result)
+            assertTrue(disposition is com.jd.pipeline.pipeline.EmailDisposition.ReEnqueueChildren, "$disposition")
         }
 
         @Test
