@@ -69,6 +69,27 @@ class EntryTest(unittest.TestCase):
         self.assertEqual("amazon", e["ats"])
         self.assertNotIn("enabled", e)
 
+    def test_small_boards_staffing_and_tiktok(self):
+        cases = [
+            (row(ats="workable", api_status="needs POST/headers (not auto-checked)", api_endpoint="POST https://apply.workable.com/api/v3/accounts/seeq/jobs"),
+             {"ats": "workable", "board": "seeq"}),
+            (row(ats="other", api_endpoint="https://api.gem.com/job_board/v0/wyzecam-com/job_posts"), {"ats": "gem", "board": "wyzecam-com"}),
+            (row(ats="rippling", api_endpoint="https://api.rippling.com/platform/api/ats/v1/board/zap-energy-careers/jobs"),
+             {"ats": "rippling", "board": "zap-energy-careers"}),
+            (row(ats="phenom", api_status="needs POST/headers (not auto-checked)", api_endpoint="POST https://careers.teksystems.com/widgets (ddoKey=refineSearch)"),
+             {"ats": "phenom", "host": "careers.teksystems.com", "location": "Washington"}),
+            (row(ats="custom", api_status="needs POST/headers (not auto-checked)", api_endpoint="POST https://api.lifeattiktok.com/api/v1/public/supplier/search/job/posts {keyword}"),
+             {"ats": "tiktok", "location": "CT_157"}),
+        ]
+        for r, expected in cases:
+            e = gen_employers.entry(r)
+            self.assertEqual(expected, {k: e[k] for k in expected}, r["api_endpoint"])
+            self.assertNotIn("enabled", e, "research-verified POST APIs are enabled")
+
+    def test_adp_keeps_only_the_tenant_parameters(self):
+        e = gen_employers.entry(row(ats="adp", api_endpoint="https://workforcenow.adp.com/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions?cid=abc&ccId=123_4&$top=20&timeStamp=1"))
+        self.assertEqual("https://workforcenow.adp.com/mascsr/default/careercenter/public/events/staffing/v1/job-requisitions?cid=abc&ccId=123_4&lang=en_US&locale=en_US", e["feed"])
+
     def test_rate_limited_during_research_still_counts_as_reachable(self):
         e = gen_employers.entry(row(ats="eightfold", api_status="429", api_endpoint="https://apply.careers.microsoft.com/api/pcsx/search?domain=microsoft.com&location=Redmond%2C%20WA"))
         self.assertNotIn("enabled", e)
