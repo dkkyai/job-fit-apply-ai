@@ -7,6 +7,7 @@ import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.state.JDState
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.times
 import org.mockito.kotlin.any
 import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
@@ -287,5 +288,29 @@ class IngestionPipelineTest {
 
         assertEquals(1, result.digestJobs.size, "only the isJobPosting child should be processed")
         assertTrue(result.digestJobs.first().isJobPosting)
+    }
+
+    @Test
+    @DisplayName("a link-only digest child (employer alert) is not scraped in the email's own claim")
+    fun linkOnlyChildrenAreNotScraped() {
+        val pipeline = IngestionPipeline()
+        val linkOnly = JDState(isJobPosting = true, jobUrl = "https://jobs.lever.co/acme/x", submitAsUrl = true, postingKey = "watchlist:lever:acme:x")
+        val scraped = JDState(isJobPosting = true, jobUrl = "https://board.example.com/jobs/1")
+        injectScanNode(pipeline, Node { state ->
+            state.copy(
+                intake = com.jd.pipeline.source.IntakeContext.Email("e", "a@b.com", "s", "", "", false, true, false),
+                digestJobs = listOf(linkOnly, scraped),
+            )
+        })
+        val mockScrape = mock<ScrapeJdNode>()
+        whenever(mockScrape.process(any())).thenAnswer { (it.arguments[0] as JDState).copy(jdText = "scraped") }
+        pipeline.scrapeNode = mockScrape
+        injectSaveNode(pipeline, Node { it })
+
+        val result = pipeline.invoke(JDState())
+
+        verify(mockScrape, times(1)).process(any())
+        assertEquals(listOf("", "scraped"), result.digestJobs.map { it.jdText })
+        assertTrue(result.digestJobs.first().submitAsUrl)
     }
 }

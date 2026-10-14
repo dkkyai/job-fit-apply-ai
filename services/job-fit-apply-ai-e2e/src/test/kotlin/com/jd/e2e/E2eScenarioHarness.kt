@@ -306,6 +306,7 @@ class E2eScenarioHarness {
         body: String,
         from: String,
         idempotencyKey: String,
+        isRecruiterHint: Boolean = true,
     ): JsonNode = postJson(
         "${E2eConfig.bridgeUrl}/api/emails",
         mapper.writeValueAsString(
@@ -315,7 +316,7 @@ class E2eScenarioHarness {
                 "body" to body,
                 "html_body" to null,
                 "from" to from,
-                "is_recruiter_hint" to true,
+                "is_recruiter_hint" to isRecruiterHint,
                 "idempotency_key" to idempotencyKey,
             ),
         ),

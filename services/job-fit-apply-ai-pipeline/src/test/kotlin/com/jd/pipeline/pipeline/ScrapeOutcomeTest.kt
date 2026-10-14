@@ -106,4 +106,15 @@ class ScrapeOutcomeTest {
     fun terminalScrapeFailureUsesDedicatedGmailLabel() {
         assertEquals(TerminalLabel.JD_SCRAPE_FAILED, ScrapeTerminalReason.BLOCKED.terminalLabel)
     }
+
+    @Test
+    @DisplayName("a one-job digest's short summary is not a scrape verdict")
+    fun digestSummaryIsNotInsufficientText() {
+        val parent = JDState(
+            intake = com.jd.pipeline.source.IntakeContext.Email("m", "alerts@noreply9.jobs2web.com", "New jobs", "", "", false, true, false),
+            isJobPosting = true, jobUrl = "https://careers.example.com/job/SDET/12345", jdText = "1. SDET @ Acme | https://careers.example.com/job/SDET/12345",
+        )
+        assertEquals(null, ScrapeOutcome.classify(parent))
+    }
 }
+

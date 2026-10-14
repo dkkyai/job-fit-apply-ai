@@ -316,4 +316,66 @@ class ScanEmailNodeProcessTest {
             assertTrue(result.skippedReason.contains("no job URLs"), "reason: ${result.skippedReason}")
         }
     }
+
+    @Nested
+    @DisplayName("employer job alerts")
+    inner class EmployerAlerts {
+
+        private fun alert(subject: String, html: String) = JDState(
+            intake = IntakeContext.Email(
+                emailId = "a-1", subject = subject, from = "Microsoft Careers <donotreply@email.careers.microsoft.com>",
+                rawBody = "", htmlBody = html, isRecruiter = false, isDigest = false, isInlineDigest = false,
+            )
+        )
+
+        @Test
+        @DisplayName("an alert becomes a digest of link-only children, with no LLM call")
+        fun alertBecomesLinkOnlyDigest() {
+            val llm = RecordingLlm("""{"is_job_posting": false}""")
+            val html = """<p>New jobs match your profile</p>
+                <a href="https://apply.careers.microsoft.com/careerhub/explore/jobs/1970393556874530?utm_source=position_notification">Senior SDET</a>"""
+            val result = ScanEmailNode(llm = llm).process(alert("New jobs at Microsoft that match your profile", html))
+
+            assertTrue(result.isDigest && result.isJobPosting)
+            val child = result.digestJobs.single()
+            assertTrue(child.submitAsUrl)
+            assertEquals("watchlist:eightfold:apply.careers.microsoft.com:1970393556874530", child.postingKey)
+            assertNull(llm.lastPrompt, "the alert is parsed, not sent to the LLM")
+            // A one-link alert still fans out: its one-line summary is not a failed scrape.
+            val disposition = com.jd.pipeline.pipeline.EmailResolution.classify(result)
+            assertTrue(disposition is com.jd.pipeline.pipeline.EmailDisposition.ReEnqueueChildren, "$disposition")
+        }
+
+        @Test
+        @DisplayName("other mail from the same sender is read as a direct email (it may be an application update)")
+        fun nonAlertFallsBackToRecruiterPath() {
+            val llm = RecordingLlm("""{"is_job_posting": false, "is_application_update": true, "jd_text": "", "company": "Microsoft", "role_title": "SDET"}""")
+            val html = """<p>Thank you for applying to Senior SDET.</p>
+                <a href="https://apply.careers.microsoft.com/careers/job/1970393556874530">View the job</a>"""
+            val result = ScanEmailNode(llm = llm).process(alert("Thank you for applying to Senior SDET", html))
+
+            assertTrue(llm.lastPrompt != null, "read by the LLM like any direct email")
+            assertTrue(result.isApplicationUpdate)
+            assertTrue(result.digestJobs.isEmpty())
+        }
+
+        @Test
+        @DisplayName("a Workday tenant's job alert (<tenant>@myworkday.com) is parsed; its application mail is not")
+        fun workdayAlertsAndApplicationMail() {
+            fun workday(subject: String, html: String) = JDState(
+                intake = IntakeContext.Email(
+                    emailId = "w-1", subject = subject, from = "walmart@myworkday.com", rawBody = "", htmlBody = html,
+                    isRecruiter = false, isDigest = false, isInlineDigest = false,
+                )
+            )
+            val alertHtml = """<p>New jobs matching your job alert</p>
+                <a href="https://walmart.wd5.myworkdayjobs.com/en-US/WalmartExternal/job/Bellevue-WA/Senior-QA-Engineer_R-2345678">Senior QA Engineer</a>"""
+            val alert = ScanEmailNode(llm = RecordingLlm("""{"is_job_posting": false}""")).process(workday("Job Alert: QA Seattle", alertHtml))
+            assertEquals("watchlist:workday:walmart/WalmartExternal:R-2345678", alert.digestJobs.single().postingKey)
+
+            val llm = RecordingLlm("""{"is_job_posting": false, "is_application_update": true, "jd_text": "", "company": "Walmart", "role_title": "Senior QA Engineer"}""")
+            val applied = ScanEmailNode(llm = llm).process(workday("Thanks for applying to Senior QA Engineer", alertHtml.replace("New jobs matching your job alert", "We received your application")))
+            assertTrue(applied.isApplicationUpdate && applied.digestJobs.isEmpty())
+        }
+    }
 }

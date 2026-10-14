@@ -62,6 +62,7 @@ class UkgAdapterTest {
         assertEquals("", postings[1].location)
         val text = UkgAdapter(http).describe(st, postings[0])!!
         assertTrue("Plan and run system tests for light rail." in text, text)
+        assertTrue("scripts end with });" in text, "nested objects and a '});' inside the text don't cut the JSON short: $text")
     }
 
     @Test

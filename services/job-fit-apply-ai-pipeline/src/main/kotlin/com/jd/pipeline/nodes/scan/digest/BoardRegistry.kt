@@ -1,6 +1,16 @@
 package com.jd.pipeline.nodes.scan.digest
 
-data class JobBoardGroup(val key: String, val domains: Set<String>, val serialScrape: Boolean = false)
+/**
+ * [fallbackToRecruiter]: when the group's strategy finds nothing, read the email as a direct one
+ * (LLM extraction) instead of guessing job links — an employer's sender mails application updates
+ * as well as alerts.
+ */
+data class JobBoardGroup(
+    val key: String,
+    val domains: Set<String>,
+    val serialScrape: Boolean = false,
+    val fallbackToRecruiter: Boolean = false,
+)
 
 object BoardRegistry {
     val GROUPS: List<JobBoardGroup> = listOf(
@@ -16,6 +26,14 @@ object BoardRegistry {
         JobBoardGroup("workday", setOf("workday.com", "myworkdayjobs.com")),
         JobBoardGroup("ats", setOf("lever.co", "greenhouse.io", "smartrecruiters.com", "jobvite.com", "icims.com", "taleo.net", "ashbyhq.com", "rippling.com")),
         JobBoardGroup("generic", setOf("indeed.com", "ziprecruiter.com", "dice.com")),
+        // Employers' own job alerts: Microsoft Careers (Eightfold), Eightfold-hosted career sites,
+        // SuccessFactors career sites (jobs2web) and Workday tenants (<tenant>@myworkday.com, which
+        // also sends application updates — the strategy's alert check keeps those direct).
+        JobBoardGroup(
+            "employer_alerts",
+            setOf("email.careers.microsoft.com", "eightfold.ai", "jobs2web.com", "myworkday.com"),
+            fallbackToRecruiter = true,
+        ),
     )
 
     val DOMAINS: Set<String> = GROUPS.flatMap { it.domains }.toSet()
@@ -41,9 +59,10 @@ object BoardRegistry {
         "monster" to MonsterDigestStrategy,
         "glassdoor" to GlassdoorDigestStrategy,
         "builtin" to BuiltInDigestStrategy,
-        "workday" to WorkdayDigestStrategy,
-        "ats" to AtsDigestStrategy,
+        "workday" to EmployerAlertDigestStrategy,
+        "ats" to EmployerAlertDigestStrategy,
         "generic" to GenericDigestStrategy,
+        "employer_alerts" to EmployerAlertDigestStrategy,
     )
 
     fun groupFor(domain: String?): JobBoardGroup? {

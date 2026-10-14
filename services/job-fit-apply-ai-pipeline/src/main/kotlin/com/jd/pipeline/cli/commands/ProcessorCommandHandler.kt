@@ -265,12 +265,23 @@ object ProcessorCommandHandler {
         val failed = mutableListOf<String>()
         children.forEachIndexed { index, child ->
             val identity = child.jobUrl.ifBlank { "#$index" }
-            val key = "$parentMessageId|$identity"
+            // A link-only child (employer alert) is keyed on the posting itself, not this email, so
+            // the same posting from the watchlist or a later alert is one job at the bridge.
+            val key = if (child.submitAsUrl && child.postingKey.isNotBlank()) child.postingKey else "$parentMessageId|$identity"
             // Everything inside the try: an `onSuccess` block runs *outside* runCatching's
             // protection, so a throw while classifying the outcome would escape and kill the
             // processor loop — losing not just this child but the parent's terminal result.
             try {
-                val outcome = bridge.submitDetailed(ingestion.toJdRecord(child, idempotencyKey = key))
+                val outcome = if (child.submitAsUrl) {
+                    // An employer's own posting: the career-site dedupe window (60 days), same as
+                    // the watchlist's submissions of it.
+                    bridge.submitUrl(
+                        url = child.jobUrl, key = key, source = IngestionSource.CAREER_SITE.name,
+                        company = child.company, roleTitle = child.roleTitle, location = child.location,
+                    )
+                } else {
+                    bridge.submitDetailed(ingestion.toJdRecord(child, idempotencyKey = key))
+                }
                 if (outcome.deduped) deduped += key else queued += key
             } catch (e: Exception) {
                 System.err.println("[processor] digest child submit failed ($key): ${e.message}")

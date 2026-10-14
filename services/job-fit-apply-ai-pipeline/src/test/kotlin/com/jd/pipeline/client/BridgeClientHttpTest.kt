@@ -39,6 +39,9 @@ class BridgeClientHttpTest {
     @Volatile private var resultStatus: Int = 200
     @Volatile private var statusResponses: ArrayDeque<String> = ArrayDeque()
     @Volatile private var artifactHit: Boolean = false
+    @Volatile private var urlBody: String = ""
+    @Volatile private var urlStatus: Int = 202
+    @Volatile private var urlResponse: String = """{"job_id":"url-1","status":"pending","deduped":false}"""
 
     @BeforeEach
     fun setUp() {
@@ -49,6 +52,10 @@ class BridgeClientHttpTest {
                 path == "/api/jobs" && ex.requestMethod == "POST" -> {
                     submitBody = ex.requestBody.readBytes().decodeToString()
                     respond(ex, submitStatus, """{"job_id":"job-123"}""")
+                }
+                path == "/api/urls" && ex.requestMethod == "POST" -> {
+                    urlBody = ex.requestBody.readBytes().decodeToString()
+                    respond(ex, urlStatus, urlResponse)
                 }
                 path == "/api/queue/claim" && ex.requestMethod == "GET" ->
                     respond(ex, claimResponse.first, claimResponse.second)
@@ -206,5 +213,27 @@ class BridgeClientHttpTest {
         val dest = tempDir.resolve("downloaded.txt")
         client.downloadArtifact("job-123", "resume.pdf", dest.toFile())
         assertEquals("ARTIFACT-BYTES", dest.readText())
+    }
+
+    @Test
+    @DisplayName("submitUrl posts the link, key, source and hints, and reports a dedupe")
+    fun submitUrlPostsLinkAndKey() {
+        val queued = client.submitUrl(
+            url = "https://jobs.lever.co/acme/x", key = "watchlist:lever:acme:x", source = "CAREER_SITE",
+            company = "Acme", roleTitle = "", location = null,
+        )
+        assertEquals(SubmitOutcome("url-1", deduped = false), queued)
+        val sent = mapper.readTree(urlBody)
+        assertEquals("https://jobs.lever.co/acme/x", sent.path("url").asText())
+        assertEquals("watchlist:lever:acme:x", sent.path("idempotency_key").asText())
+        assertEquals("CAREER_SITE", sent.path("source").asText())
+        assertEquals("Acme", sent.path("company").asText())
+        assertTrue(sent.path("role_title").isNull, "a blank hint is sent as null")
+
+        urlStatus = 200; urlResponse = """{"job_id":"watch-9","status":"done","deduped":true}"""
+        assertEquals(SubmitOutcome("watch-9", deduped = true), client.submitUrl("https://jobs.lever.co/acme/x", "watchlist:lever:acme:x", "CAREER_SITE"))
+
+        urlStatus = 422; urlResponse = """{"detail":"url must be an absolute http(s) URL"}"""
+        assertThrows<IllegalStateException> { client.submitUrl("ftp://x", "k", "CAREER_SITE") }
     }
 }
