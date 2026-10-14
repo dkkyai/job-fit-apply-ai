@@ -79,9 +79,10 @@ class ScrapeJdNode(
 
     private val mapper = ObjectMapper()
 
-    // Page-fetching HttpClient — separate from LlmClient; needs followRedirects.
+    // Page-fetching HttpClient — separate from LlmClient. Redirects are followed by hand
+    // (sendFollowingRedirects) so every hop passes the private-network check *before* it is requested.
     private val httpClient = HttpClient.newBuilder()
-        .followRedirects(HttpClient.Redirect.NORMAL)
+        .followRedirects(HttpClient.Redirect.NEVER)
         .build()
 
     data class PageContent(val rawHtml: String, val cleanedText: String, val blockReason: String = "", val isCaptchaBlock: Boolean = false, val isBotBlock: Boolean = false, val scrapePath: String = "", val isRateLimited: Boolean = false) {
@@ -95,6 +96,8 @@ class ScrapeJdNode(
 
     companion object {
         internal const val PRIVATE_TARGET_REASON = "private network address — not fetched"
+        private const val MAX_REDIRECTS = 5
+        private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
         // Site-agnostic auth-wall markers (see detectAuthWall). URL redirects to these paths are the
         // strongest signal a CDP-scraped page bounced us to login/verification instead of the JD.
@@ -236,29 +239,48 @@ class ScrapeJdNode(
         return httpResult.copy(scrapePath = "http")
     }
 
+    private fun pageRequest(uri: URI): HttpRequest = HttpRequest.newBuilder()
+        .uri(uri)
+        .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .timeout(java.time.Duration.ofSeconds(20))
+        .GET()
+        .build()
+
+    /**
+     * GET [start], following up to [MAX_REDIRECTS] redirects the way Redirect.NORMAL would (never
+     * HTTPS → HTTP), but checking each `Location` against the private-network guard *before*
+     * requesting it — so an open redirect on a public site can't make us send a request inward.
+     * Null when a hop is refused. The returned response's uri() is the final URL, as before.
+     */
+    private fun sendFollowingRedirects(start: URI): HttpResponse<String>? {
+        var current = start
+        repeat(MAX_REDIRECTS + 1) {
+            val response = httpClient.send(pageRequest(current), HttpResponse.BodyHandlers.ofString())
+            if (response.statusCode() !in REDIRECT_CODES) return response
+            val location = response.headers().firstValue("Location").orElse(null) ?: return response
+            val next = current.resolve(location.trim())
+            if (current.scheme.equals("https", true) && next.scheme.equals("http", true)) return response
+            if (!allowPrivateHosts && isPrivateTarget(next.toString())) {
+                log("[scrape_jd] Redirect to a private-network target refused: $current → $next")
+                return null
+            }
+            current = next
+        }
+        throw java.io.IOException("too many redirects (> $MAX_REDIRECTS) from $start")
+    }
+
     private fun fetchPageOverHttp(url: String): PageContent {
         try {
-            val request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
-                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                .header("Accept-Language", "en-US,en;q=0.9")
-                .timeout(java.time.Duration.ofSeconds(20))
-                .GET()
-                .build()
-
-            val response = httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            val response = sendFollowingRedirects(URI.create(url))
+                ?: return PageContent("", "", PRIVATE_TARGET_REASON)
             val status = response.statusCode()
 
             // Track the final URL after redirect chain
             val finalUrl = response.uri().toString()
             val finalHost = extractHost(finalUrl)
             log("[scrape_jd] Final URL after redirects: $finalUrl")
-            // A public link can redirect into the private network; never keep what came back from there.
-            if (!allowPrivateHosts && finalUrl != url && isPrivateTarget(finalUrl)) {
-                log("[scrape_jd] Redirected to a private-network target ($finalUrl) — discarding the response")
-                return PageContent("", "", PRIVATE_TARGET_REASON)
-            }
 
             when (status) {
                 403 -> {
