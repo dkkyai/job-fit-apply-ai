@@ -151,8 +151,15 @@ class UkgAdapter(private val http: Http) : FeedAdapter {
 
     override fun describe(employer: Employer, posting: Posting): String? {
         val page = http.get(posting.url)
-        val detail = Regex("""new US\.Opportunity\.CandidateOpportunityDetail\((\{.*?\})\);""", RegexOption.DOT_MATCHES_ALL).find(page) ?: return null
-        return htmlToText(json.readTree(detail.groupValues[1]).path("Description").asText(null))
+        val start = page.indexOf(DETAIL_CALL).takeIf { it >= 0 }?.let { page.indexOf('{', it) }?.takeIf { it >= 0 } ?: return null
+        // Read exactly one JSON value from the brace: nested objects, and a "});" inside a string,
+        // cannot cut it short the way a regex could.
+        val detail = json.factory.createParser(page.substring(start)).use { json.readTree<com.fasterxml.jackson.databind.JsonNode>(it) }
+        return htmlToText(detail?.path("Description")?.asText(null))
+    }
+
+    private companion object {
+        const val DETAIL_CALL = "new US.Opportunity.CandidateOpportunityDetail("
     }
 }
 
