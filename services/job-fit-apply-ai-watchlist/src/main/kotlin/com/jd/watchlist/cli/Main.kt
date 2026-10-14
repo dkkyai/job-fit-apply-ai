@@ -47,7 +47,11 @@ object Main {
     private fun runner(bridge: WatchlistBridgeClient, state: RunState, health: HealthReport, intervalMs: Long) =
         WatchlistRunner(
             employers = EmployerCatalog.load(Config.EMPLOYERS_FILE),
-            adapters = Adapters.registry(JdkHttp(), Config.WORKDAY_SEARCH_TERMS),
+            adapters = Adapters.registry(
+                JdkHttp(), Config.SEARCH_TERMS,
+                pause = { Thread.sleep(Config.PAGE_DELAY_MS) },
+                slowPause = { Thread.sleep(Config.EIGHTFOLD_PAGE_DELAY_MS) },
+            ),
             filter = PostingFilter(Config.TITLE_INCLUDE, Config.TITLE_EXCLUDE),
             bridge = bridge,
             state = state,
