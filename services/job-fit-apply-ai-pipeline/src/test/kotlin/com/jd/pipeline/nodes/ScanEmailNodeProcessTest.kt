@@ -316,4 +316,44 @@ class ScanEmailNodeProcessTest {
             assertTrue(result.skippedReason.contains("no job URLs"), "reason: ${result.skippedReason}")
         }
     }
+
+    @Nested
+    @DisplayName("employer job alerts")
+    inner class EmployerAlerts {
+
+        private fun alert(subject: String, html: String) = JDState(
+            intake = IntakeContext.Email(
+                emailId = "a-1", subject = subject, from = "Microsoft Careers <donotreply@email.careers.microsoft.com>",
+                rawBody = "", htmlBody = html, isRecruiter = false, isDigest = false, isInlineDigest = false,
+            )
+        )
+
+        @Test
+        @DisplayName("an alert becomes a digest of link-only children, with no LLM call")
+        fun alertBecomesLinkOnlyDigest() {
+            val llm = RecordingLlm("""{"is_job_posting": false}""")
+            val html = """<p>New jobs match your profile</p>
+                <a href="https://apply.careers.microsoft.com/careerhub/explore/jobs/1970393556874530?utm_source=position_notification">Senior SDET</a>"""
+            val result = ScanEmailNode(llm = llm).process(alert("New jobs at Microsoft that match your profile", html))
+
+            assertTrue(result.isDigest && result.isJobPosting)
+            val child = result.digestJobs.single()
+            assertTrue(child.submitAsUrl)
+            assertEquals("watchlist:eightfold:apply.careers.microsoft.com:1970393556874530", child.postingKey)
+            assertNull(llm.lastPrompt, "the alert is parsed, not sent to the LLM")
+        }
+
+        @Test
+        @DisplayName("other mail from the same sender is read as a direct email (it may be an application update)")
+        fun nonAlertFallsBackToRecruiterPath() {
+            val llm = RecordingLlm("""{"is_job_posting": false, "is_application_update": true, "jd_text": "", "company": "Microsoft", "role_title": "SDET"}""")
+            val html = """<p>Thank you for applying to Senior SDET.</p>
+                <a href="https://apply.careers.microsoft.com/careers/job/1970393556874530">View the job</a>"""
+            val result = ScanEmailNode(llm = llm).process(alert("Thank you for applying to Senior SDET", html))
+
+            assertTrue(llm.lastPrompt != null, "read by the LLM like any direct email")
+            assertTrue(result.isApplicationUpdate)
+            assertTrue(result.digestJobs.isEmpty())
+        }
+    }
 }

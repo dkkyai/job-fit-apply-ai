@@ -244,6 +244,44 @@ class ProcessorCommandHandlerTest {
         }
 
         @Test
+        @DisplayName("employer-alert children go to /api/urls under their posting key, career-site window")
+        fun linkOnlyChildrenAreSubmittedAsUrls() {
+            val bridge = mock<BridgeClient>()
+            val pipeline = mock<ProcessingPipeline>()
+            val ingestion = mock<IngestionPipeline>()
+
+            val alertChild = ingested(isJobPosting = true).copy(
+                jobUrl = "https://apply.careers.microsoft.com/careers/job/1970393556874530",
+                submitAsUrl = true, postingKey = "watchlist:eightfold:apply.careers.microsoft.com:1970393556874530",
+                company = "Microsoft", roleTitle = "Senior SDET",
+            )
+            val scrapedChild = ingested(isJobPosting = true)
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
+            val posted = CountDownLatch(1)
+
+            whenever(bridge.claim()).doReturn(emailClaim()).doAnswer { processorThread.interrupt(); null }
+            whenever(ingestion.invoke(any())).doReturn(ingested(isJobPosting = false, isDigest = true, children = listOf(alertChild, scrapedChild)))
+            whenever(ingestion.toJdRecord(any(), anyOrNull())).doReturn(fakeRecord())
+            whenever(bridge.submitDetailed(any())).doReturn(SubmitOutcome("child-2", deduped = false))
+            whenever(bridge.submitUrl(any(), any(), any(), anyOrNull(), anyOrNull(), anyOrNull())).doReturn(SubmitOutcome("watch-1", deduped = true))
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
+
+            processorThread.isDaemon = true
+            processorThread.start()
+
+            assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should complete the parent within 5s")
+            verify(bridge).submitUrl(
+                eq("https://apply.careers.microsoft.com/careers/job/1970393556874530"),
+                eq("watchlist:eightfold:apply.careers.microsoft.com:1970393556874530"),
+                eq("CAREER_SITE"), eq("Microsoft"), eq("Senior SDET"), anyOrNull(),
+            )
+            verify(ingestion, times(1)).toJdRecord(any(), eq("m1|#1"))   // only the scraped child takes the JD_SCRAPED path
+            verify(bridge, times(1)).submitDetailed(any())
+            // A posting the bridge already had (deduped) still counts as landed: the parent is a processed digest.
+            verify(bridge).postResult(eq("job-email"), argThat { terminalLabel == TerminalLabel.JD_PROCESSED_DIGEST }, anyOrNull())
+        }
+
+        @Test
         @DisplayName("a child that fails to enqueue makes the parent an error, not a processed digest")
         fun lostChildFailsTheParent() {
             val bridge = mock<BridgeClient>()

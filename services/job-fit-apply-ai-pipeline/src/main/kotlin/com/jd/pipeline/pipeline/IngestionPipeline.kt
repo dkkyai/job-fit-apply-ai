@@ -36,6 +36,9 @@ class IngestionPipeline {
                 val processed = digestJobs
                     .filter { it.isJobPosting }
                     .map { child ->
+                        // A link-only child (employer alert) is scraped later, at its own claim,
+                        // and only if the bridge doesn't already have the posting.
+                        if (child.submitAsUrl) return@map child
                         var c = scrapeNode.process(child)
                         c = saveNode.process(c)
                         c

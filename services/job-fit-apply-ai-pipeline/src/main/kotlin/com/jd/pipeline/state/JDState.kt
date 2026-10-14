@@ -100,6 +100,14 @@ data class JDState(
 
     // ── Digest expansion ──────────────────────────────────────────────────────
     val digestJobs: List<JDState> = emptyList(),
+    /**
+     * A digest child known only by its link (an employer job-alert email): the processor submits it
+     * to the bridge's /api/urls under [postingKey] instead of scraping it here, so the bridge can
+     * drop a posting it already has before anything is scraped.
+     */
+    val submitAsUrl: Boolean = false,
+    /** The posting's dedupe identity for [submitAsUrl] children (see PostingLinks). */
+    val postingKey: String = "",
 
     // ── User Profile ────────────────────────���─────────────────────────────────
     // Loaded once from config/candidate_profile.json; available to all nodes.
