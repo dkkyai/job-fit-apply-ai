@@ -33,9 +33,12 @@ open class TailorRequester(
             .POST(HttpRequest.BodyPublishers.noBody()).build()
         val resp = http.send(req, HttpResponse.BodyHandlers.ofString())
         val body = runCatching { BridgeReadClient.JSON.parseToJsonElement(resp.body()).jsonObject }.getOrNull()
+        // Success must name the request: a 2xx without a job_id is a broken bridge, not a tailor run.
+        fun requestId(): String = body?.str("job_id")?.takeIf { it.isNotBlank() }
+            ?: throw BridgeReadClient.BridgeException(resp.statusCode(), "POST $path → ${resp.statusCode()} without a job_id: ${resp.body().take(200)}")
         return when (resp.statusCode()) {
-            202 -> Outcome.Queued(body?.str("job_id") ?: "")
-            200 -> Outcome.Already(body?.str("job_id") ?: "", body?.str("status") ?: "")
+            202 -> Outcome.Queued(requestId())
+            200 -> Outcome.Already(requestId(), body?.str("status") ?: "")
             404, 409 -> Outcome.Refused(body?.str("detail") ?: "the bridge refused (${resp.statusCode()})")
             else -> throw BridgeReadClient.BridgeException(resp.statusCode(), "POST $path → ${resp.statusCode()}: ${resp.body().take(200)}")
         }

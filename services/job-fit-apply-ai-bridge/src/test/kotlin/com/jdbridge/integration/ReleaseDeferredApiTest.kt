@@ -112,6 +112,22 @@ class ReleaseDeferredApiTest {
     }
 
     @Test
+    fun `a failed enqueue leaves the job deferred, so the next sweep still finds it`() = testApplication {
+        application { configureApplication() }
+        val d = completed(client, "DEFERRED", 88)
+        val row = getJob(d)!!
+        val record = Json.parseToJsonElement(row.tailorRecord!!)
+
+        kotlin.test.assertFailsWith<IllegalStateException> {
+            queueTailor(row, record) { _, _, _, _ -> error("disk full") }
+        }
+        assertEquals(TailorState.DEFERRED, getJob(d)!!.tailorState, "not stranded as released")
+
+        assertEquals(listOf(d), ids(sweep(client)["released"]))
+        assertEquals(TailorState.RELEASED, getJob(d)!!.tailorState)
+    }
+
+    @Test
     fun `a deferred job already tapped is not queued a second time`() = testApplication {
         application { configureApplication() }
         val d = completed(client, "DEFERRED", 85)

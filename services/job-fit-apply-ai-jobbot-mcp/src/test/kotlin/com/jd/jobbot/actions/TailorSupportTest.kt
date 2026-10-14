@@ -79,6 +79,14 @@ class TailorSupportTest {
     }
 
     @Test
+    fun `a 202 without a job id is an error, not a recorded tailor run`() {
+        bridge.on("POST /api/jobs/job-7700/tailor") { FakeHttp.Resp(202, "{}") }
+        val r = service().tap(tap())
+        assertEquals(Outcomes.ERROR, r.outcome)
+        assertNull(store.latest("tailor", JobIdentity.of(offer)))
+    }
+
+    @Test
     fun `a job that was not offered never reaches the bridge`() {
         val tailored = FakeBridge.event(7701)   // TAILOR
         val r = service(events = mapOf(7701L to tailored)).tap(tap(7701))
@@ -104,6 +112,11 @@ class TailorSupportTest {
         assertEquals(TailorRequester.Outcome.Refused("Job not found"), req.request("job-1"))
         bridge.on("POST /api/jobs/") { FakeHttp.Resp(500, "boom") }
         assertEquals(500, assertFailsWith<BridgeReadClient.BridgeException> { req.request("job-1") }.status)
+        // A success that names no request is a broken bridge, not a tailor run.
+        bridge.on("POST /api/jobs/") { FakeHttp.Resp(202, "{}") }
+        assertEquals(202, assertFailsWith<BridgeReadClient.BridgeException> { req.request("job-1") }.status)
+        bridge.on("POST /api/jobs/") { FakeHttp.Resp(200, """{"job_id":"  ","status":"pending"}""") }
+        assertFailsWith<BridgeReadClient.BridgeException> { req.request("job-1") }
 
         val before = bridge.requests.size
         assertFailsWith<IllegalArgumentException> { req.request("../queue/claim") }

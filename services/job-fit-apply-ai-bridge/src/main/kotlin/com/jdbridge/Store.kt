@@ -4,6 +4,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -524,6 +527,35 @@ suspend fun countDeferred(): Long = dbQuery { Jobs.selectAll().where { Jobs.tail
 
 suspend fun setTailorState(jobId: String, state: String) = dbQuery {
     Jobs.update({ Jobs.id eq jobId }) { it[Jobs.tailorState] = state }
+}
+
+/**
+ * Queue [row]'s stored [record] as a TAILOR_REQUEST, once per job: a job already requested (and
+ * not errored) answers with that request, deduped. The job is marked released only once a request
+ * exists — if [insert] fails, a deferred job stays deferred for the next sweep or tap.
+ */
+internal suspend fun queueTailor(
+    row: JobRow,
+    record: JsonElement,
+    insert: suspend (jdJson: String, jobUrl: String?, key: String, type: String) -> String =
+        { jdJson, jobUrl, key, type -> enqueue(jdJson, jobUrl, key, type) },
+): SubmitJobResponse {
+    val key = "tailor:${row.id}"
+    findLiveByKey(key)?.let { existing ->
+        log.info("Tailor already requested for ${row.id} → ${existing.id} (${existing.status})")
+        setTailorState(row.id, TailorState.RELEASED)
+        return SubmitJobResponse(existing.id, existing.status, deduped = true)
+    }
+    val payload = buildJsonObject {
+        put("record", record)
+        put("parent_job_id", row.id)
+        row.trackId?.let { put("track_id", it) }
+        row.jobSource?.let { put("job_board", it) }
+    }
+    val tailorJobId = insert(payload.toString(), row.jobUrl, key, WorkItemType.TAILOR_REQUEST)
+    setTailorState(row.id, TailorState.RELEASED)
+    log.info("Tailor requested for ${row.id} → $tailorJobId (${row.roleTitle} @ ${row.company})")
+    return SubmitJobResponse(tailorJobId, JobStatus.PENDING.value)
 }
 
 /** The newest non-ERROR job enqueued under [key], whatever its age — for once-per-job requests. */

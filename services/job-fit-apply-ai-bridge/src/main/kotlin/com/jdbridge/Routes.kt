@@ -9,9 +9,7 @@ import io.ktor.server.routing.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.put
 import org.slf4j.LoggerFactory
 
 private val log = LoggerFactory.getLogger("com.jdbridge.Routes")
@@ -25,33 +23,6 @@ private suspend fun enqueueOne(body: SubmitJobRequest): SubmitJobResponse {
     val jobId = enqueue(Json.encodeToString(body), body.job_url, body.idempotency_key)
     log.info("Job enqueued: $jobId (${body.role_title} @ ${body.company})")
     return SubmitJobResponse(job_id = jobId, status = JobStatus.PENDING.value)
-}
-
-/**
- * Queue [row]'s stored [record] as a TAILOR_REQUEST, once per job: a job already requested (and
- * not errored) answers with that request, deduped. Marks the job released either way.
- */
-private suspend fun queueTailor(row: JobRow, record: kotlinx.serialization.json.JsonElement): SubmitJobResponse {
-    val key = "tailor:${row.id}"
-    setTailorState(row.id, TailorState.RELEASED)
-    findLiveByKey(key)?.let { existing ->
-        log.info("Tailor already requested for ${row.id} → ${existing.id} (${existing.status})")
-        return SubmitJobResponse(existing.id, existing.status, deduped = true)
-    }
-    val payload = buildJsonObject {
-        put("record", record)
-        put("parent_job_id", row.id)
-        row.trackId?.let { put("track_id", it) }
-        row.jobSource?.let { put("job_board", it) }
-    }
-    val tailorJobId = enqueue(
-        jdJson         = payload.toString(),
-        jobUrl         = row.jobUrl,
-        idempotencyKey = key,
-        type           = WorkItemType.TAILOR_REQUEST,
-    )
-    log.info("Tailor requested for ${row.id} → $tailorJobId (${row.roleTitle} @ ${row.company})")
-    return SubmitJobResponse(tailorJobId, JobStatus.PENDING.value)
 }
 
 private fun JobRow.out(tailorJobId: String? = null) = DeferredJobOut(
