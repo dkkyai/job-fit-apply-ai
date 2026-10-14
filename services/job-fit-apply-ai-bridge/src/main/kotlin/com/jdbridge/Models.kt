@@ -59,7 +59,7 @@ data class SubmitJobRequest(
     val company: String?         = null,
     val location: String?        = null,
     val job_url: String?         = null,
-    val source: String?          = null,          // "EMAIL" | "JSEARCH" | "MANUAL"
+    val source: String?          = null,          // "EMAIL" | "JSEARCH" | "MANUAL" | "CAREER_SITE"
     val idempotency_key: String? = null,
     val intake_meta: JsonElement? = null,          // opaque — stored verbatim
     // Scrape/API-extracted JD fields, passed through to the Processor's JdRecord. The request is

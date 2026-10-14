@@ -1,0 +1,52 @@
+package com.jd.watchlist.config
+
+import io.github.cdimascio.dotenv.Dotenv
+
+/**
+ * Configuration for the watchlist ingestion service: once a day, poll the public job feeds of a
+ * curated list of employers (employers.yaml) and submit pre-filtered postings to the bridge as
+ * JD_SCRAPED with source CAREER_SITE. No browser, no LLM.
+ */
+object Config {
+    private val DOTENV: Dotenv = Dotenv.configure()
+        .filename(System.getProperty("dotenv.file", ".env"))
+        .ignoreIfMissing()
+        .load()
+
+    private fun get(key: String, default: String): String =
+        DOTENV.get(key)?.takeIf { it.isNotBlank() } ?: System.getenv(key)?.takeIf { it.isNotBlank() } ?: default
+
+    val JD_BRIDGE_URL: String = get("JD_BRIDGE_URL", "http://127.0.0.1:8765")
+
+    /** Minimum spacing between real polls — the last-run gate. Default 24h. */
+    val WATCHLIST_INTERVAL_MS: Long = get("WATCHLIST_INTERVAL_MS", "86400000").toLong()
+
+    /** Persisted state (last_run) — a small mounted volume so restarts don't re-poll. */
+    val STATE_FILE: String = get("WATCHLIST_STATE_FILE", "/state/watchlist.json")
+
+    /** Per-employer outcome of the last run, for doctor.sh and humans. */
+    val HEALTH_FILE: String = get("WATCHLIST_HEALTH_FILE", "/state/watchlist-health.json")
+
+    /** Employer list on disk; blank = the bundled classpath resource employers.yaml. */
+    val EMPLOYERS_FILE: String = get("WATCHLIST_EMPLOYERS_FILE", "")
+
+    /** Titles must match this (case-insensitive) to reach the bridge — the LLM only sees QE-ish roles. */
+    val TITLE_INCLUDE: String = get(
+        "WATCHLIST_TITLE_INCLUDE",
+        """\b(qa|qe|sdet|quality|test|tester|testing|verification|validation)\b""",
+    )
+
+    /** Titles matching this are dropped even when they match [TITLE_INCLUDE]. */
+    val TITLE_EXCLUDE: String = get(
+        "WATCHLIST_TITLE_EXCLUDE",
+        """\b(intern|internship|technician|clinical|nurse|driver|warehouse|asic|fpga|rtl|soc|silicon|design verification|formal verification|microbiolog\w*|laboratory|aml)\b""",
+    )
+
+    /** Workday has no "list everything" call worth paginating, so it is searched by these terms. */
+    val WORKDAY_SEARCH_TERMS: List<String> =
+        get("WATCHLIST_WORKDAY_SEARCH_TERMS", "test,quality,sdet,qa")
+            .split(",").map { it.trim() }.filter { it.isNotEmpty() }
+
+    /** Pause between employers so the daily sweep stays polite. */
+    val INTER_EMPLOYER_DELAY_MS: Long = get("WATCHLIST_INTER_EMPLOYER_DELAY_MS", "750").toLong()
+}
