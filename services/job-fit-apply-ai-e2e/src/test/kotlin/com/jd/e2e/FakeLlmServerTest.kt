@@ -261,6 +261,20 @@ class FakeLlmServerTest {
     }
 
     @Test
+    @DisplayName("each call's model is recorded alongside its route, and reset clears both")
+    fun callModelsAreRecordedIndexAligned() {
+        server.reset(mapOf("score_fit" to listOf(failure(429))))
+
+        ask("# SCORE_SKILL\n\nJOB DESCRIPTION:\nfixture", model = "e2e-cloud-score")
+        ask("# SCORE_SKILL\n\nJOB DESCRIPTION:\nfixture", model = "e2e-local-fallback")
+
+        assertEquals(listOf("score_fit", "score_fit"), server.calls.toList())
+        assertEquals(listOf("e2e-cloud-score", "e2e-local-fallback"), server.callModels.toList())
+        server.reset()
+        assertEquals(emptyList(), server.callModels.toList())
+    }
+
+    @Test
     @DisplayName("a malformed body is served verbatim, not wrapped in a completion envelope")
     fun malformedBodiesAreServedVerbatim() {
         server.reset(mapOf("gap_analysis" to listOf(malformed("<html>gateway</html>"))))
