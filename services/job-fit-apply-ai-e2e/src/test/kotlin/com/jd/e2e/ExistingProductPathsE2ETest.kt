@@ -337,6 +337,14 @@ class ExistingProductPathsE2ETest {
         assertEquals(404, harness.statusOf("${E2eConfig.bridgeUrl}/api/jobs/${offered.jobId}/resume.pdf"))
         val offerTrack = offered.finalStatus.path("track_id").asInt()
         assertTrue(offerTrack > 0, "the offer wrote a tracks row: ${offered.finalStatus}")
+        // The card: says it is not tailored yet, links the notes, and carries the Tailor button.
+        val offerSeq = offered.completedEvent.path("completed_seq").asLong()
+        assertTrue(offered.telegramMessages.single().contains("Not tailored yet"), offered.telegramMessages.single())
+        assertEquals(
+            listOf("cb:tailor:$offerSeq"),
+            offered.telegramButtons.map { it.second }.filter { it.startsWith("cb:") },
+            "an offer's only action is Tailor: ${offered.telegramButtons}",
+        )
 
         val tapUrl = "${E2eConfig.bridgeUrl}/api/jobs/${offered.jobId}/tailor"
         val tailored = harness.runScenario(company = company) { postJson(tapUrl, "") }

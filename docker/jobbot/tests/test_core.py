@@ -12,6 +12,7 @@ from jobbot_actions import core
     ("reply:1", ("reply", 1)),
     ("archive:42", ("archive", 42)),
     ("undo:42", ("undo", 42)),
+    ("tailor:7720", ("tailor", 7720)),
     ("send:3", ("send", 3)),
     ("cancel:3", ("cancel", 3)),
     ("submit:4", ("submit", 4)),
@@ -24,7 +25,7 @@ def test_parses_our_callbacks(data, expected):
 
 @pytest.mark.parametrize("data", [
     None, "", "apply", "apply:", "apply:0", "apply:-1", "apply:12a", "apply:12 ", " apply:12",
-    "Apply:12", "delete:12", "ea:once:3", "cl:9:1", "mp:openai", "apply:1234567890123456789",
+    "Apply:12", "Tailor:12", "tailor:", "delete:12", "ea:once:3", "cl:9:1", "mp:openai", "apply:1234567890123456789",
     "Apply: Acme / Staff SDET #deadbeef",
 ])
 def test_ignores_everything_else(data):

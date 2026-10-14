@@ -11,7 +11,7 @@ import kotlinx.serialization.json.JsonObject
  * docker/jobbot/contract/button_eligibility.json, so a rule change has to land in both.
  */
 object Eligibility {
-    val VERBS = listOf("apply", "reply", "archive")
+    val VERBS = listOf("apply", "reply", "archive", "tailor")
 
     /** Terminal labels whose email the poller leaves in the inbox (poller LabelApplier). */
     val INBOX_TERMINAL_LABELS = setOf(
@@ -29,6 +29,8 @@ object Eligibility {
             "apply" -> event.str("job_url") != null && event.str("pipeline_action").equals("TAILOR", ignoreCase = true)
             "reply" -> event.bool("is_recruiter") && event.str("message_id") != null
             "archive" -> event.str("message_id") != null && event.str("terminal_label") in INBOX_TERMINAL_LABELS
+            // Tailor builds the resume an offer (a fit below AUTO_TAILOR_MIN_SCORE) did not.
+            "tailor" -> event.str("pipeline_action").equals("OFFER", ignoreCase = true)
             else -> false
         }
     }

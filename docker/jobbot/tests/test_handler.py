@@ -148,7 +148,7 @@ def run(handler, update):
 
 def test_handler_is_scoped_and_runs_before_hermes(monkeypatch):
     handler, group, _, registered = wire(monkeypatch, FakeClient({}))
-    assert handler.pattern == r"^(apply|reply|archive|undo|send|cancel|submit|discard|resume):(\d{1,18})$"
+    assert handler.pattern == r"^(apply|reply|archive|undo|tailor|send|cancel|submit|discard|resume):(\d{1,18})$"
     assert "jdaccounts" in registered
     assert group < 0
     assert "jdstatus" in registered

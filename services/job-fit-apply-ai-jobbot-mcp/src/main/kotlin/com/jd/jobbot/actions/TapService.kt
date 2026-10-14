@@ -117,7 +117,7 @@ class TapService(
         /** Telegram's answerCallbackQuery text limit. */
         private const val TOAST_MAX = 200
         val ID_VERBS = setOf("send", "cancel", "submit", "discard", "resume")
-        val KNOWN_VERBS = setOf("apply", "reply", "archive", "undo") + ID_VERBS
+        val KNOWN_VERBS = setOf("apply", "reply", "archive", "undo", "tailor") + ID_VERBS
 
         /** Verbs that ride on another verb's switch in JOBBOT_ACTIONS. */
         val BASE_VERB = mapOf(

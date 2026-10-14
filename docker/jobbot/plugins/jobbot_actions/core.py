@@ -11,9 +11,9 @@ import urllib.error
 import urllib.request
 
 # <verb>:<completed_seq> on cards; send/cancel:<approval id> under a reply-draft preview.
-CALLBACK_PATTERN = r"^(apply|reply|archive|undo|send|cancel|submit|discard|resume):(\d{1,18})$"
+CALLBACK_PATTERN = r"^(apply|reply|archive|undo|tailor|send|cancel|submit|discard|resume):(\d{1,18})$"
 _CALLBACK = re.compile(CALLBACK_PATTERN)
-OUR_VERBS = ("apply", "reply", "archive", "undo", "send", "cancel", "submit", "discard", "resume")
+OUR_VERBS = ("apply", "reply", "archive", "undo", "tailor", "send", "cancel", "submit", "discard", "resume")
 # Tolerates the escaped quotes of a JSON result nested in another JSON string.
 _APPROVAL_ID = re.compile(r'\\*"approval_id\\*"\s*:\s*(\d{1,18})')
 

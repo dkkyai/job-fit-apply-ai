@@ -101,8 +101,8 @@ class Notifier(
     private fun buttonsFor(event: CompletedEvent): List<List<TelegramButtons.Button>> {
         val resolved = when {
             !linkButtonsEnabled -> ArtifactLinks.Links(null, null)
-            // Skipped: the report is the scoring notes, and there is no resume to look up.
-            event.skipped() -> ArtifactLinks.Links(reportUrlOf(event), null)
+            // Skipped or offered: the report is the scoring notes, and there is no resume to look up.
+            event.skipped() || event.offered() -> ArtifactLinks.Links(reportUrlOf(event), null)
             else -> links.resolve(event.artifactUrl, event.artifacts?.resumePdf)
         }
         return TelegramButtons.forHighFit(
@@ -170,9 +170,17 @@ class Notifier(
         return lines.joinToString("\n").trimEnd()
     }
 
-    /** "Skipped: <reason>" for a scored job that was not tailored, else null. */
-    private fun skipText(e: CompletedEvent): String? =
-        if (!e.skipped()) null else "Skipped: " + htmlEscape(e.skipReason?.trim()?.ifBlank { null } ?: "not tailored, so there's no resume")
+    /**
+     * "Skipped: <reason>" for a scored job that was not tailored, "Not tailored yet: <reason>" for an
+     * offered one (its Tailor button builds the resume), else null.
+     */
+    private fun skipText(e: CompletedEvent): String? = when {
+        e.skipped() -> "Skipped: " + htmlEscape(e.skipReason?.trim()?.ifBlank { null } ?: "not tailored, so there's no resume")
+        e.offered() -> "Not tailored yet: " +
+            htmlEscape(e.skipReason?.trim()?.ifBlank { null } ?: "below the auto-tailor score") +
+            (if (buttonsEnabled && TelegramButtons.Action.TAILOR in actions && e.completedSeq > 0) ". Tap Tailor for a resume." else ".")
+        else -> null
+    }
 
     private fun reportUrlOf(e: CompletedEvent): String? =
         e.artifactUrl?.takeIf { it.isNotBlank() }?.let { "${it.trimEnd('/')}/report.md" }
@@ -230,6 +238,8 @@ class Notifier(
             TelegramButtons.Action.REPLY -> e.isRecruiter && !e.messageId.isNullOrBlank()
             TelegramButtons.Action.ARCHIVE ->
                 !e.messageId.isNullOrBlank() && e.terminalLabel in INBOX_TERMINAL_LABELS
+            // Tailor queues the resume an offer skipped; a tailored or skipped job has nothing to offer.
+            TelegramButtons.Action.TAILOR -> e.offered()
         }
     }
 }
