@@ -18,7 +18,7 @@ flowchart TB
         GM["Gmail Inbox"]
         EXT["Chrome Extension<br/>(MV3) — JD extraction"]
         JS_API["JSearch API<br/>(RapidAPI)"]
-        ATS["Employer job feeds<br/>(Greenhouse · Workday · Ashby · Lever · RSS<br/>Oracle · Eightfold · SmartRecruiters · Jibe · Amazon<br/>Workable · Gem · Rippling · ADP · Phenom · TikTok)"]
+        ATS["Employer job feeds<br/>(Greenhouse · Workday · Ashby · Lever · RSS<br/>Oracle · Eightfold · SmartRecruiters · Jibe · Amazon<br/>Workable · Gem · Rippling · ADP · Phenom · TikTok<br/>HTML: iCIMS classic · Jobvite)"]
     end
 
     %% ---------------- Docker Compose ----------------

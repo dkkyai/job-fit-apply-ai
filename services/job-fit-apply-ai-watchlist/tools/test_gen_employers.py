@@ -99,9 +99,19 @@ class EntryTest(unittest.TestCase):
         self.assertFalse(gen_employers.entry(row(ats="workday", api_endpoint=""))["enabled"])
 
     def test_platforms_without_an_adapter_stay_listed_and_enabled(self):
-        e = gen_employers.entry(row(ats="icims", api_endpoint="https://careers-x.icims.com/jobs/search?ss=1&in_iframe=1"))
-        self.assertEqual("icims", e["ats"])
+        e = gen_employers.entry(row(ats="taleo", api_endpoint="", careers_url="https://x.taleo.net/careersection/ex/jobsearch.ftl"))
+        self.assertEqual("taleo", e["ats"])
         self.assertNotIn("enabled", e)
+
+    def test_html_boards_use_the_careers_page_when_there_is_no_api(self):
+        e = gen_employers.entry(row(ats="icims", api_endpoint="", careers_url="https://careers-fhcrc.icims.com/jobs/search?ss=1&searchKeyword=software&in_iframe=1&pr=3", url_status="200"))
+        self.assertEqual(("icims", "https://careers-fhcrc.icims.com/jobs/search?ss=1&searchKeyword=software"), (e["ats"], e["feed"]),
+                         "paging/iframe params are the adapter's business")
+        self.assertNotIn("enabled", e)
+        e = gen_employers.entry(row(ats="jobvite", api_endpoint="", careers_url="https://jobs.jobvite.com/kymetacorp/jobs", url_status="200"))
+        self.assertEqual(("jobvite", "kymetacorp"), (e["ats"], e["board"]))
+        e = gen_employers.entry(row(ats="jobvite", api_endpoint="", careers_url="https://jobs.jobvite.com/x/jobs", url_status="403"))
+        self.assertFalse(e["enabled"], "an unreachable careers page is disabled like an unverified API")
 
 
 class CommittedYamlTest(unittest.TestCase):
