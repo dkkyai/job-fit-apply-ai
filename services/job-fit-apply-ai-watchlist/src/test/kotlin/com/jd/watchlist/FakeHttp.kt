@@ -14,8 +14,11 @@ class FakeHttp(
 ) : Http {
     val requests = mutableListOf<String>()
 
-    override fun get(url: String): String {
+    val getHeaders = mutableListOf<Map<String, String>>()
+
+    override fun get(url: String, headers: Map<String, String>): String {
         requests += "GET $url"
+        getHeaders += headers
         return gets[url] ?: getHandler(url) ?: throw HttpStatusException(url, 404)
     }
 

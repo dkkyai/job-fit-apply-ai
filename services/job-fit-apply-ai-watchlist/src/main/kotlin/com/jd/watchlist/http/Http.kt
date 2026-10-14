@@ -8,7 +8,8 @@ import java.time.Duration
 
 /** Minimal HTTP surface the adapters need — an interface so tests can serve canned feeds. */
 interface Http {
-    fun get(url: String): String
+    /** [headers] are extra request headers (DirectEmployers' search API requires `X-Origin`). */
+    fun get(url: String, headers: Map<String, String> = emptyMap()): String
     /** [headers] are extra request headers (TikTok's API requires `website-path`). */
     fun postJson(url: String, json: String, headers: Map<String, String> = emptyMap()): String
 }
@@ -30,7 +31,8 @@ class JdkHttp(
     private val backoffMs: List<Long> = listOf(3_000, 9_000, 27_000),
     private val sleep: (Long) -> Unit = { Thread.sleep(it) },
 ) : Http {
-    override fun get(url: String): String = send(base(url).GET().build())
+    override fun get(url: String, headers: Map<String, String>): String =
+        send(base(url).also { b -> headers.forEach { (k, v) -> b.header(k, v) } }.GET().build())
 
     override fun postJson(url: String, json: String, headers: Map<String, String>): String =
         send(
