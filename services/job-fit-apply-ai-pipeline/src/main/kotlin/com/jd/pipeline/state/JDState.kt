@@ -89,6 +89,11 @@ data class JDState(
 
     // ── Supabase tracking output ──────────────────────────────────────────────
     val trackId: Int? = null,
+    /**
+     * Set on an on-demand tailor run (a TAILOR_REQUEST): the `tracks` row the original OFFER wrote.
+     * Tracking then updates that row instead of inserting a second one for the same job.
+     */
+    val existingTrackId: Int? = null,
     val isSupabaseTracked: Boolean = false,
     val isDuplicate: Boolean = false,
     val duplicateId: Int? = null,

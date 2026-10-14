@@ -86,7 +86,7 @@ class ProcessorCommandHandlerTest {
                 processorThread.interrupt()
                 null
             }
-        whenever(pipeline.invoke(record)).doReturn(result)
+        whenever(pipeline.invoke(record, null)).doReturn(result)
         doAnswer { resultPosted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
         processorThread.isDaemon = true
@@ -117,7 +117,7 @@ class ProcessorCommandHandlerTest {
                 processorThread.interrupt()
                 null
             }
-        whenever(pipeline.invoke(record)).thenThrow(RuntimeException("pipeline exploded"))
+        whenever(pipeline.invoke(record, null)).thenThrow(RuntimeException("pipeline exploded"))
         doAnswer { resultPosted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
         processorThread.isDaemon = true
@@ -145,7 +145,7 @@ class ProcessorCommandHandlerTest {
         val posted = CountDownLatch(1)
         val thread = Thread { ProcessorCommandHandler.run(bridge, pipeline) }
         whenever(bridge.claim()).doReturn(claim).doAnswer { thread.interrupt(); null }
-        whenever(pipeline.invoke(record)).thenThrow(RuntimeException("LLM HTTP 429 too many concurrent requests"))
+        whenever(pipeline.invoke(record, null)).thenThrow(RuntimeException("LLM HTTP 429 too many concurrent requests"))
         doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
         thread.isDaemon = true
         thread.start()
@@ -198,7 +198,7 @@ class ProcessorCommandHandlerTest {
             whenever(bridge.claim()).doReturn(emailClaim()).doAnswer { processorThread.interrupt(); null }
             whenever(ingestion.invoke(any())).doReturn(ingested(isJobPosting = true))
             whenever(ingestion.toJdRecord(any(), anyOrNull())).doReturn(record)
-            whenever(pipeline.invoke(record)).doReturn(successResult())
+            whenever(pipeline.invoke(record, null)).doReturn(successResult())
             doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), any(), anyOrNull())
 
             processorThread.isDaemon = true
@@ -240,7 +240,7 @@ class ProcessorCommandHandlerTest {
             // parent digest completed → JD_Processed_Digest so the Poller archives it (not a null
             // label that would loop the parent through JD_Processing forever)
             verify(bridge).postResult(eq("job-email"), argThat { terminalLabel == TerminalLabel.JD_PROCESSED_DIGEST }, anyOrNull())
-            verify(pipeline, never()).invoke(any())           // the digest parent itself is never processed
+            verify(pipeline, never()).invoke(any(), anyOrNull())           // the digest parent itself is never processed
         }
 
         @Test
@@ -298,7 +298,7 @@ class ProcessorCommandHandlerTest {
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should complete the non-job within 5s")
             // JD_Not_Found so the Poller excludes it from the intake query (no null-label loop)
             verify(bridge).postResult(eq("job-email"), argThat { terminalLabel == TerminalLabel.JD_NOT_FOUND }, anyOrNull())
-            verify(pipeline, never()).invoke(any())
+            verify(pipeline, never()).invoke(any(), anyOrNull())
             verify(bridge, never()).submit(any())
         }
 
@@ -329,7 +329,7 @@ class ProcessorCommandHandlerTest {
                     error?.contains("BLOCKED") == true &&
                     scrapePath == "blocked"
             }, anyOrNull())
-            verify(pipeline, never()).invoke(any())
+            verify(pipeline, never()).invoke(any(), anyOrNull())
         }
 
         /** Run one EMAIL_RAW claim whose ingestion returns [ingestedState]; returns the bridge mock. */
@@ -348,7 +348,7 @@ class ProcessorCommandHandlerTest {
             processorThread.start()
 
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should complete the ingestion error within 5s")
-            verify(pipeline, never()).invoke(any())
+            verify(pipeline, never()).invoke(any(), anyOrNull())
             return bridge
         }
 
@@ -400,7 +400,7 @@ class ProcessorCommandHandlerTest {
                 error != null && error!!.contains("missing email payload") && terminalLabel == TerminalLabel.JD_ERROR
             }, anyOrNull())
             verify(ingestion, never()).invoke(any())
-            verify(pipeline, never()).invoke(any())
+            verify(pipeline, never()).invoke(any(), anyOrNull())
         }
     }
 
@@ -437,7 +437,7 @@ class ProcessorCommandHandlerTest {
             whenever(scrapeNode.process(any())).doReturn(extracted("x".repeat(300)))
 
             val recordCaptor = argumentCaptor<JdRecord>()
-            whenever(pipeline.invoke(recordCaptor.capture())).doReturn(successResult())
+            whenever(pipeline.invoke(recordCaptor.capture(), anyOrNull())).doReturn(successResult())
 
             val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
             val posted = CountDownLatch(1)
@@ -476,7 +476,7 @@ class ProcessorCommandHandlerTest {
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a skip within 5s")
 
             verify(bridge).postResult(eq("job-page"), argThat { error != null && error!!.contains("job posting") }, anyOrNull())
-            verify(pipeline, never()).invoke(any())
+            verify(pipeline, never()).invoke(any(), anyOrNull())
         }
 
         @Test
@@ -497,11 +497,61 @@ class ProcessorCommandHandlerTest {
             assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a skip within 5s")
 
             verify(bridge).postResult(eq("job-bad-page"), argThat { error != null && error!!.contains("missing page payload") }, anyOrNull())
-            verify(pipeline, never()).invoke(any())
+            verify(pipeline, never()).invoke(any(), anyOrNull())
         }
     }
 
     // ── JD_URL claims (POST /api/urls — a posting known only by its link) ──────
+
+    @Nested
+    @DisplayName("TAILOR_REQUEST claims")
+    inner class TailorRequestClaims {
+
+        private val record = JdRecord(
+            jdText = "x".repeat(300), company = "Acme", roleTitle = "Staff SDET", location = "Seattle, WA",
+            jobUrl = "https://jobs.acme.example/qa/7", source = IngestionSource.EMAIL,
+        )
+
+        /** Run one claim through the processor loop; returns the posted result and what the pipeline got. */
+        private fun runOne(claim: ClaimDto): Triple<ProcessingResult, JdRecord?, com.jd.pipeline.source.TailorRequest?> {
+            val bridge = mock<BridgeClient>()
+            val pipeline = mock<ProcessingPipeline>()
+            val recordCaptor = argumentCaptor<JdRecord>()
+            val tailorCaptor = argumentCaptor<com.jd.pipeline.source.TailorRequest>()
+            whenever(pipeline.invoke(recordCaptor.capture(), tailorCaptor.capture())).doReturn(successResult())
+
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, mock<IngestionPipeline>()) }
+            val posted = CountDownLatch(1)
+            val resultCaptor = argumentCaptor<ProcessingResult>()
+            whenever(bridge.claim()).doReturn(claim).doAnswer { processorThread.interrupt(); null }
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), resultCaptor.capture(), anyOrNull())
+            processorThread.isDaemon = true
+            processorThread.start()
+            assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a result within 5s")
+            return Triple(resultCaptor.firstValue, recordCaptor.allValues.firstOrNull(), tailorCaptor.allValues.firstOrNull())
+        }
+
+        @Test
+        @DisplayName("hands the stored record to the pipeline as a tailor request, with the offer's track and board")
+        fun tailorsTheStoredRecord() {
+            val claim = ClaimDto(
+                jobId = "job-tailor", type = WorkItemType.TAILOR_REQUEST,
+                tailor = com.jd.pipeline.client.ClaimedTailorRequest(record = record, parentJobId = "job-offer", trackId = 7, jobBoard = "jobright.ai"),
+            )
+            val (result, processed, tailor) = runOne(claim)
+            assertEquals(record, processed)
+            assertEquals(com.jd.pipeline.source.TailorRequest(parentJobId = "job-offer", trackId = 7, jobBoard = "jobright.ai"), tailor)
+            assertNull(result.error)
+        }
+
+        @Test
+        @DisplayName("a claim without its payload is failed, not spun on")
+        fun missingPayloadIsFailed() {
+            val (result, processed, _) = runOne(ClaimDto(jobId = "job-tailor", type = WorkItemType.TAILOR_REQUEST))
+            assertNull(processed, "nothing to tailor")
+            assertEquals("TAILOR_REQUEST claim missing its record", result.error)
+        }
+    }
 
     @Nested
     @DisplayName("JD_URL claims")
@@ -531,7 +581,7 @@ class ProcessorCommandHandlerTest {
             whenever(ingestion.scrapeNode).doReturn(scrapeNode)
             whenever(scrapeNode.process(any())).doAnswer { inv -> (inv.arguments[0] as JDState).also { seen += it }.let(scrape) }
             val recordCaptor = argumentCaptor<JdRecord>()
-            whenever(pipeline.invoke(recordCaptor.capture())).doReturn(successResult())
+            whenever(pipeline.invoke(recordCaptor.capture(), anyOrNull())).doReturn(successResult())
 
             val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
             val posted = CountDownLatch(1)
@@ -700,6 +750,6 @@ class ProcessorCommandHandlerTest {
         processorThread.join(5_000)
 
         assertTrue(callCount >= 1, "processor should poll at least once")
-        verify(pipeline, org.mockito.kotlin.never()).invoke(any())
+        verify(pipeline, org.mockito.kotlin.never()).invoke(any(), anyOrNull())
     }
 }

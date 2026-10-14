@@ -96,6 +96,8 @@ internal object Jobs : Table("jobs") {
     val jobSource       = text("source").nullable()   // not `source`: that name is Table's own
     val strengthsJson   = text("strengths_json").nullable()
     val gapsJson        = text("gaps_json").nullable()
+    // An OFFER's processed record (JSON) — what a Tailor tap re-queues. Nullable, ALTERed on.
+    val tailorRecord    = text("tailor_record").nullable()
     val error           = text("error").nullable()
     val retryCount      = integer("retry_count").default(0)
     val nextAttemptAt   = long("next_attempt_at").nullable()
@@ -380,6 +382,7 @@ private suspend fun recordTerminalResult(jobId: String, req: ResultRequest, now:
             row[Jobs.jobSource]       = req.source
             row[Jobs.strengthsJson]   = req.strengths.takeIf { it.isNotEmpty() }?.let { Json.encodeToString(it) }
             row[Jobs.gapsJson]        = req.gaps.takeIf { it.isNotEmpty() }?.let { Json.encodeToString(it) }
+            row[Jobs.tailorRecord]    = req.tailor_record?.toString()
             row[Jobs.claimedAt]       = null
             row[Jobs.claimToken]      = null
             row[Jobs.nextAttemptAt]   = null
@@ -480,6 +483,16 @@ suspend fun getJob(jobId: String): JobRow? = dbQuery {
         ?.toJobRow()
 }
 
+/** The newest non-ERROR job enqueued under [key], whatever its age — for once-per-job requests. */
+suspend fun findLiveByKey(key: String): JobRow? = dbQuery {
+    Jobs.selectAll()
+        .where { (Jobs.idempotencyKey eq key) and (Jobs.status neq JobStatus.ERROR.value) }
+        .orderBy(Jobs.createdAt, SortOrder.DESC)
+        .limit(1)
+        .firstOrNull()
+        ?.toJobRow()
+}
+
 fun jobDir(jobId: String): Path {
     val dir = JOBS_DIR.resolve(jobId)
     dir.createDirectories()
@@ -517,5 +530,7 @@ private fun ResultRow.toJobRow(): JobRow {
         company        = this[Jobs.company],
         roleTitle      = this[Jobs.roleTitle],
         trackId        = this[Jobs.trackId],
+        jobSource      = this[Jobs.jobSource],
+        tailorRecord   = this[Jobs.tailorRecord],
     )
 }

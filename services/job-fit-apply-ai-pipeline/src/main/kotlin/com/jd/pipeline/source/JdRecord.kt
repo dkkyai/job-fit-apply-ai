@@ -74,4 +74,21 @@ data class ProcessingResult(
     /** Where the job came from: the job board ("jobright.ai") or "recruiter email". */
     val source: String? = null,
     val gaps: List<String> = emptyList(),
+    /**
+     * Only on an OFFER (serialized → tailor_record): the record as processed, so a later Tailor tap
+     * can re-run it as a TAILOR_REQUEST. The bridge keeps it on the job — for an email job it is the
+     * only copy of the resolved JD, which never round-trips through the bridge otherwise.
+     */
+    val tailorRecord: JdRecord? = null,
+)
+
+/**
+ * An on-demand tailor run, from a TAILOR_REQUEST work item: [parentJobId] is the bridge job that was
+ * OFFERed, [trackId] the `tracks` row it wrote (updated instead of inserting a second), and
+ * [jobBoard] the board the card showed, which the record alone can't always recover.
+ */
+data class TailorRequest(
+    val parentJobId: String,
+    val trackId: Int? = null,
+    val jobBoard: String? = null,
 )

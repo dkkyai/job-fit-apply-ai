@@ -97,6 +97,9 @@ services:
       # Pinned like the notifier's below: the base stack interpolates FIT_THRESHOLD from the
       # repo-root .env, and the canned fit_score (72) must tailor regardless of a dev's value.
       FIT_THRESHOLD: "50"
+      # Pinned for the same reason. The canned 72 is above it (tailored); the offer scenario's 60 is
+      # between the two, so it is offered and tailored only on a tap.
+      AUTO_TAILOR_MIN_SCORE: "70"
       # The in-process fake LLM in the e2e test JVM (host side).
       #
       # The default is 21436, NOT the production oMLX port 11436 that docker-compose.yml

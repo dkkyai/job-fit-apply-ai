@@ -102,6 +102,13 @@ object Config {
 
     // ── Scoring thresholds ───────────────────────────────────────────────────────
     val FIT_THRESHOLD: Float = get("FIT_THRESHOLD", "50").toFloat()
+    /**
+     * Fits at or above this are tailored automatically. Non-recruiter fits from FIT_THRESHOLD up to
+     * it are scored and OFFERed instead — pinged with a Tailor button, tailored only on a tap — so
+     * the expensive tailoring models are spent on the best fits. Blank means FIT_THRESHOLD: every
+     * fit is tailored, as before on-demand tailoring existed. Recruiter emails are always tailored.
+     */
+    val AUTO_TAILOR_MIN_SCORE: Float = get("AUTO_TAILOR_MIN_SCORE", "").toFloatOrNull() ?: FIT_THRESHOLD
     // ATS refinement pass: when the validation report is actionable (missing supported
     // must-haves, leaked unsupported terms, doubled words) or the overall score lands below
     // the threshold, the subgraph re-runs the rewrite nodes once with the concrete gap list
