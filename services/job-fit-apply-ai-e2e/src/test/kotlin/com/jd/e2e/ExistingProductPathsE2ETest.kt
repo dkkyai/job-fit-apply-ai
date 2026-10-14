@@ -672,6 +672,57 @@ class ExistingProductPathsE2ETest {
     }
 
     /**
+     * Employer job-alert email (a SuccessFactors-style jobs2web alert). The processor parses the
+     * posting links itself — no LLM read of the email — and hands each to /api/urls under the
+     * posting's own key, so the bridge scrapes and scores it as a career-site job. A later alert for
+     * the same posting (new message, new per-email `eid`) is dropped by the bridge before any scrape.
+     */
+    @Test
+    @DisplayName("an employer job-alert email is parsed into its postings; a repeat alert is deduped before scraping")
+    fun employerAlertEmailBecomesCareerSiteJobs() {
+        val nonce = System.currentTimeMillis().toString()
+        val company = "E2E Alert $nonce"
+        val role = "Staff Software Engineer in Test"
+        val posting = "http://host.docker.internal:${E2eConfig.fakeLlmPort}/job/E2E-SDET/$nonce"
+        fun alertBody(eid: String) = """
+            New jobs posted from careers.e2e.example
+            $role - Seattle, WA $posting?from=email&eid=$eid
+            Unsubscribe http://host.docker.internal:${E2eConfig.fakeLlmPort}/unsubscribe/?t=$eid
+        """.trimIndent()
+        val from = "E2E Careers <alerts@noreply9.jobs2web.com>"
+
+        val result = harness.runScenario(
+            company = company,
+            responses = mapOf("scrape_jd" to listOf(ok(harness.fixture("llm/scrape_jd.json", mapOf("COMPANY" to company, "ROLE" to role))))),
+        ) {
+            submitEmail("e2e-alert-$nonce-1", "New jobs posted from careers.e2e.example", alertBody("$nonce-1"), from, "e2e-alert-$nonce-1", isRecruiterHint = false)
+        }
+
+        // The alert itself is a processed digest; its posting ran as its own job.
+        assertEquals("JD_Processed_Digest", result.completedEvents.single().path("terminal_label").asText(), "alert: ${result.completedEvents}")
+        assertTrue("scan_email" !in result.llmCalls, "the alert is parsed, not read by the LLM: ${result.llmCalls}")
+        assertEquals(1, result.llmCalls.count { it == "scrape_jd" }, "the posting is scraped once: ${result.llmCalls}")
+        assertEquals(posting, result.track.jobUrl, "fetched at its clean URL (tracking params dropped)")
+        val child = result.eventsForCompany().single()
+        assertEquals("TAILOR", child.path("pipeline_action").asText(), "the posting reaches scoring: $child")
+
+        // The same posting in tomorrow's alert: a new email and a new eid, one job.
+        val cursor = mapperOf().readTree(harness.getString("${E2eConfig.bridgeUrl}/api/jobs/completed/head")).path("max_seq").asLong(0)
+        val callsBefore = harness.fakeLlm.calls.size
+        val again = harness.submitEmail("e2e-alert-$nonce-2", "New jobs posted from careers.e2e.example", alertBody("$nonce-2"), from, "e2e-alert-$nonce-2", isRecruiterHint = false)
+        val parentId = again.path("job_id").asText()
+        harness.pollUntil(E2eConfig.timeoutSeconds, 1_000, "repeat alert $parentId to complete") {
+            mapperOf().readTree(harness.getString("${E2eConfig.bridgeUrl}/api/jobs/$parentId")).takeIf { it.path("status").asText() == "done" }
+        }
+        Thread.sleep(E2eConfig.settleMs)
+        assertEquals(0, harness.fakeLlm.calls.drop(callsBefore).count { it == "scrape_jd" }, "no second scrape: ${harness.fakeLlm.calls.drop(callsBefore)}")
+        assertTrue(harness.completedEventsSince(cursor).none { it.path("company").asText() == company }, "no second job for the posting")
+        assertEquals(1, harness.countTracks(company))
+    }
+
+    private fun mapperOf() = com.fasterxml.jackson.databind.ObjectMapper()
+
+    /**
      * Issue #56, scenario 8 — Notifier delivery acknowledgement and cursor recovery.
      *
      * The old failure mode was invisible from both ends: `NotificationClient` logged a non-2xx and

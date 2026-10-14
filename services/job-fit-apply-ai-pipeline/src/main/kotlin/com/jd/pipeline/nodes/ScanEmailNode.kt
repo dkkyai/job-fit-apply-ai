@@ -85,6 +85,11 @@ class ScanEmailNode(
     private fun processJobBoardEmail(input: JDState, senderDomain: String, emailBody: String): JDState {
         val group = BoardRegistry.groupFor(senderDomain)
         val parsedDigestJobs = parseBoardDigestJobs(input, group?.key)
+        if (parsedDigestJobs.isEmpty() && group?.fallbackToRecruiter == true) {
+            val email = input.emailIntake!!
+            println("[scan_email] $senderDomain mail is not a job alert — reading it as a direct email")
+            return processRecruiterEmail(input, email.subject, email.rawBody, email.htmlBody)
+        }
         if (parsedDigestJobs.isNotEmpty()) {
             val groupLabel = group?.key?.replace('_', ' ') ?: "job board"
             val base = input.withEmailFlags(isDigest = true, isInlineDigest = false).copy(

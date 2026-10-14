@@ -154,6 +154,10 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
                     get("/e2e-jobs/{id}") {
                         call.respondText(jobPageHtml(call.parameters["id"].orEmpty()), ContentType.Text.Html)
                     }
+                    // The same page at a career-site posting path, for employer job-alert links.
+                    get("/job/{slug}/{id}") {
+                        call.respondText(jobPageHtml(call.parameters["id"].orEmpty()), ContentType.Text.Html)
+                    }
                     post("/v1/chat/completions") {
                         val body = mapper.readTree(call.receiveText())
                         val prompt = body.path("messages").path(0).path("content").asText("")

@@ -55,6 +55,34 @@ class BridgeClient(
         }
     }
 
+    /**
+     * POST /api/urls — a posting known only by its link; the bridge dedupes it on [key] / [url]
+     * within [source]'s window and the processor scrapes it at claim time (JD_URL).
+     */
+    fun submitUrl(
+        url: String,
+        key: String,
+        source: String,
+        company: String? = null,
+        roleTitle: String? = null,
+        location: String? = null,
+    ): SubmitOutcome {
+        val json = mapper.writeValueAsString(
+            mapOf(
+                "url" to url, "idempotency_key" to key, "source" to source,
+                "company" to company?.ifBlank { null }, "role_title" to roleTitle?.ifBlank { null },
+                "location" to location?.ifBlank { null },
+            ),
+        )
+        val req = HttpPost("$baseUrl/api/urls").apply { entity = StringEntity(json, ContentType.APPLICATION_JSON) }
+        return http.execute(req) { resp ->
+            val body = EntityUtils.toString(resp.entity, Charsets.UTF_8)
+            check(resp.code in 200..202) { "POST /api/urls → ${resp.code}: $body" }
+            val tree = mapper.readTree(body)
+            SubmitOutcome(jobId = tree.get("job_id").asText(), deduped = tree.get("deduped")?.asBoolean(false) ?: false)
+        }
+    }
+
     // ── Status polling ────────────────────────────────────────────────────────
 
     fun getStatus(jobId: String): JobStatusDto {
