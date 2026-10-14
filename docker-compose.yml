@@ -180,6 +180,11 @@ services:
       # Optional overrides of the QE title pre-filter (regexes; see the service's .env.example).
       WATCHLIST_TITLE_INCLUDE: "${WATCHLIST_TITLE_INCLUDE:-}"
       WATCHLIST_TITLE_EXCLUDE: "${WATCHLIST_TITLE_EXCLUDE:-}"
+      # Stale-feed alerts (a feed failing/empty 2 runs in a row) use the processor's alert channels.
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN:-}"
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-}"
+      DISCORD_BOT_TOKEN: "${DISCORD_BOT_TOKEN:-}"
+      DISCORD_CHANNEL_ID: "${DISCORD_CHANNEL_ID:-}"
     volumes:
       # Last-run state + watchlist-health.json (per-employer outcome, read by doctor.sh).
       - "${JD_WATCHLIST_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/watchlist-state}:/state"

@@ -1,6 +1,7 @@
 package com.jd.watchlist
 
 import com.jd.watchlist.adapters.FeedAdapter
+import com.jd.watchlist.alert.AlertSink
 import com.jd.watchlist.bridge.SubmitJobRequest
 import com.jd.watchlist.bridge.WatchlistBridgeClient
 import com.jd.watchlist.config.Config
@@ -27,6 +28,8 @@ class WatchlistRunner(
     private val intervalMs: Long = Config.WATCHLIST_INTERVAL_MS,
     private val interEmployerDelayMs: Long = Config.INTER_EMPLOYER_DELAY_MS,
     private val sleep: (Long) -> Unit = { Thread.sleep(it) },
+    private val alerts: AlertSink = AlertSink {},
+    private val alertAfterRuns: Int = Config.ALERT_AFTER_RUNS,
 ) {
     sealed interface Outcome
     data class Skipped(val ageMs: Long) : Outcome
@@ -44,12 +47,14 @@ class WatchlistRunner(
         val unsupported = employers.count { it.enabled && it.ats !in adapters }
         println("[watchlist] polling ${active.size} employers ($unsupported on platforms without an adapter yet)")
 
+        val previous = health.previousSuspectRuns()
         val results = active.mapIndexed { i, e ->
             if (i > 0 && interEmployerDelayMs > 0) sleep(interEmployerDelayMs)
             pollEmployer(e, adapters.getValue(e.ats))
-        }
+        }.map { h -> h.copy(suspectRuns = if (h.suspect) (previous[h.company] ?: 0) + 1 else 0) }
         val run = RunHealth(ranAt = now, employers = results, unsupported = unsupported)
         health.write(run)
+        alertStaleFeeds(results)
 
         // A sweep where every feed failed is an outage (network, DNS), not a run: don't advance the
         // gate, so the next hourly tick retries instead of waiting a day.
@@ -63,6 +68,22 @@ class WatchlistRunner(
         if (run.failing.isNotEmpty()) println("[watchlist] failing: ${run.failing.joinToString()}")
         if (run.empty.isNotEmpty()) println("[watchlist] empty: ${run.empty.joinToString()}")
         return Ran(run)
+    }
+
+    /**
+     * Feeds rot quietly (an employer changes ATS, renames its board, or a site starts blocking
+     * scripts), so one message goes out when an employer *reaches* [alertAfterRuns] consecutive
+     * failing/empty runs — not every run after; doctor.sh keeps showing it until it recovers.
+     */
+    private fun alertStaleFeeds(results: List<EmployerHealth>) {
+        val stale = results.filter { it.suspectRuns == alertAfterRuns }
+        if (stale.isEmpty()) return
+        val lines = stale.take(MAX_ALERT_LINES).map { h -> "• ${h.company} (${h.ats}): ${h.error?.take(120) ?: "listed 0 jobs"}" }
+        val more = if (stale.size > MAX_ALERT_LINES) listOf("…and ${stale.size - MAX_ALERT_LINES} more") else emptyList()
+        alerts.send(
+            (listOf("⚠️ Watchlist: ${stale.size} employer feed(s) failing or empty for $alertAfterRuns runs in a row — check employers.yaml") +
+                lines + more).joinToString("\n")
+        )
     }
 
     private fun pollEmployer(e: Employer, adapter: FeedAdapter): EmployerHealth {
@@ -100,6 +121,7 @@ class WatchlistRunner(
 
     companion object {
         const val MIN_JD_CHARS = 150
+        private const val MAX_ALERT_LINES = 15
 
         /** Stable across runs and company renames: platform + board + the employer's own posting id. */
         fun idempotencyKey(e: Employer, externalId: String): String = "watchlist:${e.ats}:${e.boardKey}:$externalId"

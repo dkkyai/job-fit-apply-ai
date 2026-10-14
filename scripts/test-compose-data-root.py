@@ -388,6 +388,11 @@ def test_watchlist_state_follows_data_root() -> None:
     )
     assert_mount(config, "watchlist", "/state", override, read_only=False)
 
+    # Stale-feed alerts need the same channels as the processor's AlertService.
+    env = config["services"]["watchlist"].get("environment", {})
+    for name in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "DISCORD_BOT_TOKEN", "DISCORD_CHANNEL_ID"):
+        assert name in env, f"watchlist must receive {name} for stale-feed alerts"
+
     # The e2e slice runs with COMPOSE_PROFILES pinned empty (Makefile E2E_ENV) — that, not the
     # overlay's e2e-disabled profile (Compose unions profile lists), keeps it from polling feeds.
     e2e = compose_config(BASE, E2E, environment={"COMPOSE_PROFILES": ""})["services"]

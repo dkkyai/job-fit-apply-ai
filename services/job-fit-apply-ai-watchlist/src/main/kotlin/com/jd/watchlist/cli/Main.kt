@@ -1,6 +1,8 @@
 package com.jd.watchlist.cli
 
 import com.jd.watchlist.WatchlistRunner
+import com.jd.watchlist.alert.AlertSink
+import com.jd.watchlist.alert.ChatAlertSink
 import com.jd.watchlist.adapters.Adapters
 import com.jd.watchlist.bridge.SubmitJobRequest
 import com.jd.watchlist.bridge.SubmitJobResponse
@@ -28,6 +30,7 @@ object Main {
                 state = RunState(Path.of(Config.STATE_FILE)),
                 health = HealthReport(Path.of(Config.HEALTH_FILE)),
                 intervalMs = Config.WATCHLIST_INTERVAL_MS,
+                alerts = ChatAlertSink(),
             ).runOnce(System.currentTimeMillis())
             Command.DryRun -> {
                 // Real feeds, no bridge, no gate, no persisted state: shows what a sweep would submit.
@@ -44,7 +47,10 @@ object Main {
         }
     }
 
-    private fun runner(bridge: WatchlistBridgeClient, state: RunState, health: HealthReport, intervalMs: Long) =
+    private fun runner(
+        bridge: WatchlistBridgeClient, state: RunState, health: HealthReport, intervalMs: Long,
+        alerts: AlertSink = AlertSink { println("[watchlist] would alert:\n$it") },
+    ) =
         WatchlistRunner(
             employers = EmployerCatalog.load(Config.EMPLOYERS_FILE),
             adapters = Adapters.registry(
@@ -57,6 +63,7 @@ object Main {
             state = state,
             health = health,
             intervalMs = intervalMs,
+            alerts = alerts,
         )
 
     internal fun parse(args: Array<String>): Command = when {
