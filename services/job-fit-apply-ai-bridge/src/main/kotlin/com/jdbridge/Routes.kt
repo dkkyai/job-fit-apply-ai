@@ -25,6 +25,12 @@ private suspend fun enqueueOne(body: SubmitJobRequest): SubmitJobResponse {
     return SubmitJobResponse(job_id = jobId, status = JobStatus.PENDING.value)
 }
 
+/** An absolute http(s) URL with a host — the only kind the Processor's scraper can fetch. */
+internal fun isHttpUrl(raw: String): Boolean = runCatching {
+    val u = java.net.URI(raw.trim())
+    (u.scheme.equals("http", true) || u.scheme.equals("https", true)) && !u.host.isNullOrBlank()
+}.getOrDefault(false)
+
 fun Routing.configureRoutes() {
 
     // ── Health ────────────────────────────────────────────────────────────────
@@ -99,6 +105,31 @@ fun Routing.configureRoutes() {
             type           = WorkItemType.JD_PAGE_RAW,
         )
         log.info("Page capture enqueued: $jobId (${body.title.ifBlank { body.url }})")
+        call.respond(HttpStatusCode.Accepted, SubmitJobResponse(jobId, JobStatus.PENDING.value))
+    }
+
+    // ── Submit a posting URL (alert-email rules, HTML boards → Processor scrapes it) ─
+
+    post("/api/urls") {
+        val body = call.receive<SubmitUrlRequest>()
+        if (!isHttpUrl(body.url)) {
+            call.respond(HttpStatusCode.UnprocessableEntity, ErrorResponse("url must be an absolute http(s) URL"))
+            return@post
+        }
+        val key = body.idempotency_key ?: body.url
+        val existing = findActiveDuplicate(body.url, key, body.source)
+        if (existing != null) {
+            log.info("Dedup hit for ${body.url} → $existing")
+            call.respond(HttpStatusCode.OK, SubmitJobResponse(existing, JobStatus.PENDING.value, deduped = true))
+            return@post
+        }
+        val jobId = enqueue(
+            jdJson         = Json.encodeToString(body),
+            jobUrl         = body.url,
+            idempotencyKey = key,
+            type           = WorkItemType.JD_URL,
+        )
+        log.info("URL enqueued: $jobId (${body.role_title ?: body.url})")
         call.respond(HttpStatusCode.Accepted, SubmitJobResponse(jobId, JobStatus.PENDING.value))
     }
 

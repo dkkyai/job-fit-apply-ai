@@ -48,6 +48,7 @@ object WorkItemType {
     const val EMAIL_RAW   = "EMAIL_RAW"    // raw email from the Poller — Processor scans/scrapes it
     const val JD_SCRAPED  = "JD_SCRAPED"   // pre-structured JdRecord (JSearch / digest child)
     const val JD_PAGE_RAW = "JD_PAGE_RAW"  // raw captured web-page content from the extension — Processor LLM-extracts it
+    const val JD_URL      = "JD_URL"       // a posting known only by its link (email alert rules, HTML boards) — Processor scrapes it
 }
 
 // ── Inbound ───────────────────────────────────────────────────────────────────
@@ -83,6 +84,22 @@ data class SubmitPageCaptureRequest(
     val url: String,
     val text: String,
     val title: String           = "",
+    val idempotency_key: String? = null,          // defaults to url
+)
+
+/**
+ * A job posting known only by its URL — a job-alert email rule or a server-rendered careers page
+ * found the link but not the description. The Processor scrapes [url] (the same path digest-email
+ * children take) and scores it; [company]/[role_title]/[location] are hints used when the scrape
+ * can't extract them. [source] picks the dedup window, as on /api/jobs.
+ */
+@Serializable
+data class SubmitUrlRequest(
+    val url: String,
+    val source: String?          = null,          // "EMAIL" | "CAREER_SITE" | "MANUAL"
+    val company: String?         = null,
+    val role_title: String?      = null,
+    val location: String?        = null,
     val idempotency_key: String? = null,          // defaults to url
 )
 

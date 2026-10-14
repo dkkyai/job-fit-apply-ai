@@ -10,6 +10,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.delay
@@ -139,6 +140,13 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
             // LAN/tailnet for the duration of the run; it serves only canned fixtures.
             engine = embeddedServer(Netty, port = port, host = "0.0.0.0") {
                 routing {
+                    // A static job page for JD_URL scenarios: the processor scrapes it over plain
+                    // HTTP (long enough to stay above the thin-content browser fallback, which
+                    // e2e has no browser for). Content is generic; scrape_jd's planned reply
+                    // supplies the scenario's company/role.
+                    get("/e2e-jobs/{id}") {
+                        call.respondText(jobPageHtml(call.parameters["id"].orEmpty()), ContentType.Text.Html)
+                    }
                     post("/v1/chat/completions") {
                         val body = mapper.readTree(call.receiveText())
                         val prompt = body.path("messages").path(0).path("content").asText("")
@@ -190,6 +198,14 @@ class FakeLlmServer(private val port: Int, private val fixturesDir: Path) {
 
     fun stop() {
         engine?.stop(500, 2000)
+    }
+
+    private fun jobPageHtml(id: String): String {
+        val para = "URL_INTAKE_PAGE_MARKER posting $id. The quality engineering team owns Kotlin and Playwright " +
+            "automation, Appium mobile suites, contract tests, CI/CD paved roads and release qualification for a " +
+            "distributed platform. You will design test strategy, mentor engineers and improve feedback speed. "
+        return "<!doctype html><html><head><title>Senior Quality Engineer</title></head><body><main><h1>Senior Quality Engineer</h1>" +
+            List(6) { "<p>$para</p>" }.joinToString("") + "</main></body></html>"
     }
 
     private fun dispatch(prompt: String): Pair<String, PlannedResponse>? {

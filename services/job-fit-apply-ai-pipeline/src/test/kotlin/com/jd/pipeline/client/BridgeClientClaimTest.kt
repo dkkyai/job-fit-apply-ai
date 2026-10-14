@@ -40,6 +40,20 @@ class BridgeClientClaimTest {
     }
 
     @Test
+    fun `JD_URL claim parses a ClaimedUrl (snake_case) with its hints`() {
+        val dto = parseClaimTree(mapper.readTree(
+            """{"job_id":"j3","type":"JD_URL","jd_record":
+               {"url":"https://jobs.acme.example/qa/7","source":"EMAIL","company":"Acme","role_title":"SDET","location":"Seattle, WA","idempotency_key":"alert:acme:7"}}"""
+        ))
+        assertEquals(WorkItemType.JD_URL, dto.type)
+        assertNull(dto.jdRecord, "a JD_URL payload is not a JdRecord")
+        val url = dto.url!!
+        assertEquals("https://jobs.acme.example/qa/7", url.url)
+        assertEquals("SDET", url.roleTitle)
+        assertEquals("alert:acme:7", url.idempotencyKey)
+    }
+
+    @Test
     fun `EMAIL_RAW claim parses a ClaimedEmail (snake_case)`() {
         val dto = parseClaimTree(mapper.readTree(
             """{"job_id":"j2","type":"EMAIL_RAW","jd_record":

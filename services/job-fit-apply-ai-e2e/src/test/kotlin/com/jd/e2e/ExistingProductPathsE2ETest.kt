@@ -479,6 +479,39 @@ class ExistingProductPathsE2ETest {
     }
 
     /**
+     * URL intake (POST /api/urls): a job-alert email rule or an HTML careers board knows only the
+     * posting's link. The processor must scrape it (real ScrapeJdNode, plain HTTP against a page the
+     * harness serves), route the text through scrape_jd once, and process it like any other job; a
+     * re-submitted link dedupes.
+     */
+    @Test
+    @DisplayName("a posting URL is scraped over HTTP and processed end to end; the same link dedupes")
+    fun postingUrlIsScrapedAndProcessed() {
+        val nonce = System.currentTimeMillis().toString()
+        val company = "E2E Url $nonce"
+        val role = "Senior Quality Engineer"
+        val url = "http://host.docker.internal:${E2eConfig.fakeLlmPort}/e2e-jobs/$nonce"
+        val key = "e2e-url-$nonce"
+
+        val result = harness.runScenario(
+            company = company,
+            responses = mapOf("scrape_jd" to listOf(ok(harness.fixture("llm/scrape_jd.json", mapOf("COMPANY" to company, "ROLE" to role))))),
+        ) {
+            submitUrl(url = url, idempotencyKey = key, source = "EMAIL", company = company, roleTitle = role)
+        }
+
+        assertEquals("TAILOR", result.finalStatus.path("pipeline_action").asText(), "URL job must reach scoring: ${result.finalStatus}")
+        assertEquals(url, result.track.jobUrl)
+        assertEquals("scrape_jd", result.llmCalls.first(), "the link is scraped before anything else: ${result.llmCalls}")
+        assertEquals(1, result.llmCalls.count { it == "scrape_jd" })
+        assertEquals(1, result.completedEvents.size)
+
+        val again = harness.submitUrl(url = url, idempotencyKey = key)
+        assertTrue(again.path("deduped").asBoolean(false), "re-submitted link must dedupe: $again")
+        assertEquals(result.jobId, again.path("job_id").asText())
+    }
+
+    /**
      * Issue #56, scenario 8 — Notifier delivery acknowledgement and cursor recovery.
      *
      * The old failure mode was invisible from both ends: `NotificationClient` logged a non-2xx and

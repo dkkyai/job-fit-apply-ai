@@ -74,6 +74,10 @@ object ProcessorCommandHandler {
                     is Resolution.Proceed  -> r.jdRecord
                     is Resolution.Terminal -> { recordTerminal(claimed.jobId, r, jobStartedAt); continue }
                 }
+                WorkItemType.JD_URL -> when (val r = resolveUrl(claimed, bridge, ingestion)) {
+                    is Resolution.Proceed  -> r.jdRecord
+                    is Resolution.Terminal -> { recordTerminal(claimed.jobId, r, jobStartedAt); continue }
+                }
                 else -> {
                     val rec = claimed.jdRecord
                     if (rec == null) {
@@ -270,6 +274,13 @@ object ProcessorCommandHandler {
     )
 
     /** A bare JdRecord for a terminal claim we couldn't resolve at all (missing payload). */
+    /** Same floor the bridge applies to /api/jobs — shorter scrapes are a teaser or a wall, not a JD. */
+    private const val MIN_URL_JD_CHARS = 150
+
+    /** The submitter's source tag as an [IngestionSource]; unknown or absent tags count as MANUAL. */
+    internal fun ingestionSourceOf(tag: String?): IngestionSource =
+        IngestionSource.entries.firstOrNull { it.name.equals(tag?.trim(), ignoreCase = true) } ?: IngestionSource.MANUAL
+
     private fun emptyLogRecord(source: IngestionSource): JdRecord = JdRecord(
         jdText = "", company = null, roleTitle = null, location = null, jobUrl = null, source = source,
     )
@@ -442,6 +453,53 @@ object ProcessorCommandHandler {
                 // Rendered in the user's own browser, so this is the "captured" path — recording it
                 // keeps extension traffic distinguishable from a backend scrape in the run_log.
                 scrapePath     = extracted.scrapePath,
+            ),
+        )
+    }
+
+    /**
+     * Scrape a claimed posting URL (JD_URL) into a [JdRecord] — the same [ScrapeJdNode] fetch
+     * digest-email children use. The submitter's company/title/location are fallbacks for what the
+     * scrape can't extract. A scrape error a node caught as transient (Steel down, LLM timeout) is
+     * retried by the bridge like a thrown one; anything else, or a page with no usable JD, ends as
+     * a SKIP. There is no Gmail message, so no terminal label.
+     */
+    private fun resolveUrl(claimed: ClaimDto, bridge: BridgeClient, ingestion: IngestionPipeline): Resolution {
+        val link = claimed.url
+            ?: return postTerminal(bridge, claimed, emptyLogRecord(IngestionSource.MANUAL), skipResult("JD_URL claim missing url payload"))
+        val source = ingestionSourceOf(link.source)
+        val state = JDState(intake = IntakeContext.Link(url = link.url, source = source.name), jobUrl = link.url)
+        val scraped = try {
+            ingestion.scrapeNode.process(state)
+        } catch (e: Exception) {
+            System.err.println("[processor] url scrape failed for ${claimed.jobId}: ${e.message}")
+            val retryable = TransientFailureClassifier.isRetryable(e)
+            return postTerminal(bridge, claimed, logRecordOf(state, source), skipResult("scrape: ${e.message}", retryable = retryable))
+        }
+        if (scraped.error.isNotBlank()) {
+            val retryable = TransientFailureClassifier.isRetryableMessage(scraped.error)
+            return postTerminal(
+                bridge, claimed, logRecordOf(scraped, source),
+                skipResult("scrape: ${scraped.error}", scrapePath = scraped.scrapePath, retryable = retryable),
+            )
+        }
+        if (scraped.jdText.length < MIN_URL_JD_CHARS) {
+            return postTerminal(
+                bridge, claimed, logRecordOf(scraped, source),
+                skipResult("No job description could be extracted from ${link.url}", scrapePath = scraped.scrapePath),
+            )
+        }
+        return Resolution.Proceed(
+            JdRecord(
+                jdText         = scraped.jdText,
+                company        = scraped.company.ifBlank { null } ?: link.company?.ifBlank { null },
+                roleTitle      = scraped.roleTitle.ifBlank { null } ?: link.roleTitle?.ifBlank { null },
+                location       = scraped.location.ifBlank { null } ?: link.location?.ifBlank { null },
+                jobUrl         = scraped.jobUrl.ifBlank { link.url },
+                source         = source,
+                idempotencyKey = link.idempotencyKey ?: link.url,
+                intakeMeta     = scraped.intake,
+                scrapePath     = scraped.scrapePath,
             ),
         )
     }

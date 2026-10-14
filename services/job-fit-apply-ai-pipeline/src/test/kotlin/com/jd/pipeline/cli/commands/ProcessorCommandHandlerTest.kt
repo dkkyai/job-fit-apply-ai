@@ -35,6 +35,9 @@ import org.mockito.kotlin.whenever
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 @DisplayName("ProcessorCommandHandlerTest")
@@ -495,6 +498,102 @@ class ProcessorCommandHandlerTest {
 
             verify(bridge).postResult(eq("job-bad-page"), argThat { error != null && error!!.contains("missing page payload") }, anyOrNull())
             verify(pipeline, never()).invoke(any())
+        }
+    }
+
+    // ── JD_URL claims (POST /api/urls — a posting known only by its link) ──────
+
+    @Nested
+    @DisplayName("JD_URL claims")
+    inner class UrlClaims {
+
+        private fun urlClaim(source: String? = "EMAIL", key: String? = "alert:acme:7") = ClaimDto(
+            jobId = "job-url",
+            type  = WorkItemType.JD_URL,
+            url   = com.jd.pipeline.client.ClaimedUrl(
+                url = "https://jobs.acme.example/qa/7", source = source,
+                company = "Acme (hint)", roleTitle = "SDET (hint)", location = "Seattle, WA", idempotencyKey = key,
+            ),
+        )
+
+        private fun scraped(jdText: String, error: String = "", company: String = "", roleTitle: String = "Staff SDET") = JDState(
+            jobUrl = "https://jobs.acme.example/qa/7", company = company, roleTitle = roleTitle, location = "",
+            jdText = jdText, isJobPosting = jdText.isNotBlank(), error = error, scrapePath = "steel",
+        )
+
+        /** Run one claim through the processor loop; returns the posted result and any processed record. */
+        private fun runOne(claim: ClaimDto, scrape: (JDState) -> JDState): Pair<ProcessingResult, JdRecord?> {
+            val bridge = mock<BridgeClient>()
+            val pipeline = mock<ProcessingPipeline>()
+            val ingestion = mock<IngestionPipeline>()
+            val scrapeNode = mock<ScrapeJdNode>()
+            val seen = mutableListOf<JDState>()
+            whenever(ingestion.scrapeNode).doReturn(scrapeNode)
+            whenever(scrapeNode.process(any())).doAnswer { inv -> (inv.arguments[0] as JDState).also { seen += it }.let(scrape) }
+            val recordCaptor = argumentCaptor<JdRecord>()
+            whenever(pipeline.invoke(recordCaptor.capture())).doReturn(successResult())
+
+            val processorThread = Thread { ProcessorCommandHandler.run(bridge, pipeline, ingestion) }
+            val posted = CountDownLatch(1)
+            val resultCaptor = argumentCaptor<ProcessingResult>()
+            whenever(bridge.claim()).doReturn(claim).doAnswer { processorThread.interrupt(); null }
+            doAnswer { posted.countDown() }.whenever(bridge).postResult(any(), resultCaptor.capture(), anyOrNull())
+            processorThread.isDaemon = true
+            processorThread.start()
+            assertTrue(posted.await(5, TimeUnit.SECONDS), "processor should post a result within 5s")
+
+            claim.url?.let { link ->
+                val input = seen.single()
+                assertEquals(link.url, input.jobUrl, "the scraper is pointed at the submitted URL")
+                assertTrue(input.intake is com.jd.pipeline.source.IntakeContext.Link)
+            }
+            return resultCaptor.firstValue to recordCaptor.allValues.firstOrNull()
+        }
+
+        @Test
+        @DisplayName("scrapes the URL and processes it, with submitter hints as fallbacks")
+        fun scrapesAndProcesses() {
+            val (_, record) = runOne(urlClaim()) { scraped("x".repeat(300)) }
+            assertNotNull(record)
+            assertEquals(IngestionSource.EMAIL, record.source)
+            assertEquals("alert:acme:7", record.idempotencyKey)
+            assertEquals("Acme (hint)", record.company, "scrape found no company → hint")
+            assertEquals("Staff SDET", record.roleTitle, "scrape's title wins over the hint")
+            assertEquals("Seattle, WA", record.location)
+            assertEquals("steel", record.scrapePath)
+        }
+
+        @Test
+        @DisplayName("a transient scrape error is retryable; a permanent one is a plain skip")
+        fun scrapeErrors() {
+            val (transient, r1) = runOne(urlClaim()) { scraped("", error = "scrape_jd: HTTP 503 from steel") }
+            assertNull(r1)
+            assertTrue(transient.retryable && transient.terminalLabel == null && transient.error!!.contains("503"), transient.toString())
+
+            val (permanent, r2) = runOne(urlClaim()) { scraped("", error = "scrape_jd: sign-in wall") }
+            assertNull(r2)
+            assertFalse(permanent.retryable)
+            assertNull(permanent.terminalLabel, "no Gmail message → no label")
+        }
+
+        @Test
+        @DisplayName("a page with too little text is skipped, not scored")
+        fun skipsShortPages() {
+            val (result, record) = runOne(urlClaim()) { scraped("Apply now") }
+            assertNull(record)
+            assertTrue(result.error!!.contains("No job description could be extracted"), result.toString())
+        }
+
+        @Test
+        @DisplayName("missing payload is skipped; unknown source tags count as MANUAL and the key defaults to the url")
+        fun payloadAndSourceEdges() {
+            val (missing, _) = runOne(ClaimDto(jobId = "job-url", type = WorkItemType.JD_URL, url = null)) { error("must not scrape") }
+            assertTrue(missing.error!!.contains("missing url payload"))
+
+            val (_, record) = runOne(urlClaim(source = "SOMETHING_NEW", key = null)) { scraped("x".repeat(300), company = "Acme") }
+            assertEquals(IngestionSource.MANUAL, record!!.source)
+            assertEquals("https://jobs.acme.example/qa/7", record.idempotencyKey)
+            assertEquals(IngestionSource.CAREER_SITE, ProcessorCommandHandler.ingestionSourceOf(" career_site "))
         }
     }
 
