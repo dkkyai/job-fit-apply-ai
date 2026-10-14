@@ -266,6 +266,7 @@ class E2eScenarioHarness {
         jdText: String,
         idempotencyKey: String,
         location: String = "Remote (US)",
+        source: String = "MANUAL",
     ): JsonNode = postJson(
         "${E2eConfig.bridgeUrl}/api/jobs",
         mapper.writeValueAsString(
@@ -274,7 +275,7 @@ class E2eScenarioHarness {
                 "company" to company,
                 "role_title" to roleTitle,
                 "location" to location,
-                "source" to "MANUAL",
+                "source" to source,
                 "idempotency_key" to idempotencyKey,
             ),
         ),

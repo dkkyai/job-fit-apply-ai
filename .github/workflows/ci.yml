@@ -367,6 +367,9 @@ jobs:
       - name: Run tests
         run: ./gradlew test
 
+      - name: employers.yaml generator tests
+        run: python3 -m unittest discover -s tools -p 'test_*.py' -v
+
       - name: JaCoCo coverage report
         if: always()
         run: ./gradlew jacocoTestReport

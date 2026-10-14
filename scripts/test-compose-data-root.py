@@ -25,6 +25,7 @@ def compose_config(*files: Path, environment: dict[str, str]) -> dict:
         "JFAA_DATA_ROOT",
         "JD_PIPELINE_OUTPUT_HOST",
         "JD_PIPELINE_STATE_HOST",
+        "JD_WATCHLIST_STATE_HOST",
         "PIPELINE_ENV_FILE",
         "CONTAINER_PREFIX",
         "E2E_STATE_DIR",
@@ -269,12 +270,12 @@ def test_instance_identity_parameterization() -> None:
     """CONTAINER_PREFIX/STEEL_PORT default to prod values; profiles gate the intake pair.
 
     Prod byte-compatibility: with no variables set, every container_name is jobfit-* and
-    steel publishes host port 3000 — and poller/jsearch exist only when COMPOSE_PROFILES
+    steel publishes host port 3000 — and poller/jsearch/watchlist exist only when COMPOSE_PROFILES
     activates `intake` (prod's .env sets it; a test instance leaves it empty).
     """
     prod = compose_config(BASE, environment={"COMPOSE_PROFILES": "intake"})
     services = prod["services"]
-    for name in ("db", "bridge", "frontend", "markserv", "poller", "jsearch", "steel", "processor", "notifier"):
+    for name in ("db", "bridge", "frontend", "markserv", "poller", "jsearch", "watchlist", "steel", "processor", "notifier"):
         actual = services[name]["container_name"]
         assert actual == f"jobfit-{name}", f"{name} container_name was {actual}"
     steel_ports = {p["published"] for p in services["steel"]["ports"]}
@@ -287,6 +288,7 @@ def test_instance_identity_parameterization() -> None:
     services = test_instance["services"]
     assert "poller" not in services, "poller must not exist without the intake profile"
     assert "jsearch" not in services, "jsearch must not exist without the intake profile"
+    assert "watchlist" not in services, "watchlist must not exist without the intake profile"
     assert services["bridge"]["container_name"] == "jobfit-test-bridge"
     steel_ports = {p["published"] for p in services["steel"]["ports"]}
     assert "23000" in steel_ports, f"STEEL_PORT must move the host port, got {steel_ports}"
@@ -370,6 +372,31 @@ def test_jobbot_profile_is_isolated() -> None:
     assert "jobbot" not in e2e and "jobbot-mcp" not in e2e, "the e2e slice must never start JobBot"
 
 
+def test_watchlist_state_follows_data_root() -> None:
+    """The watchlist's last-run gate and health file live under the data root (prod: the
+    /state volume doctor.sh reads), and JD_WATCHLIST_STATE_HOST overrides it on its own.
+    A test slice never polls employer feeds, and never touches production watchlist state.
+    """
+    root = Path("/tmp/JFAA Application Support")
+    config = compose_config(BASE, environment={"COMPOSE_PROFILES": "intake", "JFAA_DATA_ROOT": str(root)})
+    assert_mount(config, "watchlist", "/state", root / "watchlist-state", read_only=False)
+
+    override = Path("/tmp/custom watchlist state")
+    config = compose_config(
+        BASE,
+        environment={"COMPOSE_PROFILES": "intake", "JFAA_DATA_ROOT": str(root), "JD_WATCHLIST_STATE_HOST": str(override)},
+    )
+    assert_mount(config, "watchlist", "/state", override, read_only=False)
+
+    # The e2e slice runs with COMPOSE_PROFILES pinned empty (Makefile E2E_ENV) — that, not the
+    # overlay's e2e-disabled profile (Compose unions profile lists), keeps it from polling feeds.
+    e2e = compose_config(BASE, E2E, environment={"COMPOSE_PROFILES": ""})["services"]
+    assert "watchlist" not in e2e, "the e2e slice must never poll employer feeds"
+    # And if someone does enable it there, its state stays inside the slice, not the data root.
+    e2e_intake = compose_config(BASE, E2E, environment={"COMPOSE_PROFILES": "intake", "JFAA_DATA_ROOT": str(root)})
+    assert_mount(e2e_intake, "watchlist", "/state", ROOT / ".e2e/watchlist-state", read_only=False)
+
+
 def main() -> None:
     tests = (
         test_portable_fallback,
@@ -382,6 +409,7 @@ def main() -> None:
         test_pipeline_env_file_override,
         test_instance_identity_parameterization,
         test_e2e_state_dir_moves_all_slice_state,
+        test_watchlist_state_follows_data_root,
     )
     for test in tests:
         test()
