@@ -272,6 +272,7 @@
 - company: "Confluent"
   ats: "ashby"
   board: "confluent"
+  enabled: false
   careers_url: "https://careers.confluent.io/jobs/united_states"
   qe_fit: "low"
   category: "Big Tech / Cloud"
@@ -757,6 +758,7 @@
 - company: "Oleria"
   ats: "lever"
   board: "oleria-security"
+  may_be_empty: true
   careers_url: "https://www.oleria.com/company/careers"
   qe_fit: "low"
   category: "Seattle Software / Internet"
