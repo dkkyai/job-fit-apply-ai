@@ -354,6 +354,49 @@ class ExistingProductPathsE2ETest {
         assertTrue(body.contains("\"deduped\":true") && body.contains(tailored.jobId), "a second tap is the first request: $body")
     }
 
+    /**
+     * Cloud quota exhausted → the same score_fit call is answered by the local fallback model.
+     * The e2e processor scores through a pretend cloud model (`e2e-cloud-score:cloud`, routed to
+     * this fake by scripts/e2e-ci-prepare.sh) with `LOCAL_FALLBACK_MODEL=e2e-local-fallback`.
+     * The quota refusal is not retried against the cloud (that would burn the ~3.5 min bridge
+     * retry budget for nothing) and the job finishes normally instead of erroring.
+     */
+    @Test
+    @DisplayName("a cloud quota refusal on score_fit is answered by the local fallback model")
+    fun cloudQuotaRefusalFallsBackToLocalModel() {
+        val nonce = System.currentTimeMillis().toString()
+        val company = "E2E Quota $nonce"
+        val result = harness.runScenario(
+            company = company,
+            responses = mapOf(
+                "score_fit" to listOf(
+                    failure(429, """{"error":"you have reached your weekly usage limit, upgrade your plan"}"""),
+                    ok(harness.fixture("llm/score_fit_skip.json")),
+                ),
+            ),
+        ) {
+            submitScrapedJob(
+                company = company,
+                roleTitle = "Junior Manual QA Analyst",
+                jdText = """
+                    $company needs a junior manual QA analyst to execute scripted browser checks,
+                    record results in spreadsheets, and report visual defects. This role does not
+                    include automation, mobile engineering, CI/CD, backend APIs, cloud platforms,
+                    observability, performance testing, or test-infrastructure ownership.
+                """.trimIndent(),
+                idempotencyKey = "e2e-quota-$nonce",
+            )
+        }
+
+        assertEquals("done", result.finalStatus.path("status").asText(), "status: ${result.finalStatus}")
+        assertEquals(42, result.finalStatus.path("fit_score").asInt(), "scored from the fallback's answer")
+        assertEquals("SKIP", result.finalStatus.path("pipeline_action").asText())
+        assertTrue(result.finalStatus.path("error").asText("").isBlank(), "no error: ${result.finalStatus}")
+        assertEquals(listOf("score_fit", "score_fit"), result.llmCalls, "one cloud refusal, one local answer, no cloud retry")
+        assertEquals(listOf("e2e-cloud-score", "e2e-local-fallback"), result.llmModels)
+        assertEquals("skip", result.track.pipelineAction)
+    }
+
     @Test
     @DisplayName("a failing score_fit call ends the job in error, publishes nothing, and does not wedge the loop")
     fun scoreFitFailureIsTerminalAndRecoverable() {

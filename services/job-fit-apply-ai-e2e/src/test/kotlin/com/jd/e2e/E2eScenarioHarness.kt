@@ -44,6 +44,8 @@ data class ScenarioResult(
     val discordMessages: List<String>,
     val telegramMessages: List<String>,
     val llmCalls: List<String>,
+    /** The model each [llmCalls] entry asked for, index-aligned. Empty under REAL_LLM=1. */
+    val llmModels: List<String> = emptyList(),
     /** Inline-keyboard rows on delivered Telegram pings, in order. Empty when no buttons. */
     val telegramButtonRows: List<List<String>> = emptyList(),
     /** (label, url-or-callback) for every delivered button, so its kind is assertable. */
@@ -257,6 +259,7 @@ class E2eScenarioHarness {
             telegramButtonRows = sink.telegramButtonRows(),
             telegramButtons = sink.telegramButtons(),
             llmCalls = if (E2eConfig.realLlm) emptyList() else fakeLlm.calls.toList(),
+            llmModels = if (E2eConfig.realLlm) emptyList() else fakeLlm.callModels.toList(),
         )
     }
 

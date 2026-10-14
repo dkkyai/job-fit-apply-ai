@@ -1,7 +1,7 @@
 package com.jd.pipeline.client
 
 /** Raised for an LLM/provider failure that is safe to retry from the durable bridge queue. */
-class TransientLlmFailure(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
+open class TransientLlmFailure(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
 /**
  * Node caught a TransientLlmFailure but still needs to return a JDState (non-throwing nodes like

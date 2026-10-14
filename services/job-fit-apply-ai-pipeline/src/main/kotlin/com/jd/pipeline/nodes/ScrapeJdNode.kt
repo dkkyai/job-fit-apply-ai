@@ -32,7 +32,7 @@ import java.util.regex.Pattern
  * Jackson replaces all regex JSON parsing.
  */
 class ScrapeJdNode(
-    private val llm: LlmCaller = LlmClient.fromModelString(Config.SCRAPE_MODEL, jsonMode = true, temperature = 0.0, nodeKey = "scrape_jd"),
+    private val llm: LlmCaller = LlmClient.forIngest(Config.SCRAPE_MODEL, jsonMode = true, temperature = 0.0, nodeKey = "scrape_jd"),
     // Long-lived Chrome connected over CDP (one tab per domain, warm session). The ONLY browser
     // path — when the endpoint is unreachable, browser-needing scrapes fail cleanly with an alert
     // (plain-HTTP scraping is unaffected). No in-process Chromium is ever launched.
