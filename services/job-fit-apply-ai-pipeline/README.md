@@ -265,6 +265,7 @@ The first refusal sends one WARN alert, and the first cloud success after it sen
 | Variable | Default | Description |
 |---|---|---|
 | `FIT_THRESHOLD` | `50` | Minimum fit score to trigger tailoring |
+| `AUTO_TAILOR_MIN_SCORE` | *(= `FIT_THRESHOLD`)* | Fits at or above this are tailored automatically. Non-recruiter fits from `FIT_THRESHOLD` up to it are **offered**: scored, tracked (`pipeline_action = offer`) and pinged, but tailored only when you tap Tailor (`POST /api/jobs/{id}/tailor` on the bridge queues a `TAILOR_REQUEST`, which re-scores, tailors and updates the same `tracks` row). Recruiter emails are always tailored. Set in the repo-root `.env`. |
 | `DUPLICATE_WINDOW_DAYS` | `30` | Jobs seen within this window are skipped as duplicates |
 | `ATS_REFINE_ENABLED` | `true` | Re-run summary+bullet rewrites once with ATS feedback when the first pass scores below the refine threshold (keeps the better-scoring pass) |
 | `ATS_REFINE_THRESHOLD` | `80` | ATS overall score below which the refinement pass triggers |

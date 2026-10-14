@@ -9,7 +9,9 @@ import io.ktor.server.routing.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 import org.slf4j.LoggerFactory
 
 private val log = LoggerFactory.getLogger("com.jdbridge.Routes")
@@ -177,6 +179,49 @@ fun Routing.configureRoutes() {
                 track_id        = row.trackId,
             )
         )
+    }
+
+    // ── On-demand tailoring ───────────────────────────────────────────────────
+
+    /**
+     * A Tailor tap on an OFFERed job: queue the record its OFFER handed back as a TAILOR_REQUEST.
+     * Once per job — a second tap answers with the first request (unless that one errored) — and
+     * refused (409) for a job that was not offered, or has not finished.
+     */
+    post("/api/jobs/{job_id}/tailor") {
+        val jobId = call.parameters["job_id"]!!
+        val row = getJob(jobId) ?: run {
+            call.respond(HttpStatusCode.NotFound, ErrorResponse("Job not found"))
+            return@post
+        }
+        val record = row.tailorRecord?.let { runCatching { Json.parseToJsonElement(it) }.getOrNull() }
+        if (row.status != JobStatus.DONE.value || record == null) {
+            call.respond(
+                HttpStatusCode.Conflict,
+                ErrorResponse("Job $jobId was not offered for tailoring (status=${row.status}, action=${row.pipelineAction})"),
+            )
+            return@post
+        }
+        val key = "tailor:$jobId"
+        findLiveByKey(key)?.let { existing ->
+            log.info("Tailor already requested for $jobId → ${existing.id} (${existing.status})")
+            call.respond(HttpStatusCode.OK, SubmitJobResponse(existing.id, existing.status, deduped = true))
+            return@post
+        }
+        val payload = buildJsonObject {
+            put("record", record)
+            put("parent_job_id", jobId)
+            row.trackId?.let { put("track_id", it) }
+            row.jobSource?.let { put("job_board", it) }
+        }
+        val tailorJobId = enqueue(
+            jdJson         = payload.toString(),
+            jobUrl         = row.jobUrl,
+            idempotencyKey = key,
+            type           = WorkItemType.TAILOR_REQUEST,
+        )
+        log.info("Tailor requested for $jobId → $tailorJobId (${row.roleTitle} @ ${row.company})")
+        call.respond(HttpStatusCode.Accepted, SubmitJobResponse(tailorJobId, JobStatus.PENDING.value))
     }
 
     // ── Worker queue endpoints ────────────────────────────────────────────────

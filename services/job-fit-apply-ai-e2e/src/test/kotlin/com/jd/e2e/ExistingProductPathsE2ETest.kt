@@ -306,6 +306,55 @@ class ExistingProductPathsE2ETest {
      * assertions below pin the parts that hold and the parts that make the two distinguishable.
      */
     /**
+     * On-demand tailoring. The slice pins FIT_THRESHOLD=50 and AUTO_TAILOR_MIN_SCORE=70, so a 60 is
+     * OFFERed: scored, tracked and noted, with no tailoring calls. A Tailor tap
+     * (POST /api/jobs/{id}/tailor) queues a TAILOR_REQUEST that re-scores and tailors it, updates
+     * the offer's tracks row in place, and publishes the résumé. A second tap is answered with the
+     * first request, not a second tailoring run.
+     */
+    @Test
+    @DisplayName("a fit below AUTO_TAILOR_MIN_SCORE is offered, and a Tailor tap tailors it into the same track")
+    fun offeredJobIsTailoredOnTap() {
+        val nonce = System.currentTimeMillis().toString()
+        val company = "E2E Offer $nonce"
+        val offered = harness.runScenario(
+            company = company,
+            responses = mapOf("score_fit" to listOf(ok(harness.fixture("llm/score_fit_offer.json")))),
+        ) {
+            submitScrapedJob(
+                company = company,
+                roleTitle = "Staff Software Engineer in Test",
+                jdText = harness.fixture("jd-staff-sdet.txt", mapOf("COMPANY" to company)),
+                idempotencyKey = "e2e-offer-$nonce",
+            )
+        }
+
+        assertEquals("OFFER", offered.finalStatus.path("pipeline_action").asText(), "status: ${offered.finalStatus}")
+        assertEquals(60, offered.finalStatus.path("fit_score").asInt())
+        assertEquals(listOf("score_fit"), offered.llmCalls, "an offer is scored, never tailored up front")
+        assertEquals("offer", offered.track.pipelineAction)
+        assertNotNull(offered.artifactUrl, "the offer card links its scoring notes")
+        assertEquals(404, harness.statusOf("${E2eConfig.bridgeUrl}/api/jobs/${offered.jobId}/resume.pdf"))
+        val offerTrack = offered.finalStatus.path("track_id").asInt()
+        assertTrue(offerTrack > 0, "the offer wrote a tracks row: ${offered.finalStatus}")
+
+        val tapUrl = "${E2eConfig.bridgeUrl}/api/jobs/${offered.jobId}/tailor"
+        val tailored = harness.runScenario(company = company) { postJson(tapUrl, "") }
+
+        assertEquals("TAILOR", tailored.finalStatus.path("pipeline_action").asText(), "status: ${tailored.finalStatus}")
+        assertEquals("score_fit", tailored.llmCalls.first(), "re-scored for the tailoring inputs: ${tailored.llmCalls}")
+        assertTrue("summary_rewrite" in tailored.llmCalls && "cover_letter" in tailored.llmCalls, "tailored: ${tailored.llmCalls}")
+        assertEquals(200, harness.statusOf("${E2eConfig.bridgeUrl}/api/jobs/${tailored.jobId}/resume.pdf"))
+        assertEquals(offerTrack, tailored.finalStatus.path("track_id").asInt(), "the tap reuses the offer's tracks row")
+        assertEquals("tailor", tailored.track.pipelineAction)
+        assertEquals(1, harness.countTracks(company), "one job, one tracks row")
+
+        val (code, body) = harness.postForResponse(tapUrl, "")
+        assertEquals(200, code, body)
+        assertTrue(body.contains("\"deduped\":true") && body.contains(tailored.jobId), "a second tap is the first request: $body")
+    }
+
+    /**
      * Cloud quota exhausted → the same score_fit call is answered by the local fallback model.
      * The e2e processor scores through a pretend cloud model (`e2e-cloud-score:cloud`, routed to
      * this fake by scripts/e2e-ci-prepare.sh) with `LOCAL_FALLBACK_MODEL=e2e-local-fallback`.

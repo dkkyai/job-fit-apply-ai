@@ -286,6 +286,9 @@ services:
       # THE fit threshold: tailor at or above it, and the notifier's high-fit ping uses the same
       # value. Set it once in the repo-root .env; it beats any FIT_THRESHOLD in the pipeline .env.
       FIT_THRESHOLD: "${FIT_THRESHOLD:-50}"
+      # Fits at or above this are tailored up front; FIT_THRESHOLD up to it are offered with a
+      # Tailor button instead. Root .env; blank means FIT_THRESHOLD (everything that fits is tailored).
+      AUTO_TAILOR_MIN_SCORE: "${AUTO_TAILOR_MIN_SCORE:-}"
       # Host-loopback services, reached directly via host.docker.internal (verified working on
       # Docker Desktop 29.x — no socat shim needed). The entrypoint rewrites the CDP endpoint's
       # hostname to an IP because Chrome DevTools rejects non-IP/localhost Host headers.

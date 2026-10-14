@@ -49,6 +49,7 @@ object WorkItemType {
     const val JD_SCRAPED  = "JD_SCRAPED"   // pre-structured JdRecord (JSearch / digest child)
     const val JD_PAGE_RAW = "JD_PAGE_RAW"  // raw captured web-page content from the extension — Processor LLM-extracts it
     const val JD_URL      = "JD_URL"       // a posting known only by its link (email alert rules, HTML boards) — Processor scrapes it
+    const val TAILOR_REQUEST = "TAILOR_REQUEST" // a Tailor tap on an OFFERed job — Processor tailors the stored record
 }
 
 // ── Inbound ───────────────────────────────────────────────────────────────────
@@ -144,6 +145,8 @@ data class ResultRequest(
     val draft_text: String?       = null,          // LLM-generated recruiter reply (Processor makes it)
     val is_recruiter: Boolean     = false,
     val message_id: String?       = null,          // present only for EMAIL_RAW jobs
+    // Only on an OFFER: the processed record, kept so POST /api/jobs/{id}/tailor can queue it.
+    val tailor_record: JsonElement? = null,
     // Fencing token handed out by /api/queue/claim. Null from a worker built before fencing
     // existed; a *stale* one is refused (see Store.recordResult).
     val claim_token: String?      = null,
@@ -307,6 +310,9 @@ data class JobRow(
     val company: String?          = null,
     val roleTitle: String?        = null,
     val trackId: Int?             = null,
+    val jobSource: String?        = null,
+    /** The processed record an OFFER handed back (JSON), for an on-demand tailor run. */
+    val tailorRecord: String?     = null,
 )
 
 /** Returned by claimNext() — enough for the Processor to act on. */

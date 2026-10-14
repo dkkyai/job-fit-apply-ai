@@ -16,6 +16,7 @@ import com.jd.pipeline.source.IngestionSource
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.source.JdRecord
 import com.jd.pipeline.source.ProcessingResult
+import com.jd.pipeline.source.TailorRequest
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 
@@ -65,6 +66,8 @@ object ProcessorCommandHandler {
             // JD_SCRAPED (JSearch / digest child) goes straight to processing. A branch that
             // terminates here (digest/non-job/error) is recorded to the run log before we `continue`,
             // so the analyzer never loses a completed job.
+            // Set only for a Tailor tap: the pipeline then tailors whatever the score.
+            var tailor: TailorRequest? = null
             val jdRecord: JdRecord = when (claimed.type) {
                 WorkItemType.EMAIL_RAW -> when (val r = resolveEmail(claimed, bridge, ingestion)) {
                     is Resolution.Proceed  -> r.jdRecord
@@ -77,6 +80,21 @@ object ProcessorCommandHandler {
                 WorkItemType.JD_URL -> when (val r = resolveUrl(claimed, bridge, ingestion)) {
                     is Resolution.Proceed  -> r.jdRecord
                     is Resolution.Terminal -> { recordTerminal(claimed.jobId, r, jobStartedAt); continue }
+                }
+                WorkItemType.TAILOR_REQUEST -> {
+                    val req = claimed.tailor
+                    if (req == null) {
+                        System.err.println("[processor] claim ${claimed.jobId} (TAILOR_REQUEST) has no payload — failing it")
+                        val terminal = postTerminal(
+                            bridge, claimed, emptyLogRecord(IngestionSource.MANUAL),
+                            skipResult("TAILOR_REQUEST claim missing its record"),
+                        )
+                        recordTerminal(claimed.jobId, terminal, jobStartedAt)
+                        continue
+                    }
+                    tailor = TailorRequest(parentJobId = req.parentJobId, trackId = req.trackId, jobBoard = req.jobBoard)
+                    println("[processor] Tailor requested for job ${req.parentJobId} (track ${req.trackId})")
+                    req.record
                 }
                 else -> {
                     val rec = claimed.jdRecord
@@ -98,7 +116,7 @@ object ProcessorCommandHandler {
             println("[processor] Processing job ${claimed.jobId} — ${jdRecord.roleTitle} @ ${jdRecord.company}")
 
             val result: ProcessingResult = try {
-                pipeline.invoke(jdRecord)
+                pipeline.invoke(jdRecord, tailor)
             } catch (e: Exception) {
                 System.err.println("[processor] pipeline threw for ${claimed.jobId}: ${e.message}")
                 val retryable = TransientFailureClassifier.isRetryable(e)

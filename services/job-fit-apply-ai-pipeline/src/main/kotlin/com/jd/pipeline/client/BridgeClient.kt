@@ -161,6 +161,7 @@ object WorkItemType {
     const val JD_SCRAPED  = "JD_SCRAPED"   // pre-structured JdRecord (JSearch / digest child)
     const val JD_PAGE_RAW = "JD_PAGE_RAW"  // raw captured web-page content — the Processor LLM-extracts it
     const val JD_URL      = "JD_URL"       // a posting known only by its link — the Processor scrapes it
+    const val TAILOR_REQUEST = "TAILOR_REQUEST" // a Tailor tap on an OFFERed job — the Processor tailors it
 }
 
 /** A raw email claimed from the queue (payload of an EMAIL_RAW item). */
@@ -190,6 +191,17 @@ data class ClaimedUrl(
     val idempotencyKey: String? = null,
 )
 
+/**
+ * A Tailor tap on an OFFERed job (payload of a TAILOR_REQUEST item): the bridge copies in the
+ * [record] the OFFER handed back, plus the job's `tracks` row and job board.
+ */
+data class ClaimedTailorRequest(
+    val record: JdRecord,
+    val parentJobId: String,
+    val trackId: Int? = null,
+    val jobBoard: String? = null,
+)
+
 /** Result of a submission: the job it maps to, and whether the bridge deduped it. */
 data class SubmitOutcome(val jobId: String, val deduped: Boolean)
 
@@ -200,6 +212,7 @@ data class ClaimDto(
     val email: ClaimedEmail? = null,              // set for EMAIL_RAW
     val pageCapture: ClaimedPageCapture? = null,  // set for JD_PAGE_RAW
     val url: ClaimedUrl? = null,                  // set for JD_URL
+    val tailor: ClaimedTailorRequest? = null,     // set for TAILOR_REQUEST
     /** Fence for this claim; present it on postResult. Null against a pre-fencing bridge. */
     val claimToken: String? = null,
 )
@@ -219,6 +232,8 @@ internal fun parseClaimTree(tree: com.fasterxml.jackson.databind.JsonNode): Clai
             ClaimDto(jobId = jobId, type = type, pageCapture = mapper.treeToValue(payload, ClaimedPageCapture::class.java), claimToken = token)
         WorkItemType.JD_URL ->
             ClaimDto(jobId = jobId, type = type, url = mapper.treeToValue(payload, ClaimedUrl::class.java), claimToken = token)
+        WorkItemType.TAILOR_REQUEST ->
+            ClaimDto(jobId = jobId, type = type, tailor = mapper.treeToValue(payload, ClaimedTailorRequest::class.java), claimToken = token)
         else ->
             ClaimDto(jobId = jobId, type = type, jdRecord = mapper.treeToValue(payload, JdRecord::class.java), claimToken = token)
     }

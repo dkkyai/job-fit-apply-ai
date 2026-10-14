@@ -12,6 +12,7 @@ import com.jd.pipeline.nodes.tailor.ResumeTailoringSubgraph
 import com.jd.pipeline.source.IntakeContext
 import com.jd.pipeline.source.JdRecord
 import com.jd.pipeline.source.ProcessingResult
+import com.jd.pipeline.source.TailorRequest
 import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.state.emailIntake
@@ -37,11 +38,17 @@ class ProcessingPipeline(
     private val addArtifactUrl: Node<JDState>      = AddArtifactUrlNode(),
     private val supabaseTrack: Node<JDState>       = SupabaseTrackNode(),
     private val draftComposer: DraftReplyComposer  = DraftReplyComposer(),
+    private val autoTailorMinScore: Float          = Config.AUTO_TAILOR_MIN_SCORE,
 ) {
 
-    fun invoke(record: JdRecord): ProcessingResult {
+    /**
+     * Process [record]. With [tailor] set (a Tailor tap on an OFFERed job) it is re-scored for the
+     * tailoring inputs and then tailored whatever the score — the tap is the decision — and the
+     * original `tracks` row is updated rather than duplicated.
+     */
+    fun invoke(record: JdRecord, tailor: TailorRequest? = null): ProcessingResult {
         return try {
-            invokeInternal(record)
+            invokeInternal(record, tailor)
         } catch (e: Exception) {
             System.err.println("[processing_pipeline] ERROR: ${e.message}")
             // A transient provider failure (ScoreFitNode's RetryableLlmError, an LLM timeout) goes
@@ -74,7 +81,7 @@ class ProcessingPipeline(
         }
     }
 
-    private fun invokeInternal(record: JdRecord): ProcessingResult {
+    private fun invokeInternal(record: JdRecord, tailor: TailorRequest?): ProcessingResult {
         val profile = JDState.loadCandidateProfile()
         val intakeMeta = record.intakeMeta ?: IntakeContext.Synthetic("worker")
 
@@ -96,12 +103,14 @@ class ProcessingPipeline(
             // Seed from the record so the ingestion-side scrape path survives into the result, and
             // from there into the run_log. Processing never scrapes, so nothing overwrites this.
             scrapePath       = record.scrapePath,
+            jobBoard         = tailor?.jobBoard.orEmpty(),
+            existingTrackId  = tailor?.trackId,
         )
 
         val isRecruiter = state.isRecruiterEmail
 
-        // 1. Duplicate check
-        state = checkDuplicate.process(state)
+        // 1. Duplicate check — not for a tailor request: its own OFFER is the "duplicate".
+        if (tailor == null) state = checkDuplicate.process(state)
 
         if (state.isDuplicate && !isRecruiter) {
             state = supabaseTrack.process(state)
@@ -111,15 +120,28 @@ class ProcessingPipeline(
         // 2. Score fit
         state = scoreFit.process(state)
 
-        // Recruiter emails always get the full tailor treatment.
-        if (isRecruiter && state.pipelineAction != PipelineAction.TAILOR) {
+        // Recruiter emails always get the full tailor treatment, and so does a job tapped for it.
+        if ((isRecruiter || tailor != null) && state.pipelineAction != PipelineAction.TAILOR) {
             state = state.copy(pipelineAction = PipelineAction.TAILOR, skippedReason = "")
         }
 
+        // A fit below the auto-tailor score is offered rather than tailored up front.
+        if (tailor == null && !isRecruiter && state.pipelineAction == PipelineAction.TAILOR &&
+            (state.fitScore ?: 0f) < autoTailorMinScore
+        ) {
+            val score = state.fitScore?.toInt() ?: 0
+            state = state.copy(
+                pipelineAction = PipelineAction.OFFER,
+                skippedReason = "Fit $score is below the auto-tailor score (${autoTailorMinScore.toInt()})",
+            )
+        }
+
         if (state.pipelineAction != PipelineAction.TAILOR) {
-            if (isGatedHighFit(state)) state = scoringNotes(state)
+            val offered = state.pipelineAction == PipelineAction.OFFER
+            if (offered || isGatedHighFit(state)) state = scoringNotes(state)
             state = supabaseTrack.process(state)
-            return toResult(state)
+            val result = toResult(state)
+            return if (offered) result.copy(tailorRecord = record.copy(intakeMeta = null)) else result
         }
 
         // 3. Tailor
