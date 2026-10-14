@@ -55,6 +55,17 @@ class RssAdapterTest {
     }
 
     @Test
+    fun `items with neither guid nor link are dropped rather than sharing an empty id`() {
+        val feed = "https://example.com/feed"
+        val xml = """<rss version="2.0"><channel>
+            <item><title>QA Engineer</title><description>no id</description></item>
+            <item><title>SDET</title><link>https://example.com/jobs/2</link></item>
+            </channel></rss>"""
+        val postings = RssAdapter(FakeHttp(gets = mapOf(feed to xml))).list(Employer(company = "X", ats = "rss", feed = feed))
+        assertEquals(listOf("https://example.com/jobs/2"), postings.map { it.externalId })
+    }
+
+    @Test
     fun `feeds with a DOCTYPE are rejected - no external entities`() {
         val feed = "https://evil.example/feed"
         assertFails { RssAdapter(FakeHttp(gets = mapOf(feed to resource("doctype.xml")))).list(Employer(company = "X", ats = "rss", feed = feed)) }

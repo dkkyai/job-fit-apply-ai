@@ -19,15 +19,18 @@ class RssAdapter(private val http: Http) : FeedAdapter {
 
     override fun list(employer: Employer): List<Posting> {
         val feed = requireNotNull(employer.feed) { "rss employer ${employer.company} has no feed" }
-        val xml = http.get(feed).trimStart('﻿')
+        val xml = http.get(feed).trimStart('\uFEFF')
         val doc = factory.newDocumentBuilder().parse(ByteArrayInputStream(xml.toByteArray(Charsets.UTF_8)))
         val items = doc.getElementsByTagName("item")
-        return (0 until items.length).map { i ->
+        return (0 until items.length).mapNotNull { i ->
             val item = items.item(i) as Element
             val link = child(item, "link")
+            // No guid and no link = no stable id and nowhere to apply: an empty id would collapse every
+            // such item onto one idempotency key at the bridge, so drop it instead.
+            val id = child(item, "guid").ifBlank { link }.ifBlank { return@mapNotNull null }
             Posting(
                 company = employer.company,
-                externalId = child(item, "guid").ifBlank { link },
+                externalId = id,
                 title = child(item, "title"),
                 location = locationOf(item),
                 url = link,

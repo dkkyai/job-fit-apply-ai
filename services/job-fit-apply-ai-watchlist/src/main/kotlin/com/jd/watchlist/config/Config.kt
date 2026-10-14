@@ -16,10 +16,16 @@ object Config {
     private fun get(key: String, default: String): String =
         DOTENV.get(key)?.takeIf { it.isNotBlank() } ?: System.getenv(key)?.takeIf { it.isNotBlank() } ?: default
 
+    /** A malformed number falls back to [default] with a warning instead of crashing startup. */
+    private fun getLong(key: String, default: Long): Long = parseLong(key, get(key, default.toString()), default)
+
+    internal fun parseLong(key: String, raw: String, default: Long): Long =
+        raw.trim().toLongOrNull() ?: default.also { System.err.println("[config] $key=\"$raw\" is not a number — using $default") }
+
     val JD_BRIDGE_URL: String = get("JD_BRIDGE_URL", "http://127.0.0.1:8765")
 
     /** Minimum spacing between real polls — the last-run gate. Default 24h. */
-    val WATCHLIST_INTERVAL_MS: Long = get("WATCHLIST_INTERVAL_MS", "86400000").toLong()
+    val WATCHLIST_INTERVAL_MS: Long = getLong("WATCHLIST_INTERVAL_MS", 86_400_000L)
 
     /** Persisted state (last_run) — a small mounted volume so restarts don't re-poll. */
     val STATE_FILE: String = get("WATCHLIST_STATE_FILE", "/state/watchlist.json")
@@ -48,5 +54,5 @@ object Config {
             .split(",").map { it.trim() }.filter { it.isNotEmpty() }
 
     /** Pause between employers so the daily sweep stays polite. */
-    val INTER_EMPLOYER_DELAY_MS: Long = get("WATCHLIST_INTER_EMPLOYER_DELAY_MS", "750").toLong()
+    val INTER_EMPLOYER_DELAY_MS: Long = getLong("WATCHLIST_INTER_EMPLOYER_DELAY_MS", 750L)
 }

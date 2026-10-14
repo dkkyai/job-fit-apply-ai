@@ -33,6 +33,8 @@ class EmployerCatalogTest {
         assertEquals("acme", Employer(company = "Acme", ats = "greenhouse", board = "acme").boardKey)
         assertEquals("boeing/EXTERNAL_CAREERS", Employer(company = "Boeing", ats = "workday", tenant = "boeing", site = "EXTERNAL_CAREERS").boardKey)
         assertEquals("some-co", Employer(company = "Some Co", ats = "custom").boardKey)
+        // A tenant without a site must not produce "boeing/null"; it falls through to the company slug.
+        assertEquals("boeing-co", Employer(company = "Boeing Co", ats = "workday", tenant = "boeing").boardKey)
     }
 
     @Test

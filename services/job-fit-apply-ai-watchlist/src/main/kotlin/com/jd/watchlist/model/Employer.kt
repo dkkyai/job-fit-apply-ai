@@ -39,7 +39,7 @@ data class Employer(
 ) {
     /** Stable per-employer scope for idempotency keys: survives a company rename. */
     val boardKey: String
-        get() = listOfNotNull(board, tenant?.let { "$it/$site" }, feed?.let { feedKey(it) })
+        get() = listOfNotNull(board, tenant?.let { t -> site?.let { "$t/$it" } }, feed?.let { feedKey(it) })
             .firstOrNull() ?: company.lowercase().replace(Regex("[^a-z0-9]+"), "-")
 
     private fun feedKey(url: String): String =
