@@ -80,6 +80,24 @@ class BridgeClient(
         throw RuntimeException("Timed out waiting for job $jobId after ${timeoutMs}ms")
     }
 
+    // ── Deferred tailoring ────────────────────────────────────────────────────
+
+    /**
+     * POST /api/tailoring/release-deferred — expire DEFERRED jobs older than [maxAgeDays], then queue
+     * the best-fit rest as TAILOR_REQUESTs until [limit] are in flight. `limit = 0` only expires.
+     */
+    fun releaseDeferred(limit: Int, maxAgeDays: Int): DeferredRelease {
+        val json = mapper.writeValueAsString(mapOf("limit" to limit, "max_age_days" to maxAgeDays))
+        val req = HttpPost("$baseUrl/api/tailoring/release-deferred").apply {
+            entity = StringEntity(json, ContentType.APPLICATION_JSON)
+        }
+        return http.execute(req) { resp ->
+            val body = EntityUtils.toString(resp.entity, Charsets.UTF_8)
+            check(resp.code == 200) { "POST /api/tailoring/release-deferred → ${resp.code}: $body" }
+            mapper.readValue(body, DeferredRelease::class.java)
+        }
+    }
+
     // ── Worker endpoints ──────────────────────────────────────────────────────
 
     /**
@@ -200,6 +218,24 @@ data class ClaimedTailorRequest(
     val parentJobId: String,
     val trackId: Int? = null,
     val jobBoard: String? = null,
+)
+
+/** One DEFERRED job the bridge released or expired. [tailorJobId] is set for a released one. */
+data class DeferredJob(
+    val jobId: String,
+    val company: String? = null,
+    val roleTitle: String? = null,
+    val fitScore: Int? = null,
+    val artifactUrl: String? = null,
+    val jobUrl: String? = null,
+    val tailorJobId: String? = null,
+)
+
+/** What one release sweep did: queued [released], gave up on [expired], left [remaining] deferred. */
+data class DeferredRelease(
+    val released: List<DeferredJob> = emptyList(),
+    val expired: List<DeferredJob> = emptyList(),
+    val remaining: Int = 0,
 )
 
 /** Result of a submission: the job it maps to, and whether the bridge deduped it. */

@@ -313,6 +313,42 @@ data class JobRow(
     val jobSource: String?        = null,
     /** The processed record an OFFER handed back (JSON), for an on-demand tailor run. */
     val tailorRecord: String?     = null,
+    val tailorState: String?      = null,
+    val artifactUrl: String?      = null,
+)
+
+/** Values of `jobs.tailor_state` — where a job with a tailor_record stands. */
+object TailorState {
+    const val OFFERED  = "offered"    // a Tailor button waits on the card
+    const val DEFERRED = "deferred"   // waiting for the cloud LLM quota; the release sweep picks it up
+    const val RELEASED = "released"   // its TAILOR_REQUEST was queued
+    const val EXPIRED  = "expired"    // waited longer than the processor's DEFERRED_MAX_AGE_DAYS
+}
+
+/** POST /api/tailoring/release-deferred — the processor's sweep. */
+@Serializable
+data class ReleaseDeferredRequest(
+    /** TAILOR_REQUESTs to keep in flight; 0 = only expire. */
+    val limit: Int = 2,
+    val max_age_days: Int = 5,
+)
+
+@Serializable
+data class DeferredJobOut(
+    val job_id: String,
+    val company: String?      = null,
+    val role_title: String?   = null,
+    val fit_score: Int?       = null,
+    val artifact_url: String? = null,
+    val job_url: String?      = null,
+    val tailor_job_id: String? = null,
+)
+
+@Serializable
+data class ReleaseDeferredResponse(
+    val released: List<DeferredJobOut>,
+    val expired: List<DeferredJobOut>,
+    val remaining: Long,
 )
 
 /** Returned by claimNext() — enough for the Processor to act on. */

@@ -123,6 +123,19 @@ class NotifierButtonsTest {
     }
 
     @Test
+    @DisplayName("a deferred fit: the card says it waits on the quota, View Report only, no actions")
+    fun deferredCardSaysWhy() {
+        val c = client()
+        Notifier(client = c, fitThreshold = 55, buttonsEnabled = true, linkButtonsEnabled = true,
+            actions = TelegramButtons.parseActions("apply,reply,archive,tailor"), links = noLookup)
+            .notify(offered().copy(pipelineAction = "DEFERRED", fitScore = 88, skipReason = "the cloud LLM quota is used up"))
+        val (text, rows) = sent(c)
+        assertTrue(text.contains("Tailoring deferred: the cloud LLM quota is used up. It is tailored automatically when the quota resets, best fits first."), text)
+        assertFalse(text.contains("Skipped:") || text.contains("Not tailored yet"), text)
+        assertEquals(listOf(listOf(TelegramButtons.Button("View Report", url = "http://host:8081/20261014_acme_senior_sdet/report.md"))), rows)
+    }
+
+    @Test
     @DisplayName("a tailored job never gets a Tailor button")
     fun tailoredHasNoTailorButton() {
         val c = client()

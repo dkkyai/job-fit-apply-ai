@@ -98,6 +98,9 @@ internal object Jobs : Table("jobs") {
     val gapsJson        = text("gaps_json").nullable()
     // An OFFER's processed record (JSON) — what a Tailor tap re-queues. Nullable, ALTERed on.
     val tailorRecord    = text("tailor_record").nullable()
+    // Where a job with a tailor_record stands: offered (Tailor button), deferred (waiting for the
+    // cloud quota), released (its TAILOR_REQUEST was queued by the sweep) or expired. ALTERed on.
+    val tailorState     = text("tailor_state").nullable()
     val error           = text("error").nullable()
     val retryCount      = integer("retry_count").default(0)
     val nextAttemptAt   = long("next_attempt_at").nullable()
@@ -383,6 +386,11 @@ private suspend fun recordTerminalResult(jobId: String, req: ResultRequest, now:
             row[Jobs.strengthsJson]   = req.strengths.takeIf { it.isNotEmpty() }?.let { Json.encodeToString(it) }
             row[Jobs.gapsJson]        = req.gaps.takeIf { it.isNotEmpty() }?.let { Json.encodeToString(it) }
             row[Jobs.tailorRecord]    = req.tailor_record?.toString()
+            row[Jobs.tailorState]     = if (req.tailor_record == null) null else when (req.pipeline_action.uppercase()) {
+                "OFFER" -> TailorState.OFFERED
+                "DEFERRED" -> TailorState.DEFERRED
+                else -> null
+            }
             row[Jobs.claimedAt]       = null
             row[Jobs.claimToken]      = null
             row[Jobs.nextAttemptAt]   = null
@@ -483,6 +491,41 @@ suspend fun getJob(jobId: String): JobRow? = dbQuery {
         ?.toJobRow()
 }
 
+// ── Deferred tailoring ────────────────────────────────────────────────────────
+
+/** Deferred jobs last updated before [cutoff] (epoch seconds) become expired; returns them. */
+suspend fun expireDeferred(cutoff: Long): List<JobRow> = dbQuery {
+    val stale = Jobs.selectAll()
+        .where { (Jobs.tailorState eq TailorState.DEFERRED) and (Jobs.updatedAt less cutoff) }
+        .map { it.toJobRow() }
+    if (stale.isNotEmpty()) {
+        Jobs.update({ Jobs.id inList stale.map { it.id } }) { it[Jobs.tailorState] = TailorState.EXPIRED }
+    }
+    stale
+}
+
+/** TAILOR_REQUESTs still queued or running. */
+suspend fun tailorRequestsInFlight(): Long = dbQuery {
+    Jobs.selectAll().where {
+        (Jobs.type eq WorkItemType.TAILOR_REQUEST) and
+            (Jobs.status inList listOf(JobStatus.PENDING.value, JobStatus.CLAIMED.value))
+    }.count()
+}
+
+/** Up to [limit] deferred jobs, best fit first (oldest first among equals). */
+suspend fun deferredBestFirst(limit: Int): List<JobRow> = if (limit <= 0) emptyList() else dbQuery {
+    Jobs.selectAll().where { Jobs.tailorState eq TailorState.DEFERRED }
+        .orderBy(Jobs.fitScore to SortOrder.DESC_NULLS_LAST, Jobs.updatedAt to SortOrder.ASC)
+        .limit(limit)
+        .map { it.toJobRow() }
+}
+
+suspend fun countDeferred(): Long = dbQuery { Jobs.selectAll().where { Jobs.tailorState eq TailorState.DEFERRED }.count() }
+
+suspend fun setTailorState(jobId: String, state: String) = dbQuery {
+    Jobs.update({ Jobs.id eq jobId }) { it[Jobs.tailorState] = state }
+}
+
 /** The newest non-ERROR job enqueued under [key], whatever its age — for once-per-job requests. */
 suspend fun findLiveByKey(key: String): JobRow? = dbQuery {
     Jobs.selectAll()
@@ -532,5 +575,7 @@ private fun ResultRow.toJobRow(): JobRow {
         trackId        = this[Jobs.trackId],
         jobSource      = this[Jobs.jobSource],
         tailorRecord   = this[Jobs.tailorRecord],
+        tailorState    = this[Jobs.tailorState],
+        artifactUrl    = this[Jobs.artifactUrl],
     )
 }

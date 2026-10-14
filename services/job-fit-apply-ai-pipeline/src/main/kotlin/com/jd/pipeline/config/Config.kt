@@ -85,6 +85,12 @@ object Config {
     // Local models are slower than the cloud ones: the fallback gets at least this much time per call.
     val LOCAL_FALLBACK_TIMEOUT_SECONDS: Long = get("LOCAL_FALLBACK_TIMEOUT_SECONDS", "300").toLongOrNull() ?: 300L
     // After a quota refusal, skip the cloud for this long before trying it again.
+    /** Deferred tailoring: TAILOR_REQUESTs the release sweep keeps in flight once the quota is back. */
+    val DEFERRED_RELEASE_BATCH: Int = get("DEFERRED_RELEASE_BATCH", "2").toIntOrNull() ?: 2
+    /** How often the processor runs the release sweep (between jobs). */
+    val DEFERRED_RELEASE_INTERVAL_MINUTES: Long = get("DEFERRED_RELEASE_INTERVAL_MINUTES", "15").toLongOrNull() ?: 15L
+    /** A deferred job not tailored within this many days expires with a "tailor by hand" alert. */
+    val DEFERRED_MAX_AGE_DAYS: Int = get("DEFERRED_MAX_AGE_DAYS", "5").toIntOrNull() ?: 5
     val CLOUD_QUOTA_RECHECK_MINUTES: Long = get("CLOUD_QUOTA_RECHECK_MINUTES", "30").toLongOrNull() ?: 30L
 
     // Cover letter: prose writing quality — a dedicated prose model pays off here

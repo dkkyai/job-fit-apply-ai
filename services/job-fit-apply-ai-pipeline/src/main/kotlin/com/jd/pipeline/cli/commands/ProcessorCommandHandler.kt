@@ -7,6 +7,7 @@ import com.jd.pipeline.client.SigninServer
 import com.jd.pipeline.client.WorkItemType
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.utils.Heartbeat
+import com.jd.pipeline.pipeline.DeferredTailorRelease
 import com.jd.pipeline.pipeline.EmailDisposition
 import com.jd.pipeline.pipeline.EmailResolution
 import com.jd.pipeline.pipeline.IngestionPipeline
@@ -33,6 +34,7 @@ object ProcessorCommandHandler {
         pipeline: ProcessingPipeline = ProcessingPipeline(),
         ingestion: IngestionPipeline = IngestionPipeline(),
         heartbeat: Heartbeat = Heartbeat.fromConfig(Config.HEARTBEAT_FILE),
+        deferredRelease: DeferredTailorRelease = DeferredTailorRelease(bridge),
     ) {
         // Messaging (Discord/Telegram) is now a separate Notifier service that consumes the bridge's
         // completed-event stream. The Processor just posts results.
@@ -43,6 +45,8 @@ object ProcessorCommandHandler {
             // Liveness for the container healthcheck (`--health`). Beats only between jobs, so
             // the freshness window (HEALTH_MAX_AGE_MIN) must tolerate a long job.
             heartbeat.beat()
+            // Between jobs: queue deferred tailoring once the cloud quota is back, expire stale ones.
+            deferredRelease.maybeRun()
 
             val claimed = try {
                 bridge.claim()

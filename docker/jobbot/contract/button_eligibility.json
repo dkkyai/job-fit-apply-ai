@@ -88,6 +88,11 @@
       "eligible": ["tailor"]
     },
     {
+      "name": "deferred (cloud quota out): no buttons, it is tailored automatically when the quota is back",
+      "event": {"completed_seq": 34, "job_url": "https://acme.co/jobs/34", "pipeline_action": "DEFERRED", "message_id": null, "is_recruiter": false, "terminal_label": null},
+      "eligible": []
+    },
+    {
       "name": "offered but no completed_seq: no callback can address the job",
       "event": {"completed_seq": 0, "job_url": "https://acme.co/jobs/33", "pipeline_action": "OFFER", "message_id": null, "is_recruiter": false, "terminal_label": null},
       "eligible": []

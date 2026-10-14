@@ -423,7 +423,8 @@ class E2eScenarioHarness {
         return http.send(builder.build(), handler)
     }
 
-    private fun <T> pollUntil(
+    /** Poll [probe] until it returns non-null, failing after [deadlineSeconds]. */
+    internal fun <T> pollUntil(
         deadlineSeconds: Long,
         intervalMs: Long,
         what: String,

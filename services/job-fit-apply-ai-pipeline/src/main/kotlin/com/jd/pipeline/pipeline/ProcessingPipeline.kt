@@ -17,6 +17,7 @@ import com.jd.pipeline.state.JDState
 import com.jd.pipeline.state.PipelineAction
 import com.jd.pipeline.state.emailIntake
 import com.jd.pipeline.state.isRecruiterEmail
+import com.jd.pipeline.client.CloudQuota
 import com.jd.pipeline.client.TransientFailureClassifier
 import com.jd.pipeline.config.Config
 import com.jd.pipeline.utils.MetadataUtils
@@ -39,6 +40,8 @@ class ProcessingPipeline(
     private val supabaseTrack: Node<JDState>       = SupabaseTrackNode(),
     private val draftComposer: DraftReplyComposer  = DraftReplyComposer(),
     private val autoTailorMinScore: Float          = Config.AUTO_TAILOR_MIN_SCORE,
+    /** Tailoring needs the cloud models: while their quota is used up, defer instead of degrading. */
+    private val tailoringDeferred: () -> Boolean   = { CloudQuota.shared.isExhausted() },
 ) {
 
     /**
@@ -136,16 +139,19 @@ class ProcessingPipeline(
             )
         }
 
-        if (state.pipelineAction != PipelineAction.TAILOR) {
-            val offered = state.pipelineAction == PipelineAction.OFFER
-            if (offered || isGatedHighFit(state)) state = scoringNotes(state)
-            state = supabaseTrack.process(state)
-            val result = toResult(state)
-            return if (offered) result.copy(tailorRecord = record.copy(intakeMeta = null)) else result
-        }
+        // The cloud quota is out: every tailoring node would fail and ship the base resume. Defer.
+        if (state.pipelineAction == PipelineAction.TAILOR && tailoringDeferred()) state = deferred(state, isRecruiter)
+
+        if (state.pipelineAction != PipelineAction.TAILOR) return untailored(state, record)
 
         // 3. Tailor
         state = tailorSubgraph.process(state)
+        // The quota ran out part-way: the nodes that failed fell back to the base resume. Defer
+        // rather than publish that.
+        if (state.tailoringDegradedNodes.isNotEmpty() && tailoringDeferred()) {
+            System.err.println("[processing_pipeline] cloud quota ran out while tailoring (${state.tailoringDegradedNodes}) — deferring")
+            return untailored(deferred(state.copy(outputPath = "", tailoringDegradedNodes = emptyList()), isRecruiter), record)
+        }
         if (state.error.isNotEmpty()) {
             System.err.println("[processing_pipeline] tailor failed: ${state.error}")
             state = supabaseTrack.process(state)
@@ -165,6 +171,27 @@ class ProcessingPipeline(
 
         return toResult(state)
     }
+
+    /**
+     * A scored job that is not tailored now: a skip, an OFFER (Tailor on a tap) or a DEFERRED one
+     * (tailored when the quota is back). The last two hand the record back for that later run.
+     */
+    private fun untailored(scored: JDState, record: JdRecord): ProcessingResult {
+        var state = scored
+        val later = state.pipelineAction == PipelineAction.OFFER || state.pipelineAction == PipelineAction.DEFERRED
+        if (later || isGatedHighFit(state)) state = scoringNotes(state)
+        state = supabaseTrack.process(state)
+        val result = toResult(state)
+        return if (later) result.copy(tailorRecord = record.copy(intakeMeta = null)) else result
+    }
+
+    /** A job that should be tailored now, deferred until the cloud quota is back. */
+    private fun deferred(state: JDState, isRecruiter: Boolean): JDState = state.copy(
+        pipelineAction = PipelineAction.DEFERRED,
+        skippedReason = "the cloud LLM quota is used up, so it is tailored when the quota resets",
+        // A recruiter email stays in the inbox (Recruiter_Response_Required) until it is answered.
+        isRecruiterResponseRequired = state.isRecruiterResponseRequired || isRecruiter,
+    )
 
     /**
      * The reply is the last, cheapest step of a recruiter job, after the résumé and cover letter
