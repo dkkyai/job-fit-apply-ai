@@ -177,6 +177,9 @@ services:
       JD_BRIDGE_URL: "http://bridge:8765"
       # Once/day sweep. Feeds are free; the persisted last-run keeps restarts from re-polling.
       WATCHLIST_INTERVAL_MS: "${WATCHLIST_INTERVAL_MS:-86400000}"
+      # Or fixed local times ("05:30,17:30") in WATCHLIST_TZ (e.g. America/Los_Angeles; the container is UTC).
+      WATCHLIST_RUN_AT: "${WATCHLIST_RUN_AT:-}"
+      WATCHLIST_TZ: "${WATCHLIST_TZ:-}"
       # Optional overrides of the QE title pre-filter (regexes; see the service's .env.example).
       WATCHLIST_TITLE_INCLUDE: "${WATCHLIST_TITLE_INCLUDE:-}"
       WATCHLIST_TITLE_EXCLUDE: "${WATCHLIST_TITLE_EXCLUDE:-}"

@@ -4,7 +4,8 @@ Checks the job feeds of greater-Seattle QE/SDET employers once a day and submits
 
 ## How it runs
 
-- `jobfit-watchlist` is a shell loop (`docker-entrypoint.sh`) that wakes every `WATCHLIST_CHECK_INTERVAL_S` (3600) and runs `--once`. The JVM self-gates on `watchlist.json`'s `last_run`, so a full pass happens at most every `WATCHLIST_INTERVAL_MS` (24h).
+- `jobfit-watchlist` is a shell loop (`docker-entrypoint.sh`) that runs `--once` and sleeps. The JVM self-gates on `watchlist.json`'s `last_run`: a full pass runs every `WATCHLIST_INTERVAL_MS` (24h), or at the fixed local times in `WATCHLIST_RUN_AT` (e.g. `05:30,17:30`, in `WATCHLIST_TZ` such as `America/Los_Angeles`; the container itself is UTC). A slot missed while the host slept runs once on wake.
+- `--once` writes when the next pass is due, and the loop sleeps until then, waking at least every `WATCHLIST_CHECK_INTERVAL_S` (3600) to refresh the healthcheck heartbeat.
 - `--dry-run` lists what would be submitted without calling the bridge.
 - Each pass writes `watchlist-health.json` (per-employer listed / matched / queued / deduped counts, plus failing and empty feeds). An employer whose feed fails or lists nothing `WATCHLIST_ALERT_AFTER_RUNS` (2) runs in a row raises one Telegram/Discord alert.
 

@@ -9,6 +9,7 @@ import com.jd.watchlist.filter.PostingFilter
 import com.jd.watchlist.model.Employer
 import com.jd.watchlist.model.Posting
 import com.jd.watchlist.state.HealthReport
+import com.jd.watchlist.state.RunSchedule
 import com.jd.watchlist.state.RunState
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.Test
@@ -50,7 +51,8 @@ class WatchlistRunnerTest {
         bridge = bridge,
         state = RunState(dir.resolve("state.json")),
         health = HealthReport(dir.resolve("health.json")),
-        intervalMs = day,
+        schedule = RunSchedule(day),
+        nextDueFile = dir.resolve("next-due"),
         interEmployerDelayMs = 0,
     )
 
@@ -109,9 +111,42 @@ class WatchlistRunnerTest {
 
     @Test
     fun `an all-failed sweep does not advance the gate, so the next tick retries`() {
+        Files.writeString(dir.resolve("next-due"), "1")
         val employers = listOf(Employer(company = "Broken", ats = "lever", board = "x"))
         runner(employers, mapOf("lever" to StubAdapter(emptyList(), fail = true)), RecordingBridge()).runOnce(10 * day)
         assertNull(RunState(dir.resolve("state.json")).lastRun())
+        assertTrue(!Files.exists(dir.resolve("next-due")), "no due time: the shell loop falls back to its regular tick")
+    }
+
+    @Test
+    fun `fixed run-at times replace the interval`() {
+        val la = java.time.ZoneId.of("America/Los_Angeles")
+        fun at(t: String) = java.time.ZonedDateTime.of(java.time.LocalDateTime.parse(t), la).toInstant().toEpochMilli()
+        RunState(dir.resolve("state.json")).recordRun(at("2026-10-13T05:31"))
+        val r = WatchlistRunner(
+            employers = listOf(Employer(company = "Acme", ats = "greenhouse", board = "acme")),
+            adapters = mapOf("greenhouse" to StubAdapter(listOf(posting("1", "SDET")))),
+            filter = PostingFilter(Config.TITLE_INCLUDE, Config.TITLE_EXCLUDE),
+            bridge = RecordingBridge(),
+            state = RunState(dir.resolve("state.json")),
+            health = HealthReport(dir.resolve("health.json")),
+            schedule = RunSchedule(day, listOf(java.time.LocalTime.of(5, 30), java.time.LocalTime.of(17, 30)), la),
+            interEmployerDelayMs = 0,
+        )
+        assertIs<WatchlistRunner.Skipped>(r.runOnce(at("2026-10-13T17:29")))
+        assertIs<WatchlistRunner.Ran>(r.runOnce(at("2026-10-13T17:30")), "12h after the last sweep, not 24h")
+    }
+
+    @Test
+    fun `tells the shell loop when the next sweep is due, rounded up to the second`() {
+        val acme = listOf(Employer(company = "Acme", ats = "greenhouse", board = "acme"))
+        val adapters = mapOf("greenhouse" to StubAdapter(listOf(posting("1", "SDET"))))
+        runner(acme, adapters, RecordingBridge()).runOnce(10 * day + 1)
+        assertEquals(((11 * day + 1 + 999) / 1000).toString(), Files.readString(dir.resolve("next-due")), "after a sweep: one interval on")
+
+        Files.delete(dir.resolve("next-due"))
+        assertIs<WatchlistRunner.Skipped>(runner(acme, adapters, RecordingBridge()).runOnce(10 * day + 7_200_000))
+        assertEquals(((11 * day + 1 + 999) / 1000).toString(), Files.readString(dir.resolve("next-due")), "a skipped tick rewrites it too")
     }
 
     @Test

@@ -1,6 +1,9 @@
 package com.jd.watchlist.config
 
 import io.github.cdimascio.dotenv.Dotenv
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * Configuration for the watchlist ingestion service: once a day, poll the public job feeds of a
@@ -26,6 +29,28 @@ object Config {
 
     /** Minimum spacing between real polls — the last-run gate. Default 24h. */
     val WATCHLIST_INTERVAL_MS: Long = getLong("WATCHLIST_INTERVAL_MS", 86_400_000L)
+
+    /** Fixed local times to sweep at ("05:30,17:30"), replacing the interval; blank = use the interval. */
+    val RUN_AT: List<LocalTime> = parseRunAt(get("WATCHLIST_RUN_AT", ""))
+
+    /** Time zone for [RUN_AT] (an IANA id such as America/Los_Angeles); blank = the JVM's default. */
+    val TZ: ZoneId = parseZone(get("WATCHLIST_TZ", ""))
+
+    /** Where `--once` writes the epoch second the next sweep is due; the shell loop sleeps until then. */
+    val NEXT_DUE_FILE: String = get("WATCHLIST_NEXT_DUE_FILE", "/tmp/watchlist-next-due")
+
+    /** "05:30, 17:30" → times; an entry that isn't H:mm is dropped with a warning. */
+    internal fun parseRunAt(raw: String): List<LocalTime> = raw.split(',').map { it.trim() }.filter { it.isNotEmpty() }.mapNotNull {
+        runCatching { LocalTime.parse(it, DateTimeFormatter.ofPattern("H:mm")) }
+            .onFailure { _ -> System.err.println("[config] WATCHLIST_RUN_AT entry \"$it\" is not H:mm — ignored") }
+            .getOrNull()
+    }
+
+    internal fun parseZone(raw: String): ZoneId = if (raw.isBlank()) ZoneId.systemDefault() else
+        runCatching { ZoneId.of(raw.trim()) }.getOrElse {
+            System.err.println("[config] WATCHLIST_TZ=\"$raw\" is not a time zone — using ${ZoneId.systemDefault()}")
+            ZoneId.systemDefault()
+        }
 
     /** Persisted state (last_run) — a small mounted volume so restarts don't re-poll. */
     val STATE_FILE: String = get("WATCHLIST_STATE_FILE", "/state/watchlist.json")

@@ -12,6 +12,7 @@ import com.jd.watchlist.filter.PostingFilter
 import com.jd.watchlist.http.JdkHttp
 import com.jd.watchlist.model.EmployerCatalog
 import com.jd.watchlist.state.HealthReport
+import com.jd.watchlist.state.RunSchedule
 import com.jd.watchlist.state.RunState
 import java.nio.file.Files
 import java.nio.file.Path
@@ -29,7 +30,8 @@ object Main {
                 bridge = WatchlistBridgeClient(),
                 state = RunState(Path.of(Config.STATE_FILE)),
                 health = HealthReport(Path.of(Config.HEALTH_FILE)),
-                intervalMs = Config.WATCHLIST_INTERVAL_MS,
+                schedule = RunSchedule(Config.WATCHLIST_INTERVAL_MS, Config.RUN_AT, Config.TZ),
+                nextDueFile = Path.of(Config.NEXT_DUE_FILE),
                 alerts = ChatAlertSink(),
             ).runOnce(System.currentTimeMillis())
             Command.DryRun -> {
@@ -39,7 +41,7 @@ object Main {
                     bridge = DryRunBridgeClient(),
                     state = RunState(scratch.resolve("state.json")),
                     health = HealthReport(scratch.resolve("health.json")),
-                    intervalMs = 0,
+                    schedule = RunSchedule(intervalMs = 0),
                 ).runOnce(System.currentTimeMillis())
                 println("[watchlist] dry run — nothing was submitted; health written to ${scratch.resolve("health.json")}")
             }
@@ -48,7 +50,8 @@ object Main {
     }
 
     private fun runner(
-        bridge: WatchlistBridgeClient, state: RunState, health: HealthReport, intervalMs: Long,
+        bridge: WatchlistBridgeClient, state: RunState, health: HealthReport, schedule: RunSchedule,
+        nextDueFile: Path? = null,
         alerts: AlertSink = AlertSink { println("[watchlist] would alert:\n$it") },
     ) =
         WatchlistRunner(
@@ -62,7 +65,8 @@ object Main {
             bridge = bridge,
             state = state,
             health = health,
-            intervalMs = intervalMs,
+            schedule = schedule,
+            nextDueFile = nextDueFile,
             alerts = alerts,
         )
 
@@ -77,8 +81,8 @@ object Main {
             """
             Usage: watchlist <command>
 
-              --once   Run one sweep over employers.yaml (self-gated: polls only if >= WATCHLIST_INTERVAL_MS
-                       since the last run; otherwise a no-op). Invoked by the container's shell loop.
+              --once   Run one sweep over employers.yaml if one is due (at the WATCHLIST_RUN_AT times, else
+                       every WATCHLIST_INTERVAL_MS); otherwise a no-op. Invoked by the container's shell loop.
               --dry-run  Poll every feed now and print what would be submitted. Ignores the gate;
                          submits nothing and persists nothing.
             """.trimIndent()
