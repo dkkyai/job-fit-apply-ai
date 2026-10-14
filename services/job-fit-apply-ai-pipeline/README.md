@@ -204,7 +204,8 @@ Copy `.env.example` to `.env` and fill in at least one LLM backend.
 
 | Backend | How to enable | Notes |
 |---|---|---|
-| **Ollama (local)** | Run `ollama serve`; leave `OLLAMA_LOCAL_BASE_URL=http://localhost:11434` | Free, runs on your machine |
+| **oMLX (local, the default)** | Serve MLX models with oMLX on `MLX_LOCAL_BASE_URL` (default `http://127.0.0.1:11436/v1`, key `MLX_API_KEY`); a model name with no suffix routes here | Free, runs on your machine (Apple Silicon). The name must match the oMLX model id |
+| **Ollama (local)** | Run `ollama serve`; append `:ollama-local` to the model name (`OLLAMA_LOCAL_BASE_URL`, default `http://localhost:11434`) | Free, runs on your machine |
 | **Ollama Cloud** | Set `OLLAMA_API_KEY` and append `:ollama-cloud` to any model name | Pay per token |
 | **MiniMax** | Set `MINIMAX_API_KEY`, use `:cloud` suffix (e.g. `SCORE_MODEL=MiniMax-M2.7:cloud`) | Strong long-context performance |
 | **DeepSeek** | Set `DEEPSEEK_API_KEY`, use `:cloud` suffix (e.g. `SCORE_MODEL=deepseek-reasoner:cloud`) | `deepseek-reasoner` for chain-of-thought scoring |
@@ -225,17 +226,31 @@ JSearch (API-driven runs instead of Gmail): set `JSEARCH_API_KEY` and run with `
 
 ### Models
 
-All node-level model variables default to `qwen3.5:9b-q4_K_M`. Override per node in `.env`:
+Each node has its own model variable. Set it in `.env`; a node you leave unset uses the default below.
 
-| Variable | Used by |
-|---|---|
-| `SCAN_MODEL` | `ScanEmailNode` — email classification and field extraction |
-| `SCRAPE_MODEL` (defaults to `SCAN_MODEL`) | `ScrapeJdNode` — job-page structured extraction |
-| `SCORE_MODEL` | `ScoreFitNode` — combined fit scoring + JD structure extraction |
-| `RESUME_REASONING_MODEL` | `SummaryRewriteNode`, `BulletRewriteNode` — creative rewriting |
-| `SKILLS_MODEL` (defaults to `RESUME_REASONING_MODEL`) | `SkillsRestructureNode` (JdExtraction/GapAnalysis/AtsValidation use `SCORE_MODEL`; `BulletReorderNode` is deterministic — no LLM) |
-| `COVER_LETTER_MODEL` | `GenerateCoverLetterNode` |
-| `DRAFT_REPLY_MODEL` | `CreateDraftReply` |
+| Variable | Default | Used by |
+|---|---|---|
+| `SCAN_MODEL` | `Qwen3.5-9B-OptiQ-4bit` | `ScanEmailNode` — email classification and field extraction |
+| `SCRAPE_MODEL` | same as `SCAN_MODEL` | `ScrapeJdNode` — job-page structured extraction |
+| `SCORE_MODEL` | `Qwen3.5-9B-OptiQ-4bit` | `ScoreFitNode` — combined fit scoring + JD structure extraction; also JdExtraction, GapAnalysis and AtsValidation |
+| `RESUME_REASONING_MODEL` | `Qwen3.5-9B-OptiQ-4bit` | `SummaryRewriteNode`, `BulletRewriteNode` — creative rewriting |
+| `SKILLS_MODEL` | same as `RESUME_REASONING_MODEL` | `SkillsRestructureNode` (`BulletReorderNode` is deterministic — no LLM) |
+| `COVER_LETTER_MODEL` | `gemma-4-12B-it-qat-4bit` | `GenerateCoverLetterNode` |
+| `DRAFT_REPLY_MODEL` | `Qwen3.5-9B-OptiQ-4bit` | `CreateDraftReply` |
+
+**The defaults are for a fresh clone, not for quality.** They are small local models (8–10 GB each on disk) served by oMLX, so the pipeline runs end to end on a modest Mac without cloud keys. They are deliberately not the best models: a larger machine, or cloud models, will score and tailor better. Override any node in `.env`.
+
+**Picking better models.** Use `tuner/env-llm-tuner/` to choose per-node models for your hardware and providers. For reference, a screen on 2026-10-13 re-scored 30 jobs that a cloud model (`glm-5.2`) had already scored, on a 64 GB M1 Max:
+
+| Local model | Same skip/tailor decision as the cloud model (at 55) | Time per score (median / p95) | Notes |
+|---|---|---|---|
+| `Qwen3.6-35B-A3B-OptiQ-4bit` (22 GB) | 26/30 | 25s / 40s | No failures; same score on a repeat run; never skipped a job the cloud model wanted |
+| `Qwen3.5-9B-OptiQ-4bit` (the default) | 23/27 | 50s / 195s | 4 of 40 calls hit the 195s timeout |
+| `mlx-community--Qwen3-30B-A3B-4bit` | 19/30 | 40s / 76s | Scored about 15 points high |
+
+If you have the memory for it, `Qwen3.6-35B-A3B-OptiQ-4bit` is the better local choice for `SCAN_MODEL`, `SCRAPE_MODEL` and `SCORE_MODEL`. Tailoring models were not part of that screen.
+
+**Defaults vs. the local fallback.** These defaults are what a node uses when `.env` doesn't name a model. `LOCAL_FALLBACK_MODEL` (below) is a separate, opt-in setting: a local model the intake lane switches to only while a cloud model's quota is used up. A setup that runs entirely on local models doesn't need it.
 
 > Résumé HTML is now rendered deterministically from `resume.yaml` (no LLM), so the former `RESUME_GEN_MODEL` / `PROFILE_GEN_MODEL` are gone.
 
@@ -245,7 +260,7 @@ When a cloud provider refuses a call because the account's usage quota is used u
 
 | Variable | Default | Description |
 |---|---|---|
-| `LOCAL_FALLBACK_MODEL` | *(blank — off)* | Local model (oMLX or local Ollama) that `ScanEmailNode`, the LLM digest strategy, `ScrapeJdNode` and `ScoreFitNode` use while the cloud quota is exhausted. Must be a local model; a cloud name is ignored. |
+| `LOCAL_FALLBACK_MODEL` | *(blank — off)* | Local model (oMLX or local Ollama) that `ScanEmailNode`, the LLM digest strategy, `ScrapeJdNode` and `ScoreFitNode` use while the cloud quota is exhausted. Must be a local model; a cloud name is ignored. Not a default: it is used only during a quota outage. `Qwen3.6-35B-A3B-OptiQ-4bit` is the tested choice on a machine with room for it (see Models). |
 | `LOCAL_FALLBACK_TIMEOUT_SECONDS` | `300` | Per-call timeout for the fallback (local models are slower, and the first call loads the model). |
 | `CLOUD_QUOTA_RECHECK_MINUTES` | `30` | After a quota refusal, skip the cloud for this long; the next call then probes it again. |
 
@@ -263,7 +278,8 @@ The first refusal sends one WARN alert, and the first cloud success after it sen
 
 | Suffix | Routes to |
 |---|---|
-| (none) | Local Ollama at `OLLAMA_LOCAL_BASE_URL` |
+| (none) | Local oMLX at `MLX_LOCAL_BASE_URL` (key `MLX_API_KEY`) — where the defaults run |
+| `:ollama-local` | Local Ollama at `OLLAMA_LOCAL_BASE_URL` |
 | `:ollama-cloud` | Ollama Cloud (requires `OLLAMA_API_KEY`) |
 | `:cloud` with `MiniMax-…` prefix | MiniMax API (requires `MINIMAX_API_KEY`) |
 | `:cloud` with `deepseek-…` prefix | DeepSeek API (requires `DEEPSEEK_API_KEY`) |
