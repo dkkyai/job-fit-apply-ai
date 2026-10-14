@@ -402,6 +402,38 @@ def test_watchlist_state_follows_data_root() -> None:
     assert_mount(e2e_intake, "watchlist", "/state", ROOT / ".e2e/watchlist-state", read_only=False)
 
 
+def test_e2e_prepare_scores_through_fake_cloud_unless_real_llm() -> None:
+    """The e2e pipeline dotenv routes score through a fake *cloud* model with a local fallback.
+
+    That is what lets the quota→local-fallback scenario run end to end. Under REAL_LLM=1 there
+    is no fake to play the cloud, so the lines must be absent (score stays on the local default),
+    and the cloud base URL must follow E2E_FAKE_LLM_PORT like MLX_LOCAL_BASE_URL does.
+    """
+    def prepare(**extra: str) -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {k: v for k, v in os.environ.items() if not k.startswith("E2E_")}
+            env.update({"E2E_STATE_DIR": tmp, **extra})
+            subprocess.run([str(ROOT / "scripts/e2e-ci-prepare.sh")], cwd=ROOT, env=env, check=True, capture_output=True, text=True)
+            return (Path(tmp) / "pipeline.env").read_text()
+
+    fake = prepare(E2E_FAKE_LLM_PORT="24567")
+    assert "ARTIFACT_BASE_URL=" in fake, fake
+    assert "SCORE_MODEL=e2e-cloud-score:cloud" in fake, fake
+    assert "DEEPSEEK_BASE_URL=http://host.docker.internal:24567" in fake, fake
+    assert "LOCAL_FALLBACK_MODEL=e2e-local-fallback" in fake, fake
+    assert "CLOUD_QUOTA_RECHECK_MINUTES=0" in fake, fake
+    assert "DEEPSEEK_BASE_URL=http://host.docker.internal:21436" in prepare(), "default fake port"
+
+    real = prepare(E2E_REAL_LLM="1")
+    assert "ARTIFACT_BASE_URL=" in real, real
+    for key in ("SCORE_MODEL", "DEEPSEEK_BASE_URL", "LOCAL_FALLBACK_MODEL"):
+        assert key not in real, f"{key} must not be set under REAL_LLM=1: {real}"
+
+    makefile = (ROOT / "Makefile").read_text()
+    assert "E2E_REAL_LLM=$(REAL_LLM) E2E_FAKE_LLM_PORT=$(E2E_FAKE_LLM_PORT) ./scripts/e2e-ci-prepare.sh --fresh" in makefile, \
+        "make e2e-up must tell the prepare script whether a fake LLM is in play"
+
+
 def main() -> None:
     tests = (
         test_portable_fallback,
@@ -415,6 +447,7 @@ def main() -> None:
         test_instance_identity_parameterization,
         test_e2e_state_dir_moves_all_slice_state,
         test_watchlist_state_follows_data_root,
+        test_e2e_prepare_scores_through_fake_cloud_unless_real_llm,
     )
     for test in tests:
         test()
