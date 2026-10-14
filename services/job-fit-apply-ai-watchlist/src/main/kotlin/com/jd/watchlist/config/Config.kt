@@ -63,6 +63,17 @@ object Config {
     /** Eightfold (Microsoft, Starbucks…) rate-limits per IP over a long window: pace it slower. */
     val EIGHTFOLD_PAGE_DELAY_MS: Long = getLong("WATCHLIST_EIGHTFOLD_PAGE_DELAY_MS", 2_000L)
 
+    /** Alert once an employer's feed has failed or listed nothing for this many runs in a row. */
+    val ALERT_AFTER_RUNS: Int = getLong("WATCHLIST_ALERT_AFTER_RUNS", 2L).toInt()
+
+    // Operational alert channels — the same bot settings the processor's AlertService uses.
+    val TELEGRAM_BOT_TOKEN: String = get("TELEGRAM_BOT_TOKEN", "")
+    val TELEGRAM_CHAT_ID: String = get("TELEGRAM_CHAT_ID", "")
+    val DISCORD_BOT_TOKEN: String = get("DISCORD_BOT_TOKEN", "")
+    val DISCORD_CHANNEL_ID: String = get("DISCORD_CHANNEL_ID", "")
+    val TELEGRAM_API_BASE: String = get("TELEGRAM_API_BASE", "https://api.telegram.org")
+    val DISCORD_API_BASE: String = get("DISCORD_API_BASE", "https://discord.com")
+
     /** Pause between employers so the daily sweep stays polite. */
     val INTER_EMPLOYER_DELAY_MS: Long = getLong("WATCHLIST_INTER_EMPLOYER_DELAY_MS", 750L)
 }

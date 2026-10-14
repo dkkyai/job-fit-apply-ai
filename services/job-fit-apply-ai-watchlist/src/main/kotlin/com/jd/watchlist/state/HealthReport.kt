@@ -20,6 +20,8 @@ data class EmployerHealth(
     val deduped: Int = 0,
     val skipped: Int = 0,
     val error: String? = null,
+    /** Consecutive runs (including this one) in which this employer was [suspect]; 0 when healthy. */
+    val suspectRuns: Int = 0,
 ) {
     /** True when the entry needs a human look: the feed failed, or it listed nothing at all. */
     val suspect: Boolean get() = error != null || listed == 0
@@ -41,6 +43,13 @@ class HealthReport(private val path: Path) {
         .registerKotlinModule()
         .setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
         .enable(SerializationFeature.INDENT_OUTPUT)
+
+    /** Each employer's [EmployerHealth.suspectRuns] from the last written run (empty if none/unreadable). */
+    fun previousSuspectRuns(): Map<String, Int> = runCatching {
+        if (!Files.exists(path)) return emptyMap()
+        mapper.readTree(Files.readString(path)).path("employers")
+            .associate { it.path("company").asText() to it.path("suspect_runs").asInt(0) }
+    }.getOrDefault(emptyMap())
 
     fun write(health: RunHealth) {
         runCatching {
