@@ -35,6 +35,20 @@ data class Employer(
     val location: String? = null,
     /** Eightfold API flavour: "pcsx" (newer search) or "v2" (apply/v2). */
     val api: String? = null,
+    /**
+     * html: the regex an absolute link must match to be a posting; group 1 (or the whole match) is
+     * the posting id. [feed] is the list page; `{term}` and `{page}` in it are filled from the
+     * search terms and 1..[pages].
+     */
+    val linkPattern: String? = null,
+    /** html: CSS selector (within the card, else the link) for the title, when the link wraps the whole card. */
+    val titleSelector: String? = null,
+    /** html: CSS selector of the card around a posting link whose text carries its location. */
+    val cardSelector: String? = null,
+    /** html: list pages to read when [feed] has `{page}` (default 1). */
+    val pages: Int? = null,
+    /** html: the label before the location on the posting page ("Location:"), when the list has none. */
+    val locationLabel: String? = null,
     /** Search terms for this employer, replacing the global ones (Oracle: Seattle-area city names). */
     val search: List<String>? = null,
     /** RSS: CSS selector for the description on the posting page, used when the feed item has none. */

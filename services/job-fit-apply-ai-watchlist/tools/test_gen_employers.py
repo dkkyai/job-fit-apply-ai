@@ -155,6 +155,32 @@ class NewPlatformTest(unittest.TestCase):
         self.assertNotIn("may_be_empty", gen_employers.entry(row(ats="greenhouse", api_endpoint="https://boards-api.greenhouse.io/v1/boards/x/jobs")))
 
 
+class HtmlSitesTest(unittest.TestCase):
+    def test_configured_sites_use_the_generic_html_adapter_whatever_the_research_says(self):
+        e = gen_employers.entry(row(company="Apex Systems", ats="custom", api_endpoint="", api_status=""))
+        self.assertEqual("html", e["ats"])
+        self.assertIn("{page}", e["feed"])
+        self.assertEqual(2, e["pages"])
+        self.assertNotIn("enabled", e, "the config was verified live; there is no research API status to gate on")
+
+    def test_every_configured_site_has_a_feed_and_a_compilable_link_pattern(self):
+        import re as _re
+        for company, cfg in gen_employers.HTML_SITES.items():
+            self.assertTrue(cfg["feed"].startswith("https://"), company)
+            _re.compile(cfg["link_pattern"])
+
+    def test_integers_are_written_unquoted(self):
+        rows = [row(company="Apex Systems", ats="custom")]
+        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0].keys()) + ["category"] if "category" not in rows[0] else list(rows[0].keys()))
+            w.writeheader(); w.writerows(rows)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            gen_employers.main(f.name)
+        os.unlink(f.name)
+        self.assertIn("  pages: 2\n", out.getvalue())
+
+
 class CommittedYamlTest(unittest.TestCase):
     def test_committed_employers_yaml_matches_the_generator_output(self):
         here = os.path.dirname(os.path.abspath(__file__))

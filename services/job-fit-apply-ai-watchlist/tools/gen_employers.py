@@ -19,12 +19,29 @@ AREA_CITIES = ["Seattle", "Bellevue", "Redmond", "Kirkland", "Bothell", "Everett
                "Kent", "Snoqualmie", "Tukwila", "Mukilteo", "Lynnwood", "Woodinville"]
 JIBE_KEEP_PARAMS = {"location", "stretch", "stretchUnit"}
 HTML_BOARDS = {"icims", "jobvite"}
+# Server-rendered sites with no feed, read by the generic html adapter. Configured here (reviewed
+# code) rather than in the research CSV; each was checked against the live site with --dry-run.
+HTML_SITES = {
+    "Apex Systems": {
+        "feed": "https://www.apexsystems.com/search-results-usa?catalogcode=USA&address=Seattle%2C%20WA&radius=50&page={page}&rows=25&query={term}&sort=lastposteddesc",
+        "link_pattern": r"/job/(\d+)_usa/", "card_selector": "tr", "pages": 2,
+    },
+    "Ascendion": {
+        "feed": "https://ascendion.com/who-we-are/careers/america/",
+        "link_pattern": r"/job-inner-page/\?post=(\d+)", "card_selector": ".crs-job", "title_selector": ".crs-job__title", "detail_selector": ".jd-container",
+    },
+    "Experis (ManpowerGroup)": {
+        "feed": "https://www.experis.com/en/all-jobs",
+        "link_pattern": r"/en/job/(\d+)/", "location_label": "Location:", "detail_selector": ".details-rich-text",
+    },
+}
 # The parameter each shipped adapter cannot run without (None = needs nothing beyond the ats).
 REQUIRED_PARAM = {"greenhouse": "board", "lever": "board", "ashby": "board", "workday": "host", "rss": "feed",
                   "oracle_hcm": "site", "eightfold": "domain", "smartrecruiters": "board", "jibe": "feed", "amazon": None,
                   "workable": "board", "gem": "board", "rippling": "board", "adp": "feed", "phenom": "host", "tiktok": None,
                   "icims": "feed", "jobvite": "board", "apple": None, "capgemini": None, "jobsyn": "host", "epam": None,
-                  "successfactors": "host", "ukg": "board", "paylocity": "board", "zoho": "host", "atlassian": None}
+                  "successfactors": "host", "ukg": "board", "paylocity": "board", "zoho": "host", "atlassian": None,
+                  "html": "link_pattern"}
 
 
 def area_cities(text):
@@ -110,7 +127,10 @@ def entry(r):
     # and it was reachable when the research loaded it.
     if not url and ats in HTML_BOARDS and r.get("careers_url", "").startswith("http"):
         url, ok = r["careers_url"], r.get("url_status", "").strip() in ("200", "")
-    if url and (mapped := by_url(url, ats, r)):
+    if r["company"] in HTML_SITES:
+        e.update({"ats": "html", **HTML_SITES[r["company"]]})
+        ok = True
+    elif url and (mapped := by_url(url, ats, r)):
         e.update(mapped)
     elif ats == "greenhouse" and url and (m := re.search(r"/boards/([^/]+)/jobs", url)):
         e["board"] = m.group(1)
@@ -143,7 +163,7 @@ def main(path):
         "# Regenerate: python3 -I tools/gen_employers.py tools/employers.csv > src/main/resources/employers.yaml",
         "# ats picks the adapter (greenhouse, lever, ashby, workday, rss, oracle_hcm, eightfold, smartrecruiters, jibe,",
         "# amazon, workable, gem, rippling, adp, phenom, tiktok, icims, jobvite, apple, capgemini, jobsyn, epam,",
-        "# successfactors, ukg, paylocity, zoho, atlassian);",
+        "# successfactors, ukg, paylocity, zoho, atlassian, html);",
         "# other values are platforms without an adapter yet",
         "# and are skipped at run time.",
         "# enabled: false = feed did not verify; re-check before enabling.",
@@ -156,7 +176,7 @@ def main(path):
             if isinstance(v, list):
                 out.append(f"  {k}: [{', '.join(q(x) for x in v)}]")
             else:
-                out.append(f"  {k}: {str(v).lower() if isinstance(v, bool) else q(v)}")
+                out.append(f"  {k}: {str(v).lower() if isinstance(v, bool) else v if isinstance(v, int) else q(v)}")
     sys.stdout.write("\n".join(out) + "\n")
 
 
