@@ -112,9 +112,12 @@ object PostingLinks {
         val kept = queryParams(noFragment).filterNot { (k, _) -> TRACKING_PARAMS.matches(k) }
         if (kept.isEmpty()) return base
         return base + "?" + noFragment.substringAfter('?').split('&')
-            .filter { part -> part.substringBefore('=').let { k -> !TRACKING_PARAMS.matches(URLDecoder.decode(k, Charsets.UTF_8)) } }
+            .filter { part -> !TRACKING_PARAMS.matches(decode(part.substringBefore('='))) }
             .joinToString("&")
     }
+
+    /** URL-decoded, or [s] as-is when it is not valid encoding (a stray `%` in a hand-made link). */
+    private fun decode(s: String): String = runCatching { URLDecoder.decode(s, Charsets.UTF_8) }.getOrDefault(s)
 
     private fun queryParams(url: String): List<Pair<String, String>> {
         val query = url.substringBefore('#').substringAfter('?', "")
@@ -122,7 +125,7 @@ object PostingLinks {
         return query.split('&').filter { it.isNotEmpty() }.map { part ->
             val k = part.substringBefore('=')
             val v = part.substringAfter('=', "")
-            runCatching { URLDecoder.decode(k, Charsets.UTF_8) to URLDecoder.decode(v, Charsets.UTF_8) }.getOrElse { k to v }
+            decode(k) to decode(v)
         }
     }
 }

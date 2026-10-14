@@ -61,6 +61,23 @@ class PostingLinksTest {
     }
 
     @Test
+    fun `a malformed percent escape skips that one link instead of throwing`() {
+        // identify must never throw: one bad link would abort the whole email's expansion.
+        assertNull(PostingLinks.identify("https://careers.example.com/job/QA-Engineer/604999123/?bad%zz=1&utm_source=a"))
+        assertEquals(
+            "https://careers.example.com/job/QA-Engineer/604999123/?bad%zz=1&100%=x",
+            PostingLinks.stripTracking("https://careers.example.com/job/QA-Engineer/604999123/?bad%zz=1&utm_source=a&100%=x"),
+        )
+    }
+
+    @Test
+    fun `sentence punctuation after a plain-text link is not part of it`() {
+        listOf(".", ",", ";", ":", "!", "?", "...").forEach { p ->
+            assertEquals("alert:careers.example.com/jobs/12345", PostingLinks.identify("https://careers.example.com/jobs/12345$p")?.key, p)
+        }
+    }
+
+    @Test
     fun `non-http and malformed links are not postings`() {
         listOf("mailto:jobs@example.com", "javascript:void(0)", "ht!tp://bad url/jobs/123", "").forEach {
             assertNull(PostingLinks.identify(it), it)
