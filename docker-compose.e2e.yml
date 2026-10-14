@@ -109,6 +109,8 @@ services:
       # Never reach for Steel or a host Chrome in e2e — JD_SCRAPED jobs skip scraping, and the
       # JD_URL scenario scrapes a page the test JVM serves over plain HTTP (no browser needed).
       STEEL_BASE_URL: ""
+      # That page lives on host.docker.internal, which the scraper's SSRF guard refuses in prod.
+      SCRAPE_ALLOW_PRIVATE_HOSTS: "true"
     volumes:
       - ${E2E_STATE_DIR:-./.e2e}/output:/app/output
       - ${E2E_STATE_DIR:-./.e2e}/state:/app/state

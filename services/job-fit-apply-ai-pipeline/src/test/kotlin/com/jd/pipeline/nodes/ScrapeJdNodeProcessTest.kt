@@ -96,6 +96,37 @@ class ScrapeJdNodeProcessTest {
         }
     }
 
+    // ── SSRF guard ────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("private-network targets")
+    inner class PrivateTargets {
+
+        @Test
+        @DisplayName("a link to the private network is refused before any fetch or LLM call")
+        fun refusesPrivateTargets() {
+            val guarded = ScrapeJdNode(llm = LlmCaller { error("LLM must not be called") }, allowPrivateHosts = false)
+            listOf("http://169.254.169.254/latest/meta-data/", "http://host.docker.internal:8765/api/jobs", "http://127.0.0.1:3030/").forEach { url ->
+                val result = guarded.process(JDState(isJobPosting = true, jobUrl = url))
+                assertTrue(result.error.contains(ScrapeJdNode.PRIVATE_TARGET_REASON), "$url → ${result.error}")
+                assertEquals("blocked", result.scrapePath)
+            }
+            assertTrue(guarded.batchBlockedDomains.isEmpty(), "a refused link is not a site-wide block")
+        }
+
+        @Test
+        @DisplayName("the e2e opt-in lets a private target through to the fetch")
+        fun optInSkipsTheGuard() {
+            val checked = mutableListOf<String>()
+            val open = ScrapeJdNode(llm = LlmCaller { error("LLM must not be called") }, allowPrivateHosts = true,
+                isPrivateTarget = { checked += it; true })
+            // Port 9 (discard) on loopback refuses the connection: the fetch fails on its own, not the guard.
+            val result = open.process(JDState(isJobPosting = true, jobUrl = "http://127.0.0.1:9/job"))
+            assertFalse(result.error.contains(ScrapeJdNode.PRIVATE_TARGET_REASON), result.error)
+            assertTrue(checked.isEmpty(), "with the opt-in the guard is not consulted")
+        }
+    }
+
     // ── Batch-level skip: LinkedIn session ────────────────────────────────────
 
     @Nested

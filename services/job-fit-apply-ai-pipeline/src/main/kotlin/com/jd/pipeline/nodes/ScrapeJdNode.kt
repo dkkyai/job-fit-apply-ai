@@ -14,6 +14,7 @@ import com.microsoft.playwright.Page
 import com.microsoft.playwright.options.LoadState
 import com.microsoft.playwright.options.WaitForSelectorState
 import com.microsoft.playwright.options.WaitUntilState
+import com.jd.pipeline.utils.UrlSafety
 import org.jsoup.Jsoup
 import java.net.URI
 import java.net.http.HttpClient
@@ -40,6 +41,9 @@ class ScrapeJdNode(
     domainSkipTtlMs: Long = Config.SCRAPE_DOMAIN_SKIP_TTL_MS,
     // Monotonic clock seam (nanos) for the skip lists' expiry.
     nanoTime: () -> Long = System::nanoTime,
+    // SSRF guard (see UrlSafety). Seams so tests need neither DNS nor a real private host.
+    private val allowPrivateHosts: Boolean = Config.SCRAPE_ALLOW_PRIVATE_HOSTS,
+    private val isPrivateTarget: (String) -> Boolean = { UrlSafety.isPrivateTarget(it) },
 ) : Node<JDState> {
 
     /** Set to false to suppress verbose progress logging (e.g. during tuner runs). */
@@ -90,6 +94,8 @@ class ScrapeJdNode(
     }
 
     companion object {
+        internal const val PRIVATE_TARGET_REASON = "private network address — not fetched"
+
         // Site-agnostic auth-wall markers (see detectAuthWall). URL redirects to these paths are the
         // strongest signal a CDP-scraped page bounced us to login/verification instead of the JD.
         private val LOGIN_URL_MARKERS = listOf(
@@ -195,6 +201,10 @@ class ScrapeJdNode(
     }
 
     private fun fetchPage(url: String): PageContent {
+        if (!allowPrivateHosts && isPrivateTarget(url)) {
+            log("[scrape_jd] Refusing private-network target: $url")
+            return PageContent(rawHtml = "", cleanedText = "", blockReason = PRIVATE_TARGET_REASON, scrapePath = "blocked")
+        }
         val host = extractHost(url)
         if (isAuthExpired(host)) {
             log("[scrape_jd] Auth wall pending for $host — skipping browser fetch this batch")
@@ -244,6 +254,11 @@ class ScrapeJdNode(
             val finalUrl = response.uri().toString()
             val finalHost = extractHost(finalUrl)
             log("[scrape_jd] Final URL after redirects: $finalUrl")
+            // A public link can redirect into the private network; never keep what came back from there.
+            if (!allowPrivateHosts && finalUrl != url && isPrivateTarget(finalUrl)) {
+                log("[scrape_jd] Redirected to a private-network target ($finalUrl) — discarding the response")
+                return PageContent("", "", PRIVATE_TARGET_REASON)
+            }
 
             when (status) {
                 403 -> {
