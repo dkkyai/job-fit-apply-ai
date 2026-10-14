@@ -355,5 +355,24 @@ class ScanEmailNodeProcessTest {
             assertTrue(result.isApplicationUpdate)
             assertTrue(result.digestJobs.isEmpty())
         }
+
+        @Test
+        @DisplayName("a Workday tenant's job alert (<tenant>@myworkday.com) is parsed; its application mail is not")
+        fun workdayAlertsAndApplicationMail() {
+            fun workday(subject: String, html: String) = JDState(
+                intake = IntakeContext.Email(
+                    emailId = "w-1", subject = subject, from = "walmart@myworkday.com", rawBody = "", htmlBody = html,
+                    isRecruiter = false, isDigest = false, isInlineDigest = false,
+                )
+            )
+            val alertHtml = """<p>New jobs matching your job alert</p>
+                <a href="https://walmart.wd5.myworkdayjobs.com/en-US/WalmartExternal/job/Bellevue-WA/Senior-QA-Engineer_R-2345678">Senior QA Engineer</a>"""
+            val alert = ScanEmailNode(llm = RecordingLlm("""{"is_job_posting": false}""")).process(workday("Job Alert: QA Seattle", alertHtml))
+            assertEquals("watchlist:workday:walmart/WalmartExternal:R-2345678", alert.digestJobs.single().postingKey)
+
+            val llm = RecordingLlm("""{"is_job_posting": false, "is_application_update": true, "jd_text": "", "company": "Walmart", "role_title": "Senior QA Engineer"}""")
+            val applied = ScanEmailNode(llm = llm).process(workday("Thanks for applying to Senior QA Engineer", alertHtml.replace("New jobs matching your job alert", "We received your application")))
+            assertTrue(applied.isApplicationUpdate && applied.digestJobs.isEmpty())
+        }
     }
 }

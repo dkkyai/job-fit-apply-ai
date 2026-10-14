@@ -27,10 +27,11 @@ object BoardRegistry {
         JobBoardGroup("ats", setOf("lever.co", "greenhouse.io", "smartrecruiters.com", "jobvite.com", "icims.com", "taleo.net", "ashbyhq.com", "rippling.com")),
         JobBoardGroup("generic", setOf("indeed.com", "ziprecruiter.com", "dice.com")),
         // Employers' own job alerts: Microsoft Careers (Eightfold), Eightfold-hosted career sites,
-        // and SuccessFactors career sites (jobs2web).
+        // SuccessFactors career sites (jobs2web) and Workday tenants (<tenant>@myworkday.com, which
+        // also sends application updates — the strategy's alert check keeps those direct).
         JobBoardGroup(
             "employer_alerts",
-            setOf("email.careers.microsoft.com", "eightfold.ai", "jobs2web.com"),
+            setOf("email.careers.microsoft.com", "eightfold.ai", "jobs2web.com", "myworkday.com"),
             fallbackToRecruiter = true,
         ),
     )
