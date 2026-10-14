@@ -50,6 +50,13 @@ class IcimsClassicAdapterTest {
         assertEquals("https://x/jobs/search?in_iframe=1", withParam("https://x/jobs/search", "in_iframe", "1"))
         assertEquals("https://x/a?b=c&k=v", withParam("https://x/a?b=c#frag", "k", "v"))
     }
+
+    @Test
+    fun `withoutParam removes one parameter wherever it sits in the query`() {
+        assertEquals("https://x/jobs/1/qa/job", withoutParam("https://x/jobs/1/qa/job?in_iframe=1", "in_iframe"))
+        assertEquals("https://x/jobs/1/qa/job?mobile=false", withoutParam("https://x/jobs/1/qa/job?in_iframe=1&mobile=false", "in_iframe"))
+        assertEquals("https://x/jobs/1/qa/job?a=1&b=2", withoutParam("https://x/jobs/1/qa/job?a=1&in_iframe=1&b=2#top", "in_iframe"))
+    }
 }
 
 class JobviteAdapterTest {
@@ -68,6 +75,7 @@ class JobviteAdapterTest {
         assertEquals("https://jobs.jobvite.com/kymetacorp/job/ok0HAfwl", postings[0].url)
         assertEquals("Redmond, Washington", postings[0].location)
         assertEquals("", postings[1].location)
+        assertTrue(postings.none { it.externalId.startsWith("http") }, "ids are the posting code, never the URL")
         assertEquals("Description\nValidate satellite terminals in the lab.", adapter.describe(kymeta, postings[0]))
     }
 }

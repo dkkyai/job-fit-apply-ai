@@ -36,7 +36,7 @@ class IcimsClassicAdapter(private val http: Http, private val pause: () -> Unit 
                     externalId = id,
                     title = (a.selectFirst("h3")?.text() ?: a.text()).trim(),
                     location = locationOf(card),
-                    url = href.replace(Regex("[?&]in_iframe=1"), ""),
+                    url = withoutParam(href, "in_iframe"),
                     detailRef = withParam(href, "in_iframe", "1"),
                 )
             }
@@ -70,9 +70,11 @@ class JobviteAdapter(private val http: Http) : FeedAdapter {
         return doc.select("table.jv-job-list tr").mapNotNull { row ->
             val a = row.selectFirst("td.jv-job-list-name a[href]") ?: return@mapNotNull null
             val href = a.absUrl("href")
+            // Only a real posting link has a stable id; anything else (layout change) is skipped, not keyed on the URL.
+            val id = JOB_ID.find(href)?.groupValues?.get(1) ?: return@mapNotNull null
             Posting(
                 company = employer.company,
-                externalId = href.substringAfterLast("/job/").substringBefore('?'),
+                externalId = id,
                 title = a.text().trim(),
                 // "2 Locations" is unknown, not a place: blank lets the pre-filter pass it on.
                 location = row.selectFirst("td.jv-job-list-location")?.text()?.trim()
@@ -87,13 +89,25 @@ class JobviteAdapter(private val http: Http) : FeedAdapter {
 
     companion object {
         private val MULTI = Regex("""^\d+\s+locations?$""", RegexOption.IGNORE_CASE)
+        private val JOB_ID = Regex("""/job/([A-Za-z0-9]+)""")
     }
 }
 
 /** Set (or replace) one query parameter on [url]. */
 internal fun withParam(url: String, key: String, value: String): String {
-    val base = url.substringBefore('#')
-    val path = base.substringBefore('?')
-    val params = base.substringAfter('?', "").split('&').filter { it.isNotBlank() && it.substringBefore('=') != key }
+    val (path, params) = splitQuery(url, key)
     return path + "?" + (params + "$key=$value").joinToString("&")
+}
+
+/** Remove one query parameter from [url], keeping the others (and dropping a now-empty `?`). */
+internal fun withoutParam(url: String, key: String): String {
+    val (path, params) = splitQuery(url, key)
+    return if (params.isEmpty()) path else path + "?" + params.joinToString("&")
+}
+
+/** [url] without its fragment, as (path, query params other than [key]). */
+private fun splitQuery(url: String, key: String): Pair<String, List<String>> {
+    val base = url.substringBefore('#')
+    val params = base.substringAfter('?', "").split('&').filter { it.isNotBlank() && it.substringBefore('=') != key }
+    return base.substringBefore('?') to params
 }
