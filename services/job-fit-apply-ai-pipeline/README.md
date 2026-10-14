@@ -241,7 +241,7 @@ All node-level model variables default to `qwen3.5:9b-q4_K_M`. Override per node
 
 ### Cloud quota → local fallback (intake lane)
 
-When a cloud provider refuses a call because the account's usage quota is used up (HTTP 402/403/429 whose body talks about a quota, limit, plan or credits — not the ordinary "too many concurrent requests" 429), the intake lane keeps running on a local model instead of failing every job until the quota resets:
+When a cloud provider refuses a call because the account's usage quota is used up, the intake lane keeps running on a local model instead of failing every job until the quota resets. A quota refusal is HTTP 402, or a 403/429 whose body uses quota wording ("weekly usage limit", "credits", "upgrade", …). Ordinary throttling ("rate limit", "too many requests", "concurrent requests", per-minute limits) is still retried as before.
 
 | Variable | Default | Description |
 |---|---|---|

@@ -45,13 +45,24 @@ class CloudQuota(
     }
 
     companion object {
-        /** Words a provider uses for a used-up allowance — not "too many concurrent requests". */
-        private val QUOTA_WORDS = Regex("""\b(quota|usage|limits?|exceeded|exhausted|subscription|plan|credits?|weekly|hourly|session)\b""", RegexOption.IGNORE_CASE)
-        private val CONCURRENCY = Regex("""concurren""", RegexOption.IGNORE_CASE)
+        /**
+         * Phrases a provider uses for a used-up allowance (Ollama Cloud: "you've reached your weekly
+         * usage limit … upgrade"). Deliberately specific: a bare "limit … exceeded" is how an
+         * ordinary rate limit reads, and that one is worth retrying.
+         */
+        private val QUOTA_PHRASES = Regex(
+            """\b(quota|usage limits?|usage caps?|weekly|daily|hourly|monthly|session limits?|subscription|credits?|insufficient balance|billing|upgrade)\b""",
+            RegexOption.IGNORE_CASE,
+        )
+        /** Short-term throttling and request errors — retryable or not, never a used-up quota. */
+        private val NOT_QUOTA = Regex("""concurren|rate[ -]?limit|too many requests|per (minute|second)|context""", RegexOption.IGNORE_CASE)
 
-        /** Does this HTTP error from a cloud backend mean "your quota is used up"? */
-        fun isQuotaResponse(status: Int, body: String): Boolean =
-            status in setOf(402, 403, 429) && QUOTA_WORDS.containsMatchIn(body) && !CONCURRENCY.containsMatchIn(body)
+        /** Does this HTTP error from a cloud backend mean "your quota is used up"? 402 always does. */
+        fun isQuotaResponse(status: Int, body: String): Boolean = when (status) {
+            402 -> true
+            403, 429 -> QUOTA_PHRASES.containsMatchIn(body) && !NOT_QUOTA.containsMatchIn(body)
+            else -> false
+        }
 
         /** The processor's shared instance; alerts once on exhaustion and once on recovery. */
         val shared: CloudQuota by lazy {

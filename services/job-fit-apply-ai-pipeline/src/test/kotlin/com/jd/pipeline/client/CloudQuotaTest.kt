@@ -29,12 +29,23 @@ class CloudQuotaTest {
         assertTrue(CloudQuota.isQuotaResponse(429, """{"error":"you have reached your weekly usage limit"}"""))
         assertTrue(CloudQuota.isQuotaResponse(429, """{"error":"session limit exceeded, upgrade your plan"}"""))
         assertTrue(CloudQuota.isQuotaResponse(402, """{"error":"insufficient credits"}"""))
+        assertTrue(CloudQuota.isQuotaResponse(402, ""), "402 Payment Required is a quota refusal whatever it says")
         assertTrue(CloudQuota.isQuotaResponse(403, """{"error":"subscription quota exhausted"}"""))
         assertFalse(CloudQuota.isQuotaResponse(429, """{"error":"too many concurrent requests"}"""), "the ordinary concurrency 429 keeps its retry")
         assertFalse(CloudQuota.isQuotaResponse(429, """{"error":"concurrency limit exceeded for your plan"}"""), "concurrency wins over quota words")
         assertFalse(CloudQuota.isQuotaResponse(429, ""), "a bare 429 is a rate limit, not a quota")
         assertFalse(CloudQuota.isQuotaResponse(500, """{"error":"usage limit"}"""), "only 402/403/429 mean quota")
         assertFalse(CloudQuota.isQuotaResponse(400, """{"error":"context length limit exceeded"}"""))
+        // An ordinary rate limit reads like "limit exceeded" too, and it is worth retrying.
+        assertFalse(CloudQuota.isQuotaResponse(429, """{"error":"rate limit exceeded, slow down"}"""))
+        assertFalse(CloudQuota.isQuotaResponse(429, """{"error":"Too Many Requests"}"""))
+        assertFalse(CloudQuota.isQuotaResponse(429, """{"error":"tokens per minute limit exceeded"}"""))
+        assertFalse(CloudQuota.isQuotaResponse(429, """{"error":"context length limit exceeded"}"""))
+        assertFalse(CloudQuota.isQuotaResponse(429, """{"error":"invalid plan parameter"}"""))
+        assertFalse(CloudQuota.isQuotaResponse(429, """{"error":"request limit exceeded"}"""), "generic limit wording is not a quota")
+        // Throttling that also mentions the plan is still throttling.
+        assertFalse(CloudQuota.isQuotaResponse(429, """{"error":"rate limit exceeded for your subscription tier, retry in 2s"}"""))
+        assertFalse(CloudQuota.isQuotaResponse(429, """{"error":"too many requests: upgrade for higher limits"}"""))
     }
 
     @Test
