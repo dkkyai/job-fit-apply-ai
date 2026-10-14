@@ -60,6 +60,7 @@ class EmployerCatalogTest {
             "html" to { e: Employer -> e.feed?.let { e.linkPattern } },
             "kforce" to { e: Employer -> e.location }, "roberthalf" to { e: Employer -> e.feed },
             "jobdiva" to { e: Employer -> e.board },
+            "insightglobal" to { e: Employer -> e.location }, "griddynamics" to { e: Employer -> e.feed },
         )
         assertEquals(
             com.jd.watchlist.adapters.Adapters.registry(com.jd.watchlist.FakeHttp(), emptyList()).keys, required.keys,

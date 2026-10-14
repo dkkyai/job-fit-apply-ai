@@ -99,3 +99,59 @@ class JobDivaAdapterTest {
         assertFailsWith<IllegalArgumentException> { JobDivaAdapter(FakeHttp(), listOf("qa")).list(aditi.copy(board = null)) }
     }
 }
+
+class InsightGlobalAdapterTest {
+    private val ig = Employer(company = "Insight Global", ats = "insightglobal", location = "seattle-wa")
+
+    private fun http(calls: MutableList<String>) = FakeHttp(getHandler = { url ->
+        when {
+            url.startsWith("https://insightglobal.com/all/jobs?") -> {
+                calls += url
+                resource(if ("&page=2&" in url) "insightglobal_p2.json" else "insightglobal_p1.json")
+            }
+            url == "https://insightglobal.com/all/jobs/6a633bd9-bf93-4a11-b17a-8332b6ca23fa/details" -> resource("insightglobal_detail.json")
+            else -> null
+        }
+    })
+
+    @Test
+    fun `searches each term in the area, follows pages, keys on the requisition id`() {
+        val calls = mutableListOf<String>()
+        var pauses = 0
+        val postings = InsightGlobalAdapter(http(calls), listOf("qa", "test engineer"), pause = { pauses++ }).list(ig)
+
+        assertEquals(listOf("6a633bd9-bf93-4a11-b17a-8332b6ca23fa", "79188d80-7812-4df8-82f8-045ac82c8b37", "3dfc1514-0e14-4a90-b1e1-c65a3022fb95"),
+            postings.map { it.externalId }, "both pages; a second term finds the same jobs again; an item without an id is dropped")
+        assertEquals(4, calls.size, "two pages per term")
+        assertEquals(3, pauses, "a pause before every request but the first")
+        assertTrue(calls.all { "filter.locations=seattle-wa" in it && "filter.distance=50" in it }, calls.first())
+        assertTrue("keyword=test%20engineer" in calls[2], calls[2])
+        val first = postings[0]
+        assertEquals("Software Test Engineer", first.title)
+        assertEquals("Bellevue, WA | Remote", first.location)
+        assertEquals("https://insightglobal.com/jobs/6a633bd9-bf93-4a11-b17a-8332b6ca23fa", first.url)
+        assertEquals("Redmond, WA", postings[1].location)
+        assertEquals("Remote", postings[2].location, "no address, remote")
+    }
+
+    @Test
+    fun `stops at maxPages even if the API reports more`() {
+        val calls = mutableListOf<String>()
+        InsightGlobalAdapter(http(calls), listOf("qa"), maxPages = 1).list(ig)
+        assertEquals(1, calls.size)
+    }
+
+    @Test
+    fun `the description comes from the details endpoint`() {
+        val calls = mutableListOf<String>()
+        val adapter = InsightGlobalAdapter(http(calls), listOf("qa"))
+        val text = adapter.describe(ig, adapter.list(ig).first())!!
+        assertTrue("5–8 years of QA / Software Testing experience" in text, text)
+        assertTrue("Manual and automated testing" in text, text)
+    }
+
+    @Test
+    fun `a missing location slug is an error, not an empty board`() {
+        assertFailsWith<IllegalArgumentException> { InsightGlobalAdapter(FakeHttp(), listOf("qa")).list(ig.copy(location = null)) }
+    }
+}

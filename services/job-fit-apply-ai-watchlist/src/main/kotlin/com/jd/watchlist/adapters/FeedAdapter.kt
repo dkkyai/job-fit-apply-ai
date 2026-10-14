@@ -67,6 +67,8 @@ object Adapters {
         "kforce" to KforceAdapter(http, searchTerms),
         "roberthalf" to RobertHalfAdapter(http),
         "jobdiva" to JobDivaAdapter(http, searchTerms, pause),
+        "insightglobal" to InsightGlobalAdapter(http, searchTerms, pause),
+        "griddynamics" to GridDynamicsAdapter(http),
     )
 }
 

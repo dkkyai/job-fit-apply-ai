@@ -139,3 +139,61 @@ class JobDivaAdapter(private val http: Http, private val searchTerms: List<Strin
         val TITLE = Regex("""^(.*?)\s*\([^()]*\)\s*-\s*([A-Za-z]{2})\s*-\s*(.+)$""")
     }
 }
+
+/**
+ * Insight Global: the job search is an Angular app over a public JSON API (`/all/jobs`), searched
+ * per term within [Employer.location] (a location slug such as `seattle-wa`) and a 50-mile radius.
+ * The list carries no description; [describe] reads `/all/jobs/<id>/details`.
+ */
+class InsightGlobalAdapter(
+    private val http: Http,
+    private val searchTerms: List<String>,
+    private val pause: () -> Unit = {},
+    private val maxPages: Int = 5,
+) : FeedAdapter {
+
+    override fun list(employer: Employer): List<Posting> {
+        val area = requireNotNull(employer.location) { "insightglobal employer ${employer.company} has no location (search slug)" }
+        val found = LinkedHashMap<String, Posting>()
+        var first = true
+        for (term in searchTerms.ifEmpty { listOf("") }) {
+            var page = 1
+            while (page <= maxPages) {
+                if (!first) pause()
+                first = false
+                val body = json.readTree(http.get(
+                    "$BASE/all/jobs?keyword=${enc(term)}&page=$page&size=$PAGE_SIZE&sort=relevance,desc" +
+                        "&filter.includeOnlyRemoteWork=false&filter.locations=${enc(area)}&filter.distance=$MILES&filter.status=active",
+                ))
+                for (j in body.path("jobs")) {
+                    val id = j.path("requisitionId").asText("")
+                    if (id.isBlank()) continue
+                    val address = j.path("workAddress")
+                    val place = listOf(address.path("locality").asText(""), address.path("administrativeArea").asText(""))
+                        .filter { it.isNotBlank() }.joinToString(", ")
+                    found[id] = Posting(
+                        company = employer.company,
+                        externalId = id,
+                        title = j.path("jobTitle").asText(""),
+                        location = listOfNotNull(place.ifBlank { null }, "Remote".takeIf { j.path("workRemote").asBoolean(false) }).joinToString(" | "),
+                        url = "$BASE/jobs/$id",
+                    )
+                }
+                if (page >= body.path("pageMetadata").path("totalPages").asInt(1)) break
+                page++
+            }
+        }
+        return found.values.toList()
+    }
+
+    override fun describe(employer: Employer, posting: Posting): String? =
+        htmlToText(json.readTree(http.get("$BASE/all/jobs/${posting.externalId}/details")).path("description").asText(null))
+
+    private fun enc(s: String) = URLEncoder.encode(s, Charsets.UTF_8).replace("+", "%20")
+
+    private companion object {
+        const val BASE = "https://insightglobal.com"
+        const val PAGE_SIZE = 50
+        const val MILES = 50
+    }
+}

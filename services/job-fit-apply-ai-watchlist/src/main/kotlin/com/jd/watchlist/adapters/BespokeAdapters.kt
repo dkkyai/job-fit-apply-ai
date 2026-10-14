@@ -5,6 +5,7 @@ import com.jd.watchlist.http.Http
 import com.jd.watchlist.model.Employer
 import com.jd.watchlist.model.Posting
 import java.net.URLEncoder
+import org.jsoup.Jsoup
 
 /**
  * One-employer APIs worth an adapter because the employer is a medium/high QE fit with real
@@ -211,3 +212,36 @@ class EpamAdapter(
 }
 
 private fun enc(s: String) = URLEncoder.encode(s, Charsets.UTF_8).replace("+", "%20")
+
+/**
+ * Grid Dynamics: the careers page ([Employer.feed]) embeds every opening as JSON in a
+ * `data-vacancies` attribute. Most are outside the US, including "Turkey Remote"-style roles the
+ * remote filter would let through, so only openings with a US location are listed. [describe]
+ * reads the vacancy page's content block.
+ */
+class GridDynamicsAdapter(private val http: Http) : FeedAdapter {
+    override fun list(employer: Employer): List<Posting> {
+        val feed = requireNotNull(employer.feed) { "griddynamics employer ${employer.company} has no feed" }
+        val raw = Jsoup.parse(http.get(feed)).selectFirst("[data-vacancies]")?.attr("data-vacancies")
+            ?: error("griddynamics: no data-vacancies on $feed")
+        return json.readTree(raw)
+            .filter { v -> v.path("countryLocations").any { it.path("country").asText("") in US } }
+            .map { v ->
+                val id = v.path("id").asText()
+                Posting(
+                    company = employer.company,
+                    externalId = id,
+                    title = v.path("title").asText("").trim(),
+                    location = v.path("relatedLocations").joinToString(" | ") { it.asText() },
+                    url = "https://www.griddynamics.com/careers/vacancy/$id",
+                )
+            }
+    }
+
+    override fun describe(employer: Employer, posting: Posting): String? =
+        Jsoup.parse(http.get(posting.url)).selectFirst(".careers-vacancy__content-block")?.let { htmlToText(it.html()) }
+
+    private companion object {
+        val US = setOf("US", "USA", "United States")
+    }
+}

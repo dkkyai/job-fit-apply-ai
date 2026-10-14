@@ -5,6 +5,8 @@ import com.jd.watchlist.model.Employer
 import com.jd.watchlist.resource
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -84,5 +86,37 @@ class EpamAdapterTest {
         assertEquals("Seattle, United States", postings[1].location)
         assertEquals("https://careers.epam.com/en/vacancy/qa-lead-blt7c2d_en", postings[1].url)
         assertEquals("Automate everything.", postings[0].description)
+    }
+}
+
+class GridDynamicsAdapterTest {
+    private val page = "https://www.griddynamics.com/careers/discover-openings"
+    private val gd = Employer(company = "Grid Dynamics", ats = "griddynamics", feed = page)
+    private val http = FakeHttp(gets = mapOf(
+        page to resource("griddynamics_page.html"),
+        "https://www.griddynamics.com/careers/vacancy/60001" to resource("griddynamics_vacancy.html"),
+    ))
+
+    @Test
+    fun `lists only openings with a US location, read from the data-vacancies JSON`() {
+        val postings = GridDynamicsAdapter(http).list(gd)
+        assertEquals(listOf("60001", "60003"), postings.map { it.externalId }, "London and Turkey Remote are not listed")
+        assertEquals("Senior QA Automation Engineer", postings[0].title, "trimmed")
+        assertEquals("US Remote, US", postings[0].location)
+        assertEquals("Kirkland, WA, United States | Hyderabad, India", postings[1].location)
+        assertEquals("https://www.griddynamics.com/careers/vacancy/60001", postings[0].url)
+    }
+
+    @Test
+    fun `the description is the vacancy page's content block, not the apply form`() {
+        val adapter = GridDynamicsAdapter(http)
+        val text = adapter.describe(gd, adapter.list(gd).first())!!
+        assertTrue("build test frameworks for a retail client" in text, text)
+        assertFalse("Upload your CV" in text, text)
+    }
+
+    @Test
+    fun `a page without the vacancies attribute is an error, not an empty board`() {
+        assertFailsWith<IllegalStateException> { GridDynamicsAdapter(FakeHttp(gets = mapOf(page to "<html></html>"))).list(gd) }
     }
 }

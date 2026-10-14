@@ -15,7 +15,7 @@ class ReadmeCoverageTest {
         val all = EmployerCatalog.load("")
         val adapters = Adapters.registry(FakeHttp(), emptyList()).keys
         val expected = linkedMapOf(
-            "Polled daily" to all.count { it.enabled && it.ats in adapters },
+            "Polled" to all.count { it.enabled && it.ats in adapters },
             "Feed did not verify (`enabled: false`)" to all.count { !it.enabled },
             "No adapter for their platform" to all.count { it.enabled && it.ats !in adapters },
             "Total" to all.size,
