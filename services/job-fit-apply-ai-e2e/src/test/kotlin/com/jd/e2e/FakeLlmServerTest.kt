@@ -48,6 +48,22 @@ class FakeLlmServerTest {
     @AfterAll
     fun stop() = server.stop()
 
+    @Test
+    @DisplayName("serves a static job page for URL-intake scenarios, long enough to avoid the browser fallback")
+    fun servesJobPage() {
+        val resp = http.send(
+            HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/e2e-jobs/abc123")).GET().build(),
+            HttpResponse.BodyHandlers.ofString(),
+        )
+        assertEquals(200, resp.statusCode())
+        assertTrue(resp.headers().firstValue("Content-Type").orElse("").startsWith("text/html"))
+        val text = resp.body().replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " ").trim()
+        assertTrue("URL_INTAKE_PAGE_MARKER posting abc123" in text)
+        // ScrapeJdNode retries thin pages (< PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH = 500) in a
+        // browser, which e2e does not have — the page must stay comfortably above that.
+        assertTrue(text.length > 1500, "page text is ${text.length} chars")
+    }
+
     private fun ask(prompt: String, model: String = "qwen3-test"): HttpResponse<String> {
         val body = mapper.writeValueAsString(
             mapOf("model" to model, "messages" to listOf(mapOf("role" to "user", "content" to prompt)))

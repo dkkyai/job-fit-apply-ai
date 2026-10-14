@@ -160,6 +160,7 @@ object WorkItemType {
     const val EMAIL_RAW   = "EMAIL_RAW"    // raw email — the Processor scans/scrapes it
     const val JD_SCRAPED  = "JD_SCRAPED"   // pre-structured JdRecord (JSearch / digest child)
     const val JD_PAGE_RAW = "JD_PAGE_RAW"  // raw captured web-page content — the Processor LLM-extracts it
+    const val JD_URL      = "JD_URL"       // a posting known only by its link — the Processor scrapes it
 }
 
 /** A raw email claimed from the queue (payload of an EMAIL_RAW item). */
@@ -179,6 +180,16 @@ data class ClaimedPageCapture(
     val title: String = "",
 )
 
+/** A posting URL claimed from the queue (payload of a JD_URL item); the other fields are hints. */
+data class ClaimedUrl(
+    val url: String,
+    val source: String? = null,
+    val company: String? = null,
+    val roleTitle: String? = null,
+    val location: String? = null,
+    val idempotencyKey: String? = null,
+)
+
 /** Result of a submission: the job it maps to, and whether the bridge deduped it. */
 data class SubmitOutcome(val jobId: String, val deduped: Boolean)
 
@@ -188,6 +199,7 @@ data class ClaimDto(
     val jdRecord: JdRecord? = null,               // set for JD_SCRAPED
     val email: ClaimedEmail? = null,              // set for EMAIL_RAW
     val pageCapture: ClaimedPageCapture? = null,  // set for JD_PAGE_RAW
+    val url: ClaimedUrl? = null,                  // set for JD_URL
     /** Fence for this claim; present it on postResult. Null against a pre-fencing bridge. */
     val claimToken: String? = null,
 )
@@ -205,6 +217,8 @@ internal fun parseClaimTree(tree: com.fasterxml.jackson.databind.JsonNode): Clai
             ClaimDto(jobId = jobId, type = type, email = mapper.treeToValue(payload, ClaimedEmail::class.java), claimToken = token)
         WorkItemType.JD_PAGE_RAW ->
             ClaimDto(jobId = jobId, type = type, pageCapture = mapper.treeToValue(payload, ClaimedPageCapture::class.java), claimToken = token)
+        WorkItemType.JD_URL ->
+            ClaimDto(jobId = jobId, type = type, url = mapper.treeToValue(payload, ClaimedUrl::class.java), claimToken = token)
         else ->
             ClaimDto(jobId = jobId, type = type, jdRecord = mapper.treeToValue(payload, JdRecord::class.java), claimToken = token)
     }

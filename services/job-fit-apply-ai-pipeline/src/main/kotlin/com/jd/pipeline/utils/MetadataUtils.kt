@@ -22,6 +22,7 @@ object MetadataUtils {
         is IntakeContext.Api -> "api"
         is IntakeContext.Synthetic -> "synthetic"
         is IntakeContext.WebCapture -> "extension"
+        is IntakeContext.Link -> "url"
         null -> "unknown"
     }
 

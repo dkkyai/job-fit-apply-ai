@@ -281,6 +281,15 @@ class E2eScenarioHarness {
         ),
     )
 
+    /** POST /api/urls — a posting known only by its link (the processor scrapes it). */
+    fun submitUrl(url: String, idempotencyKey: String, source: String = "EMAIL", company: String? = null, roleTitle: String? = null): JsonNode = postJson(
+        "${E2eConfig.bridgeUrl}/api/urls",
+        mapper.writeValueAsString(
+            mapOf("url" to url, "source" to source, "company" to company, "role_title" to roleTitle, "idempotency_key" to idempotencyKey)
+                .filterValues { it != null },
+        ),
+    )
+
     fun submitPage(url: String, title: String, text: String, idempotencyKey: String): JsonNode = postJson(
         "${E2eConfig.bridgeUrl}/api/pages",
         mapper.writeValueAsString(
