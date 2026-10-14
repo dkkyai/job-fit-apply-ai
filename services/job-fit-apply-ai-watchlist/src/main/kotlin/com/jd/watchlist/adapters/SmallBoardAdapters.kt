@@ -3,6 +3,7 @@ package com.jd.watchlist.adapters
 import com.jd.watchlist.http.Http
 import com.jd.watchlist.model.Employer
 import com.jd.watchlist.model.Posting
+import org.jsoup.Jsoup
 
 /**
  * Small, list-everything job boards: one call returns every posting, so there is no search or
@@ -124,3 +125,101 @@ class AdpAdapter(private val http: Http, private val pause: () -> Unit = {}, pri
         }
     }
 }
+
+/** UKG Pro Recruiting (UltiPro) job boards (Sound Transit): one search call; the detail page embeds the description JSON. */
+class UkgAdapter(private val http: Http) : FeedAdapter {
+    override fun list(employer: Employer): List<Posting> {
+        val tenant = requireNotNull(employer.tenant) { "ukg employer ${employer.company} has no tenant" }
+        val board = requireNotNull(employer.board) { "ukg employer ${employer.company} has no board" }
+        val base = "https://recruiting.ultipro.com/$tenant/JobBoard/$board"
+        val body = """{"opportunitySearch":{"Top":200,"Skip":0,"QueryString":"","OrderBy":[{"Value":"postedDateDesc","PropertyName":"PostedDate","Ascending":false}],"Filters":[]},"matchCriteria":{"PreferredJobs":[],"Educations":[],"LicenseAndCertifications":[],"Skills":[],"hasNoLicenses":false,"SkippedSkills":[]}}"""
+        return json.readTree(http.postJson("$base/JobBoardView/LoadSearchResults", body)).path("opportunities").map { o ->
+            val id = o.path("Id").asText()
+            Posting(
+                company = employer.company,
+                externalId = id,
+                title = o.path("Title").asText(""),
+                location = o.path("Locations").map { l ->
+                    val a = l.path("Address")
+                    listOf(a.path("City").asText(""), a.path("State").path("Code").asText(""), a.path("Country").path("Code").asText(""))
+                        .filter { it.isNotBlank() }.joinToString(", ")
+                }.filter { it.isNotBlank() }.distinct().joinToString(" | "),
+                url = "$base/OpportunityDetail?opportunityId=$id",
+            )
+        }
+    }
+
+    override fun describe(employer: Employer, posting: Posting): String? {
+        val page = http.get(posting.url)
+        val detail = Regex("""new US\.Opportunity\.CandidateOpportunityDetail\((\{.*?\})\);""", RegexOption.DOT_MATCHES_ALL).find(page) ?: return null
+        return htmlToText(json.readTree(detail.groupValues[1]).path("Description").asText(null))
+    }
+}
+
+/**
+ * Paylocity Recruiting job boards (evo): the list page embeds every job as `window.pageData`, but
+ * only with a ~110-character teaser; the full description is on the job's detail page.
+ */
+class PaylocityAdapter(private val http: Http) : FeedAdapter {
+    override fun list(employer: Employer): List<Posting> {
+        val board = requireNotNull(employer.board) { "paylocity employer ${employer.company} has no board" }
+        val page = http.get("https://recruiting.paylocity.com/recruiting/jobs/All/$board")
+        val data = Regex("""window\.pageData\s*=\s*(\{.*?\});\s*</script>""", RegexOption.DOT_MATCHES_ALL).find(page)
+            ?: error("paylocity board $board: no pageData on the jobs page")
+        return json.readTree(data.groupValues[1]).path("Jobs").map { j ->
+            val loc = j.path("JobLocation")
+            Posting(
+                company = employer.company,
+                externalId = j.path("JobId").asText(),
+                title = j.path("JobTitle").asText(""),
+                location = (listOf(listOf(loc.path("City").asText(""), loc.path("State").asText("")).filter { it.isNotBlank() }.joinToString(", ")) +
+                    listOfNotNull("Remote".takeIf { j.path("IsRemote").asBoolean(false) })).filter { it.isNotBlank() }.joinToString(" | "),
+                url = "https://recruiting.paylocity.com/Recruiting/Jobs/Details/${j.path("JobId").asText()}",
+            )
+        }
+    }
+
+    override fun describe(employer: Employer, posting: Posting): String? =
+        htmlToText(Jsoup.parse(http.get(posting.url)).selectFirst(".job-preview-details")?.apply { select("a, button").remove() }?.html())
+}
+
+/** Zoho Recruit career sites (Ziply Fiber): the page holds every job, description included, in a hidden `jobs` input. */
+class ZohoRecruitAdapter(private val http: Http) : FeedAdapter {
+    override fun list(employer: Employer): List<Posting> {
+        val host = requireNotNull(employer.host) { "zoho employer ${employer.company} has no host" }
+        val site = employer.site ?: "Careers"
+        val page = Jsoup.parse(http.get("https://$host/jobs/$site"))
+        val raw = page.selectFirst("input#jobs")?.attr("value") ?: error("zoho site $host/$site: no jobs input on the page")
+        return json.readTree(raw).filter { it.path("Publish").asBoolean(true) }.map { j ->
+            val id = j.path("id").asText()
+            val title = j.path("Posting_Title").asText(j.path("Job_Opening_Name").asText(""))
+            Posting(
+                company = employer.company,
+                externalId = id,
+                title = title,
+                location = (listOf(listOf("City", "State", "Country").map { j.path(it).asText("") }.filter { it.isNotBlank() }.joinToString(", ")) +
+                    listOfNotNull("Remote".takeIf { j.path("Remote_Job").asBoolean(false) })).filter { it.isNotBlank() }.joinToString(" | "),
+                url = "https://$host/jobs/$site/$id/${title.replace(Regex("[^A-Za-z0-9]+"), "-").trim('-')}",
+                description = htmlToText(j.path("Job_Description").asText(null)),
+            )
+        }
+    }
+}
+
+/** Atlassian's own careers listings (the iCIMS board behind it is not public): one call, every listing with its text. */
+class AtlassianAdapter(private val http: Http) : FeedAdapter {
+    override fun list(employer: Employer): List<Posting> =
+        // A job posted to several regions appears once per region under different ids, same page.
+        json.readTree(http.get("https://www.atlassian.com/endpoint/careers/listings")).map { j ->
+            Posting(
+                company = employer.company,
+                externalId = j.path("id").asText(),
+                title = j.path("title").asText(""),
+                location = j.path("locations").map { it.asText("") }.filter { it.isNotBlank() }.joinToString(" | "),
+                url = j.path("portalJobPost").path("portalUrl").asText("").ifBlank { j.path("applyUrl").asText("") },
+                description = listOf("overview", "responsibilities", "qualifications")
+                    .mapNotNull { htmlToText(j.path(it).asText(null)) }.joinToString("\n\n").ifBlank { null },
+            )
+        }.distinctBy { it.url.ifBlank { it.externalId } }
+}
+

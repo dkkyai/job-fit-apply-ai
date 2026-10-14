@@ -125,6 +125,36 @@ class EntryTest(unittest.TestCase):
         self.assertFalse(e["enabled"], "an unreachable careers page is disabled like an unverified API")
 
 
+class NewPlatformTest(unittest.TestCase):
+    def test_successfactors_unify_search_api_searches_washington(self):
+        e = gen_employers.entry(row(ats="successfactors", api_endpoint="POST https://careers.wipro.com/services/recruiting/v1/jobs", api_status="200"))
+        self.assertEqual({"ats": "successfactors", "host": "careers.wipro.com", "location": "Washington"}, {k: e[k] for k in ("ats", "host", "location")})
+        self.assertNotIn("enabled", e)
+
+    def test_successfactors_without_the_search_api_is_disabled_not_misconfigured(self):
+        e = gen_employers.entry(row(ats="successfactors", api_endpoint='POST https://career.globant.com/api/sap/job-requisition-v1 {"page":1}', api_status="needs POST/headers"))
+        self.assertEqual(("successfactors", False), (e["ats"], e.get("enabled")))
+
+    def test_ukg_paylocity_zoho_and_atlassian_are_recognised_by_url(self):
+        cases = [
+            (row(ats="ukg", api_endpoint="POST https://recruiting.ultipro.com/SOU1036SOUND/JobBoard/dcc5dbea-875e-4cd1-bfd2-8e046cecc54f/JobBoardView/LoadSearchResults"),
+             {"ats": "ukg", "tenant": "SOU1036SOUND", "board": "dcc5dbea-875e-4cd1-bfd2-8e046cecc54f"}),
+            (row(ats="paylocity", api_endpoint="https://recruiting.paylocity.com/recruiting/jobs/All/7299ce4a-4f80-42f8-9f29-92a9a49755f9"),
+             {"ats": "paylocity", "board": "7299ce4a-4f80-42f8-9f29-92a9a49755f9"}),
+            (row(ats="zoho", api_endpoint="https://ziplyfiber.zohorecruit.com/jobs/Careers"),
+             {"ats": "zoho", "host": "ziplyfiber.zohorecruit.com", "site": "Careers"}),
+            (row(ats="icims", api_endpoint="https://www.atlassian.com/endpoint/careers/listings"), {"ats": "atlassian"}),
+        ]
+        for r, want in cases:
+            e = gen_employers.entry(r)
+            self.assertEqual(want, {k: e[k] for k in want}, r["api_endpoint"])
+            self.assertNotIn("enabled", e, r["api_endpoint"])
+
+    def test_may_be_empty_column(self):
+        self.assertTrue(gen_employers.entry(row(ats="greenhouse", api_endpoint="https://boards-api.greenhouse.io/v1/boards/x/jobs", may_be_empty="yes"))["may_be_empty"])
+        self.assertNotIn("may_be_empty", gen_employers.entry(row(ats="greenhouse", api_endpoint="https://boards-api.greenhouse.io/v1/boards/x/jobs")))
+
+
 class CommittedYamlTest(unittest.TestCase):
     def test_committed_employers_yaml_matches_the_generator_output(self):
         here = os.path.dirname(os.path.abspath(__file__))
