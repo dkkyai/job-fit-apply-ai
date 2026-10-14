@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory
  *
  * Two button kinds ride in one `reply_markup`:
  *  - **URL buttons** (View Report / View Resume) open the artifact over the tailnet.
- *  - **Action buttons** (Apply / Reply / Archive) are callbacks. The JobBot agent is the bot's
+ *  - **Action buttons** (Apply / Reply / Archive / Tailor) are callbacks. The JobBot agent is the bot's
  *    only update reader, and its `jobbot_actions` plugin routes a tap by its `callback_data`,
  *    `<verb>:<completed_seq>` (see docs/jobbot.md).
  *
@@ -32,6 +32,8 @@ object TelegramButtons {
         APPLY("apply", "Apply"),
         REPLY("reply", "Reply"),
         ARCHIVE("archive", "Archive"),
+        /** An OFFERed job (fit below AUTO_TAILOR_MIN_SCORE): build its resume now. */
+        TAILOR("tailor", "Tailor"),
         ;
 
         companion object {

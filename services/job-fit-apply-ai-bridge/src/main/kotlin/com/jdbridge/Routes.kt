@@ -9,9 +9,7 @@ import io.ktor.server.routing.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.put
 import org.slf4j.LoggerFactory
 
 private val log = LoggerFactory.getLogger("com.jdbridge.Routes")
@@ -26,6 +24,11 @@ private suspend fun enqueueOne(body: SubmitJobRequest): SubmitJobResponse {
     log.info("Job enqueued: $jobId (${body.role_title} @ ${body.company})")
     return SubmitJobResponse(job_id = jobId, status = JobStatus.PENDING.value)
 }
+
+private fun JobRow.out(tailorJobId: String? = null) = DeferredJobOut(
+    job_id = id, company = company, role_title = roleTitle, fit_score = fitScore,
+    artifact_url = artifactUrl, job_url = jobUrl, tailor_job_id = tailorJobId,
+)
 
 /** An absolute http(s) URL with a host — the only kind the Processor's scraper can fetch. */
 internal fun isHttpUrl(raw: String): Boolean = runCatching {
@@ -202,26 +205,31 @@ fun Routing.configureRoutes() {
             )
             return@post
         }
-        val key = "tailor:$jobId"
-        findLiveByKey(key)?.let { existing ->
-            log.info("Tailor already requested for $jobId → ${existing.id} (${existing.status})")
-            call.respond(HttpStatusCode.OK, SubmitJobResponse(existing.id, existing.status, deduped = true))
-            return@post
+        val queued = queueTailor(row, record)
+        call.respond(if (queued.deduped) HttpStatusCode.OK else HttpStatusCode.Accepted, queued)
+    }
+
+    /**
+     * The processor's sweep for DEFERRED tailoring (jobs that would have been tailored while the
+     * cloud quota was out): expire the ones older than max_age_days, then queue the best fits as
+     * TAILOR_REQUESTs until `limit` are in flight — so a backlog is worked off a few at a time and
+     * new intake never waits behind all of it.
+     */
+    post("/api/tailoring/release-deferred") {
+        val body = call.receive<ReleaseDeferredRequest>()
+        val cutoff = System.currentTimeMillis() / 1000L - body.max_age_days.coerceAtLeast(0) * 86_400L
+        val expired = expireDeferred(cutoff)
+        val slots = (body.limit - tailorRequestsInFlight()).toInt().coerceAtLeast(0)
+        val released = deferredBestFirst(slots).mapNotNull { row ->
+            val record = row.tailorRecord?.let { runCatching { Json.parseToJsonElement(it) }.getOrNull() }
+                ?: return@mapNotNull null.also { setTailorState(row.id, TailorState.EXPIRED) }
+            val queued = queueTailor(row, record)
+            row.out(tailorJobId = queued.job_id)
         }
-        val payload = buildJsonObject {
-            put("record", record)
-            put("parent_job_id", jobId)
-            row.trackId?.let { put("track_id", it) }
-            row.jobSource?.let { put("job_board", it) }
+        if (released.isNotEmpty() || expired.isNotEmpty()) {
+            log.info("Deferred tailoring: released ${released.size}, expired ${expired.size}")
         }
-        val tailorJobId = enqueue(
-            jdJson         = payload.toString(),
-            jobUrl         = row.jobUrl,
-            idempotencyKey = key,
-            type           = WorkItemType.TAILOR_REQUEST,
-        )
-        log.info("Tailor requested for $jobId → $tailorJobId (${row.roleTitle} @ ${row.company})")
-        call.respond(HttpStatusCode.Accepted, SubmitJobResponse(tailorJobId, JobStatus.PENDING.value))
+        call.respond(ReleaseDeferredResponse(released, expired.map { it.out() }, countDeferred()))
     }
 
     // ── Worker queue endpoints ────────────────────────────────────────────────

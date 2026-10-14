@@ -1,6 +1,6 @@
 {
-  "_comment": "Which action buttons a completed-feed event qualifies for. The notifier (Notifier.eligible) and jobbot-mcp (Eligibility) must both pass every case. Fields are the bridge's wire names. Apply needs a tailored job (pipeline_action TAILOR): the fill uploads the tailored resume, and a skipped job has none.",
-  "verbs": ["apply", "reply", "archive"],
+  "_comment": "Which action buttons a completed-feed event qualifies for. The notifier (Notifier.eligible) and jobbot-mcp (Eligibility) must both pass every case. Fields are the bridge's wire names. Apply needs a tailored job (pipeline_action TAILOR): the fill uploads the tailored resume, and a skipped job has none. Tailor needs an offered job (pipeline_action OFFER: a fit below AUTO_TAILOR_MIN_SCORE, not tailored up front); the tap queues its resume build.",
+  "verbs": ["apply", "reply", "archive", "tailor"],
   "cases": [
     {
       "name": "scraped job with a posting URL and no source email",
@@ -71,6 +71,31 @@
       "name": "the action's case does not matter",
       "event": {"completed_seq": 19, "job_url": "https://acme.co/jobs/8", "pipeline_action": "tailor", "message_id": null, "is_recruiter": false, "terminal_label": null},
       "eligible": ["apply"]
+    },
+    {
+      "name": "offered job (below the auto-tailor score): Tailor only, there is no resume to apply with yet",
+      "event": {"completed_seq": 30, "job_url": "https://acme.co/jobs/30", "pipeline_action": "OFFER", "message_id": null, "is_recruiter": false, "terminal_label": null},
+      "eligible": ["tailor"]
+    },
+    {
+      "name": "offered digest child: the poller already archived the email, so Tailor only",
+      "event": {"completed_seq": 31, "job_url": "https://acme.co/jobs/31", "pipeline_action": "OFFER", "message_id": "m-digest3", "is_recruiter": false, "terminal_label": "JD_Processed_Digest"},
+      "eligible": ["tailor"]
+    },
+    {
+      "name": "offered without a posting URL can still be tailored",
+      "event": {"completed_seq": 32, "job_url": null, "pipeline_action": "offer", "message_id": null, "is_recruiter": false, "terminal_label": null},
+      "eligible": ["tailor"]
+    },
+    {
+      "name": "deferred (cloud quota out): no buttons, it is tailored automatically when the quota is back",
+      "event": {"completed_seq": 34, "job_url": "https://acme.co/jobs/34", "pipeline_action": "DEFERRED", "message_id": null, "is_recruiter": false, "terminal_label": null},
+      "eligible": []
+    },
+    {
+      "name": "offered but no completed_seq: no callback can address the job",
+      "event": {"completed_seq": 0, "job_url": "https://acme.co/jobs/33", "pipeline_action": "OFFER", "message_id": null, "is_recruiter": false, "terminal_label": null},
+      "eligible": []
     }
   ]
 }

@@ -39,7 +39,7 @@ class TelegramButtonsTest {
     @DisplayName("verbs are stable wire tokens")
     fun verbsAreStable() {
         // Cards already in the chat carry these strings; changing one strands every old card.
-        assertEquals(listOf("apply", "reply", "archive"), Action.entries.map { it.verb })
+        assertEquals(listOf("apply", "reply", "archive", "tailor"), Action.entries.map { it.verb })
     }
 
     @Test

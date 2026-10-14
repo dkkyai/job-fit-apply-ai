@@ -16,10 +16,12 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import com.jd.jobbot.actions.ArchiveSupport
 import com.jd.jobbot.actions.ReplySupport
+import com.jd.jobbot.actions.TailorSupport
 import com.jd.jobbot.templates.AlertTemplates
 import com.jd.jobbot.jobs.JobIdentity
 import com.jd.jobbot.actions.VerbHandler
 import com.jd.jobbot.bridge.TrackWriter
+import com.jd.jobbot.bridge.TailorRequester
 import com.jd.jobbot.gmail.GmailAuth
 import com.jd.jobbot.gmail.GmailClient
 import com.jd.jobbot.actions.ApplyNotImplemented
@@ -87,6 +89,7 @@ fun main() {
             put("undo", archive.undo)
         }
         replies?.let { put("reply", it.reply) }
+        put("tailor", TailorSupport(TailorRequester(Config.BRIDGE_URL), Config.HANDLED_VERBS).tailor)
     }
     val taps = TapService(
         lookup = lookup,

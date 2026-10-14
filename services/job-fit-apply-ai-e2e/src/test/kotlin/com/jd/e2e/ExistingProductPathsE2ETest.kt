@@ -337,6 +337,14 @@ class ExistingProductPathsE2ETest {
         assertEquals(404, harness.statusOf("${E2eConfig.bridgeUrl}/api/jobs/${offered.jobId}/resume.pdf"))
         val offerTrack = offered.finalStatus.path("track_id").asInt()
         assertTrue(offerTrack > 0, "the offer wrote a tracks row: ${offered.finalStatus}")
+        // The card: says it is not tailored yet, links the notes, and carries the Tailor button.
+        val offerSeq = offered.completedEvent.path("completed_seq").asLong()
+        assertTrue(offered.telegramMessages.single().contains("Not tailored yet"), offered.telegramMessages.single())
+        assertEquals(
+            listOf("cb:tailor:$offerSeq"),
+            offered.telegramButtons.map { it.second }.filter { it.startsWith("cb:") },
+            "an offer's only action is Tailor: ${offered.telegramButtons}",
+        )
 
         val tapUrl = "${E2eConfig.bridgeUrl}/api/jobs/${offered.jobId}/tailor"
         val tailored = harness.runScenario(company = company) { postJson(tapUrl, "") }
@@ -395,6 +403,66 @@ class ExistingProductPathsE2ETest {
         assertEquals(listOf("score_fit", "score_fit"), result.llmCalls, "one cloud refusal, one local answer, no cloud retry")
         assertEquals(listOf("e2e-cloud-score", "e2e-local-fallback"), result.llmModels)
         assertEquals("skip", result.track.pipelineAction)
+    }
+
+    /**
+     * Deferred tailoring. The score call meets a quota refusal, so the cloud quota counts as out:
+     * the 72 (above AUTO_TAILOR_MIN_SCORE) is DEFERRED — scored by the local fallback, noted,
+     * tracked and pinged, but no tailoring call is spent. The next job's score reaches the cloud,
+     * which shows the quota is back, and the processor's release sweep queues the deferred job:
+     * it is tailored into the same tracks row.
+     */
+    @Test
+    @DisplayName("while the cloud quota is out a fit is deferred, then released and tailored once it is back")
+    fun deferredWhileQuotaOutThenReleased() {
+        val nonce = System.currentTimeMillis().toString()
+        val company = "E2E Deferred $nonce"
+        val deferred = harness.runScenario(
+            company = company,
+            responses = mapOf(
+                "score_fit" to listOf(
+                    failure(429, """{"error":"you have reached your weekly usage limit, upgrade your plan"}"""),
+                    ok(harness.fixture("llm/score_fit.json")),
+                ),
+            ),
+        ) {
+            submitScrapedJob(
+                company = company,
+                roleTitle = "Staff Software Engineer in Test",
+                jdText = harness.fixture("jd-staff-sdet.txt", mapOf("COMPANY" to company)),
+                idempotencyKey = "e2e-deferred-$nonce",
+            )
+        }
+
+        assertEquals("DEFERRED", deferred.finalStatus.path("pipeline_action").asText(), "status: ${deferred.finalStatus}")
+        assertEquals(72, deferred.finalStatus.path("fit_score").asInt())
+        assertEquals(listOf("score_fit", "score_fit"), deferred.llmCalls, "cloud refusal, local score, no tailoring calls")
+        assertEquals("deferred", deferred.track.pipelineAction)
+        assertTrue(deferred.telegramMessages.single().contains("Tailoring deferred"), deferred.telegramMessages.single())
+        assertTrue(deferred.telegramButtons.none { it.second.startsWith("cb:") }, "no action buttons: ${deferred.telegramButtons}")
+        val trackId = deferred.finalStatus.path("track_id").asInt()
+
+        // The quota is back: this job's score reaches the (fake) cloud.
+        val healthy = "E2E Quota Back $nonce"
+        harness.runScenario(company = healthy, responses = mapOf("score_fit" to listOf(ok(harness.fixture("llm/score_fit_skip.json"))))) {
+            submitScrapedJob(
+                company = healthy,
+                roleTitle = "Junior Manual QA Analyst",
+                jdText = "$healthy needs a junior manual QA analyst to run scripted browser checks and log visual defects in spreadsheets; " +
+                    "no automation, mobile, CI/CD, backend, cloud, observability or performance work is part of the role.",
+                idempotencyKey = "e2e-quota-back-$nonce",
+            )
+        }
+
+        // The sweep released the deferred job; its tailor run completes as TAILOR on the same track.
+        val tailored = harness.pollUntil(E2eConfig.timeoutSeconds, 2_000, "the released tailor run for '$company'") {
+            harness.completedEventsSince(deferred.completedCursor).firstOrNull {
+                it.path("company").asText() == company && it.path("pipeline_action").asText() == "TAILOR"
+            }
+        }
+        assertEquals(trackId, tailored.path("track_id").asInt(), "tailored into the deferred job's tracks row")
+        assertEquals(1, harness.countTracks(company))
+        assertEquals(200, harness.statusOf("${E2eConfig.bridgeUrl}/api/jobs/${tailored.path("job_id").asText()}/resume.pdf"))
     }
 
     @Test

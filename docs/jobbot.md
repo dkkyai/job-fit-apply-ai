@@ -37,6 +37,7 @@ The notifier sends a verb only when it is listed in `NOTIFIER_TELEGRAM_ACTIONS` 
 | `apply` | the job has a `job_url` and was tailored (`pipeline_action` TAILOR). A skipped job, e.g. pay-gated, has no tailored resume to upload | with `JOBBOT_APPLY_ENABLED`: fills the application in JobBot's browser and posts it under **✅ Submit / ✖ Discard** (see Apply below). Otherwise it replies "Not implemented yet" |
 | `reply` | `is_recruiter` and a source `message_id` | posts the reply draft (the poller's, or one built from JFAA's `draft_text`, with the resume attached) under **✅ Send / ✖ Cancel**. If neither exists, the agent writes one |
 | `archive` | a source `message_id` the poller left in the inbox | removes `INBOX` from that email only; the button becomes **↩ Undo archive** (`undo:<seq>`), which restores exactly the labels it removed. Mail already out of the inbox, archived by Muse for example, gets "Already out of the inbox." |
+| `tailor` | the job was offered (`pipeline_action` OFFER): a fit from `FIT_THRESHOLD` up to `AUTO_TAILOR_MIN_SCORE`, scored but not tailored up front | asks the bridge to tailor it (`POST /api/jobs/{job_id}/tailor`, the only queue write JobBot makes). The resume arrives as a new card a few minutes later; the button goes away. A second tap answers "Already tailoring" or "Already tailored" |
 
 `callback_data` is `<verb>:<completed_seq>`. The seq is the bridge's id for the completion, so nothing is registered before the send.
 

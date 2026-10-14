@@ -47,6 +47,12 @@ data class CompletedEvent(
     /** Scored but not tailored (e.g. pay-gated): no resume exists, so no resume button and no Apply. */
     fun skipped(): Boolean = pipelineAction.equals("SKIP", ignoreCase = true)
 
+    /** Scored as a fit but below AUTO_TAILOR_MIN_SCORE: no resume until the Tailor button is tapped. */
+    fun offered(): Boolean = pipelineAction.equals("OFFER", ignoreCase = true)
+
+    /** Would have been tailored, but the cloud LLM quota is out: tailored automatically once it is back. */
+    fun deferred(): Boolean = pipelineAction.equals("DEFERRED", ignoreCase = true)
+
     /**
      * The pipeline output directory name, taken from the tail of [artifactUrl].
      *

@@ -3,6 +3,7 @@ package com.jd.notifier.notify
 import com.jd.notifier.bridge.ArtifactUrls
 import com.jd.notifier.bridge.CompletedEvent
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.DisplayName
@@ -79,6 +80,68 @@ class NotifierButtonsTest {
     /** Fails the test if the resume lookup runs: a skipped job has no resume to find. */
     private val noLookup = object : ArtifactLinks(enabled = true, timeoutMs = 100, bridgeBase = "http://bridge:8765") {
         override fun resolve(artifactUrl: String?, resumePdf: String?): Links = error("no resume lookup for a skipped job")
+    }
+
+    /** A fit below AUTO_TAILOR_MIN_SCORE: scored 68, offered, scoring notes at artifact_url, no resume. */
+    private fun offered() = CompletedEvent(
+        jobId = "j", completedSeq = 7720, status = "done",
+        company = "Acme", roleTitle = "Senior SDET", fitScore = 68,
+        pipelineAction = "OFFER", jobUrl = "https://acme.co/jobs/7720",
+        artifactUrl = "http://host:8081/20261014_acme_senior_sdet/",
+        messageId = "m-digest", isRecruiter = false, terminalLabel = "JD_Processed_Digest",
+        skipReason = "Fit 68 is below the auto-tailor score (75)",
+    )
+
+    @Test
+    @DisplayName("an offered fit: the card says it is not tailored yet, View Report and a Tailor button, no Apply")
+    fun offeredCardHasTailor() {
+        val c = client()
+        Notifier(client = c, fitThreshold = 55, buttonsEnabled = true, linkButtonsEnabled = true,
+            actions = TelegramButtons.parseActions("apply,reply,archive,tailor"), links = noLookup).notify(offered())
+        val (text, rows) = sent(c)
+        assertTrue(text.contains("Not tailored yet: Fit 68 is below the auto-tailor score (75). Tap Tailor for a resume."), text)
+        assertFalse(text.contains("Skipped:"), text)
+        assertEquals(
+            listOf(
+                listOf(TelegramButtons.Button("View Report", url = "http://host:8081/20261014_acme_senior_sdet/report.md")),
+                listOf(TelegramButtons.Button("Tailor", callbackData = "tailor:7720")),
+            ),
+            rows,
+        )
+    }
+
+    @Test
+    @DisplayName("with Tailor not enabled the offer card does not promise a button")
+    fun offeredCardWithoutTailorAction() {
+        val c = client()
+        Notifier(client = c, fitThreshold = 55, buttonsEnabled = true, linkButtonsEnabled = true,
+            actions = TelegramButtons.parseActions("apply,reply,archive"), links = noLookup).notify(offered())
+        val (text, rows) = sent(c)
+        assertTrue(text.contains("Not tailored yet: Fit 68 is below the auto-tailor score (75)."), text)
+        assertFalse(text.contains("Tap Tailor"), text)
+        assertTrue(rows.flatten().none { it.callbackData != null }, "no action buttons: $rows")
+    }
+
+    @Test
+    @DisplayName("a deferred fit: the card says it waits on the quota, View Report only, no actions")
+    fun deferredCardSaysWhy() {
+        val c = client()
+        Notifier(client = c, fitThreshold = 55, buttonsEnabled = true, linkButtonsEnabled = true,
+            actions = TelegramButtons.parseActions("apply,reply,archive,tailor"), links = noLookup)
+            .notify(offered().copy(pipelineAction = "DEFERRED", fitScore = 88, skipReason = "the cloud LLM quota is used up"))
+        val (text, rows) = sent(c)
+        assertTrue(text.contains("Tailoring deferred: the cloud LLM quota is used up. It is tailored automatically when the quota resets, best fits first."), text)
+        assertFalse(text.contains("Skipped:") || text.contains("Not tailored yet"), text)
+        assertEquals(listOf(listOf(TelegramButtons.Button("View Report", url = "http://host:8081/20261014_acme_senior_sdet/report.md"))), rows)
+    }
+
+    @Test
+    @DisplayName("a tailored job never gets a Tailor button")
+    fun tailoredHasNoTailorButton() {
+        val c = client()
+        notifier(c, actions = "apply,reply,archive,tailor").notify(event())
+        val (_, rows) = sent(c)
+        assertTrue(rows.flatten().none { it.callbackData?.startsWith("tailor:") == true }, "$rows")
     }
 
     @Test

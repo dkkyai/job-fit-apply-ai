@@ -28,6 +28,12 @@ class CloudQuota(
     /** True while callers should not even try the cloud. */
     fun skipCloud(): Boolean = exhausted && clock() < exhaustedUntilMs
 
+    /**
+     * True from a quota refusal until the next cloud success — past the recheck window too, since
+     * nothing has shown the quota is back. Tailoring is deferred while this holds.
+     */
+    fun isExhausted(): Boolean = exhausted
+
     @Synchronized
     fun markExhausted(reason: String) {
         val first = !exhausted
@@ -75,7 +81,8 @@ class CloudQuota(
                                 Severity.WARN, "Cloud LLM quota exhausted",
                                 if (Config.LOCAL_FALLBACK_MODEL.isNotBlank())
                                     "Scanning and scoring continue on the local model ${Config.LOCAL_FALLBACK_MODEL}. Tailoring needs the cloud " +
-                                        "models and is degraded until the quota resets. Rechecking every ${Config.CLOUD_QUOTA_RECHECK_MINUTES} min."
+                                        "models: fits are deferred and tailored best-first once the quota resets. " +
+                                        "Rechecking every ${Config.CLOUD_QUOTA_RECHECK_MINUTES} min."
                                 else "No LOCAL_FALLBACK_MODEL is set, so jobs fail until the quota resets.",
                             ),
                             dedupKey = "cloud-quota-exhausted",
@@ -84,7 +91,9 @@ class CloudQuota(
                 },
                 onRecovered = {
                     System.err.println("[cloud_quota] Cloud LLM quota available again")
-                    runCatching { AlertService().send(Alert(Severity.INFO, "Cloud LLM quota available again", "Scoring and tailoring are back on the cloud models.")) }
+                    runCatching {
+                        AlertService().send(Alert(Severity.INFO, "Cloud LLM quota available again", "Scoring and tailoring are back on the cloud models; deferred fits are being tailored, best first."))
+                    }
                 },
             )
         }

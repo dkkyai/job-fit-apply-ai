@@ -251,6 +251,14 @@ When a cloud provider refuses a call because the account's usage quota is used u
 
 The first refusal sends one WARN alert, and the first cloud success after it sends one INFO alert. Tailoring nodes are never redirected to the local model; they need the stronger cloud models.
 
+**Deferred tailoring.** While the quota counts as used up (from a refusal until the next cloud success), a job that would be tailored is `DEFERRED` instead of shipping the base resume every failed node falls back to. The job is scored by the fallback model, gets scoring notes, is tracked as `deferred` and pinged ("Tailoring deferred"). A recruiter email stays in the inbox. If the quota runs out part-way through tailoring, the degraded output is dropped and the job deferred. Between jobs, the processor's release sweep asks the bridge (`POST /api/tailoring/release-deferred`) to queue deferred jobs as `TAILOR_REQUEST`s once the quota is back, best fits first, keeping a few in flight so new intake is never starved. Jobs older than the max age expire with one "tailor by hand" alert.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DEFERRED_RELEASE_BATCH` | `2` | `TAILOR_REQUEST`s the sweep keeps in flight once the quota is back. |
+| `DEFERRED_RELEASE_INTERVAL_MINUTES` | `15` | How often the sweep runs (between jobs). |
+| `DEFERRED_MAX_AGE_DAYS` | `5` | A deferred job not tailored within this many days expires with a "tailor by hand" alert. |
+
 ### Backend routing (`:cloud` and `:ollama-cloud` suffixes)
 
 | Suffix | Routes to |

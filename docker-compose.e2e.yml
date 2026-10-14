@@ -155,7 +155,7 @@ services:
       # Pinned so the suite cannot silently diverge when a dev's .env differs.
       NOTIFIER_TELEGRAM_BUTTONS: "true"
       NOTIFIER_TELEGRAM_LINK_BUTTONS: "true"
-      NOTIFIER_TELEGRAM_ACTIONS: "apply,reply,archive"
+      NOTIFIER_TELEGRAM_ACTIONS: "apply,reply,archive,tailor"
       # No card template in E2E: the built-in format is what the suite pins.
       NOTIFIER_TELEGRAM_TEMPLATE_FILE: ""
       # The bridge publishes on the host at E2E_BRIDGE_PORT, so a bridge-relative resume path
