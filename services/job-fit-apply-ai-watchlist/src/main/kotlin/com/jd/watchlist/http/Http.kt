@@ -9,7 +9,8 @@ import java.time.Duration
 /** Minimal HTTP surface the adapters need — an interface so tests can serve canned feeds. */
 interface Http {
     fun get(url: String): String
-    fun postJson(url: String, json: String): String
+    /** [headers] are extra request headers (TikTok's API requires `website-path`). */
+    fun postJson(url: String, json: String, headers: Map<String, String> = emptyMap()): String
 }
 
 class HttpStatusException(val url: String, val status: Int) :
@@ -31,8 +32,12 @@ class JdkHttp(
 ) : Http {
     override fun get(url: String): String = send(base(url).GET().build())
 
-    override fun postJson(url: String, json: String): String =
-        send(base(url).header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(json)).build())
+    override fun postJson(url: String, json: String, headers: Map<String, String>): String =
+        send(
+            base(url).header("Content-Type", "application/json")
+                .also { b -> headers.forEach { (k, v) -> b.header(k, v) } }
+                .POST(HttpRequest.BodyPublishers.ofString(json)).build()
+        )
 
     private fun base(url: String): HttpRequest.Builder = HttpRequest.newBuilder()
         .uri(URI.create(url))

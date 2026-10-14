@@ -38,6 +38,12 @@ object Adapters {
         "smartrecruiters" to SmartRecruitersAdapter(http, pause),
         "jibe" to JibeAdapter(http, searchTerms, pause),
         "amazon" to AmazonAdapter(http, searchTerms, pause),
+        "workable" to WorkableAdapter(http),
+        "gem" to GemAdapter(http),
+        "rippling" to RipplingAdapter(http),
+        "adp" to AdpAdapter(http, pause),
+        "phenom" to PhenomAdapter(http, searchTerms, pause),
+        "tiktok" to TikTokAdapter(http, searchTerms, pause),
     )
 }
 

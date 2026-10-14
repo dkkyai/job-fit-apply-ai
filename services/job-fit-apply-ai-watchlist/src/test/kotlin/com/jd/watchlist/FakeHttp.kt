@@ -19,8 +19,11 @@ class FakeHttp(
         return gets[url] ?: getHandler(url) ?: throw HttpStatusException(url, 404)
     }
 
-    override fun postJson(url: String, json: String): String {
+    val postHeaders = mutableListOf<Map<String, String>>()
+
+    override fun postJson(url: String, json: String, headers: Map<String, String>): String {
         requests += "POST $url $json"
+        postHeaders += headers
         return posts[url]?.invoke(json) ?: throw HttpStatusException(url, 404)
     }
 }
