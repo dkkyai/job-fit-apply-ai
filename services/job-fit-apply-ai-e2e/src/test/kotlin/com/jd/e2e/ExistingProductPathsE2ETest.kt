@@ -437,6 +437,48 @@ class ExistingProductPathsE2ETest {
     }
 
     /**
+     * Watchlist intake (PR #139): the watchlist service submits employer-feed postings as
+     * `source: CAREER_SITE` with a `watchlist:<ats>:<board>:<id>` key. Two cross-service contracts
+     * only a real stack proves: the Processor must deserialize the new source (an unknown
+     * IngestionSource value fails the claim), and the Bridge must dedupe the daily re-listing of the
+     * same open posting. The 60-day window itself is unit-tested in the bridge (`StoreDedupTest`).
+     */
+    @Test
+    @DisplayName("a watchlist CAREER_SITE posting is processed end to end and its daily re-listing dedupes")
+    fun careerSitePostingFromWatchlist() {
+        val nonce = System.currentTimeMillis().toString()
+        val company = "E2E Watchlist $nonce"
+        val role = "Senior Quality Engineer"
+        val idempotencyKey = "watchlist:greenhouse:e2e-board:$nonce"
+        val jdText = harness.fixture("jd-staff-sdet.txt", mapOf("COMPANY" to company))
+
+        val result = harness.runScenario(company) {
+            submitScrapedJob(
+                company = company, roleTitle = role, jdText = jdText, idempotencyKey = idempotencyKey,
+                location = "Seattle, WA", source = "CAREER_SITE",
+            )
+        }
+        assertEquals("TAILOR", result.finalStatus.path("pipeline_action").asText(), "CAREER_SITE must reach scoring: ${result.finalStatus}")
+        assertEquals(1, result.completedEvents.size)
+        assertEquals(1, harness.countTracks(company))
+
+        // The next day's sweep lists the same posting again: absorbed, not re-scored.
+        val relisted = harness.submitScrapedJob(
+            company = company, roleTitle = role, jdText = jdText, idempotencyKey = idempotencyKey,
+            location = "Seattle, WA", source = "CAREER_SITE",
+        )
+        assertTrue(relisted.path("deduped").asBoolean(false), "re-listed posting must dedupe: $relisted")
+        assertEquals(result.jobId, relisted.path("job_id").asText(), "dedupe must return the original job")
+
+        Thread.sleep(E2eConfig.settleMs * 2)
+        assertEquals(
+            1, harness.completedEventsSince(result.completedCursor).count { it.path("company").asText() == company },
+            "a re-listed posting must not produce a second completed event",
+        )
+        assertEquals(1, harness.countTracks(company), "a re-listed posting must not write a second tracks row")
+    }
+
+    /**
      * Issue #56, scenario 8 — Notifier delivery acknowledgement and cursor recovery.
      *
      * The old failure mode was invisible from both ends: `NotificationClient` logged a non-2xx and
