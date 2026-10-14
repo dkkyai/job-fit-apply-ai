@@ -19,7 +19,15 @@ interface FeedAdapter {
 
     /** Plain-text description, fetching it when [Posting.description] is absent. Null if unavailable. */
     fun describe(employer: Employer, posting: Posting): String? = posting.description
+
+    /**
+     * The description plus, for boards whose list has no location, the location the posting page
+     * states — so the runner can still drop out-of-state postings before they reach the bridge.
+     */
+    fun detail(employer: Employer, posting: Posting): PostingDetail = PostingDetail(describe(employer, posting))
 }
+
+data class PostingDetail(val text: String?, val location: String? = null)
 
 /** The adapters this service ships, keyed by the `ats` value in employers.yaml. */
 object Adapters {
@@ -55,6 +63,10 @@ object Adapters {
         "paylocity" to PaylocityAdapter(http),
         "zoho" to ZohoRecruitAdapter(http),
         "atlassian" to AtlassianAdapter(http),
+        "html" to GenericHtmlAdapter(http, searchTerms, pause),
+        "kforce" to KforceAdapter(http, searchTerms),
+        "roberthalf" to RobertHalfAdapter(http),
+        "jobdiva" to JobDivaAdapter(http, searchTerms, pause),
     )
 }
 

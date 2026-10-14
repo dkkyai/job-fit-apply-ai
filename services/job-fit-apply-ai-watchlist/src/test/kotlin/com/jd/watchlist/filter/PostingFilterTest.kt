@@ -43,4 +43,13 @@ class PostingFilterTest {
         listOf("Austin, TX", "Washington, DC", "Washington D.C.", "London, UK", "Hawthorne, CA")
             .forEach { assertFalse(filter.locationMatches(it), it) }
     }
+
+    @Test
+    fun `a Seattle-area city name in another state is not the Seattle area`() {
+        listOf("Everett MA 10/8/2026", "Auburn Hills, MI (Onsite)", "Redmond, OR", "Bellevue, Nebraska", "Kent, Ohio", "Arlington, Texas")
+            .forEach { assertFalse(filter.locationMatches(it), it) }
+        listOf("Everett, WA", "LocationSeattle, Washington CategoryRetail", "Redmond WA 7/24/2026", "Auburn Hills, MI | Remote",
+            "onsite in Redmond, WA Pay Range: \$21", "Seattle (or Bellevue)", "Bellevue, WA, US")
+            .forEach { assertTrue(filter.locationMatches(it), it) }
+    }
 }

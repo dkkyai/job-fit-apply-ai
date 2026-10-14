@@ -86,16 +86,15 @@ if [ "$INTAKE" = "1" ]; then
     if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-watchlist" 2>/dev/null)" = "healthy" ]; then
       ok "watchlist ($P-watchlist) healthy — daily employer job-feed intake"
     else warn "watchlist container up but not healthy  →  docker logs $P-watchlist"; fi
-    # Feeds rot quietly (rebrands, ATS moves): surface employers whose feed failed last run.
-    WL_FAILING=$(docker exec "$P-watchlist" cat /state/watchlist-health.json 2>/dev/null | python3 -c '
-import json,sys
-try: h=json.load(sys.stdin)
-except Exception: sys.exit(0)
-emps=h.get("employers",[])
-bad=[e["company"] for e in emps if e.get("error")]
-if bad: print("%d/%d: %s%s" % (len(bad), len(emps), ", ".join(bad[:8]), " …" if len(bad) > 8 else ""))
-' 2>/dev/null)
-    if [ -n "$WL_FAILING" ]; then warn "watchlist feeds failing ($WL_FAILING)  →  re-check those employers.yaml entries"; fi
+    # Feeds rot quietly (rebrands, ATS moves) and a stuck run gate still looks healthy: summarize the
+    # last run — its age, failing feeds, and feeds that listed nothing (tools/test_health_summary.py).
+    # >>> watchlist-health
+    while IFS=$'\t' read -r level msg; do
+      case "$level" in ok) ok "$msg" ;; warn) warn "$msg" ;; esac
+    done < <(docker exec "$P-watchlist" cat /state/watchlist-health.json 2>/dev/null \
+      | python3 -I services/job-fit-apply-ai-watchlist/tools/health_summary.py \
+          --interval-ms "${WATCHLIST_INTERVAL_MS:-86400000}" --container "$P-watchlist" 2>/dev/null)
+    # <<< watchlist-health
   else warn "watchlist ($P-watchlist) not running  →  make up"; fi
 else
   ok "intake services (poller/jsearch/watchlist) intentionally absent — COMPOSE_PROFILES has no 'intake' (jobs enter via make replay)"

@@ -2,7 +2,7 @@
 # Regenerate: python3 -I tools/gen_employers.py tools/employers.csv > src/main/resources/employers.yaml
 # ats picks the adapter (greenhouse, lever, ashby, workday, rss, oracle_hcm, eightfold, smartrecruiters, jibe,
 # amazon, workable, gem, rippling, adp, phenom, tiktok, icims, jobvite, apple, capgemini, jobsyn, epam,
-# successfactors, ukg, paylocity, zoho, atlassian);
+# successfactors, ukg, paylocity, zoho, atlassian, html, kforce, roberthalf);
 # other values are platforms without an adapter yet
 # and are skipped at run time.
 # enabled: false = feed did not verify; re-check before enabling.
@@ -30,6 +30,7 @@
   category: "Medical Devices / Biotech"
 - company: "Aditi Consulting"
   ats: "jobdiva"
+  board: "lmjdnwstygivzwlr4davpil0fjeac503f5em529l58yp19ouif1l5b73opy9iwzs"
   careers_url: "https://www.aditiconsulting.com/consultant-careers"
   qe_fit: "high"
   category: "Consulting / Staffing"
@@ -48,7 +49,12 @@
   qe_fit: "low"
   category: "Big Tech / Cloud"
 - company: "Akvelon"
-  ats: "custom"
+  ats: "html"
+  feed: "https://akvelon.com/careers/"
+  link_pattern: "akvelon\\.com/vacancy/([^/]+)/"
+  card_selector: ".jet-listing-grid__item"
+  title_selector: ".elementor-heading-title"
+  detail_selector: ".elementor-location-single"
   careers_url: "https://akvelon.com/careers/"
   qe_fit: "medium"
   category: "Consulting / Staffing"
@@ -98,7 +104,11 @@
   qe_fit: "high"
   category: "Big Tech / Cloud"
 - company: "Apex Systems"
-  ats: "custom"
+  ats: "html"
+  feed: "https://www.apexsystems.com/search-results-usa?catalogcode=USA&address=Seattle%2C%20WA&radius=50&page={page}&rows=25&query={term}&sort=lastposteddesc"
+  link_pattern: "/job/(\\d+)_usa/"
+  card_selector: "tr"
+  pages: 2
   careers_url: "https://www.apexsystems.com/search-results-usa?catalogcode=USA&address=Seattle%2C%20WA&radius=50&page=1&rows=25&query=QA&sort=lastposteddesc"
   qe_fit: "high"
   category: "Consulting / Staffing"
@@ -115,7 +125,12 @@
   qe_fit: "medium"
   category: "Games"
 - company: "Ascendion"
-  ats: "custom"
+  ats: "html"
+  feed: "https://ascendion.com/who-we-are/careers/america/"
+  link_pattern: "/job-inner-page/\\?post=(\\d+)"
+  card_selector: ".crs-job"
+  title_selector: ".crs-job__title"
+  detail_selector: ".jd-container"
   careers_url: "https://ascendion.com/careers/america/"
   qe_fit: "high"
   category: "Consulting / Staffing"
@@ -258,6 +273,7 @@
 - company: "Confluent"
   ats: "ashby"
   board: "confluent"
+  enabled: false
   careers_url: "https://careers.confluent.io/jobs/united_states"
   qe_fit: "low"
   category: "Big Tech / Cloud"
@@ -372,7 +388,11 @@
   qe_fit: "medium"
   category: "Telecom / Travel / Logistics"
 - company: "Experis (ManpowerGroup)"
-  ats: "custom"
+  ats: "html"
+  feed: "https://www.experis.com/en/all-jobs"
+  link_pattern: "/en/job/(\\d+)/"
+  location_label: "Location:"
+  detail_selector: ".details-rich-text"
   careers_url: "https://www.experis.com/en/all-jobs"
   qe_fit: "high"
   category: "Consulting / Staffing"
@@ -571,7 +591,8 @@
   qe_fit: "low"
   category: "Games"
 - company: "Kforce"
-  ats: "custom"
+  ats: "kforce"
+  location: "WA"
   careers_url: "https://www.kforce.com/find-work/search-jobs/#/"
   qe_fit: "medium"
   category: "Consulting / Staffing"
@@ -738,6 +759,7 @@
 - company: "Oleria"
   ats: "lever"
   board: "oleria-security"
+  may_be_empty: true
   careers_url: "https://www.oleria.com/company/careers"
   qe_fit: "low"
   category: "Seattle Software / Internet"
@@ -958,7 +980,8 @@
   qe_fit: "medium"
   category: "Seattle Software / Internet"
 - company: "Robert Half (technology)"
-  ats: "custom"
+  ats: "roberthalf"
+  feed: "https://www.roberthalf.com/us/en/jobs/all/seattle-wa?lobid=RHT"
   careers_url: "https://www.roberthalf.com/us/en/jobs/all/seattle-wa"
   qe_fit: "medium"
   category: "Consulting / Staffing"

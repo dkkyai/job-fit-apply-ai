@@ -18,7 +18,7 @@ class PostingFilter(titleInclude: String, titleExclude: String) {
     fun locationMatches(location: String): Boolean {
         if (location.isBlank()) return true
         return location.split('|', ';').any { part ->
-            (AREA.containsMatchIn(part) && !DC.containsMatchIn(part)) || REMOTE.containsMatchIn(part)
+            (AREA.containsMatchIn(part) && !DC.containsMatchIn(part) && !OTHER_STATE.containsMatchIn(part)) || REMOTE.containsMatchIn(part)
         }
     }
 
@@ -33,5 +33,18 @@ class PostingFilter(titleInclude: String, titleExclude: String) {
         )
         private val DC = Regex("""\bD\.?C\b|district of columbia""", RegexOption.IGNORE_CASE)
         private val REMOTE = Regex("""\bremote\b""", RegexOption.IGNORE_CASE)
+
+        /**
+         * Another state named alongside a Seattle-area city name: Everett MA, Auburn Hills MI,
+         * Redmond OR, Bellevue NE. Codes are matched upper-case only, so "or"/"in"/"me" in prose
+         * don't count.
+         */
+        private val OTHER_STATE = Regex(
+            """\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WV|WI|WY)\b|""" +
+                """(?i:\b(alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|""" +
+                """kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|""" +
+                """new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|""" +
+                """texas|utah|vermont|virginia|west virginia|wisconsin|wyoming)\b)""",
+        )
     }
 }

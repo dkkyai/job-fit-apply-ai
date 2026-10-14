@@ -18,6 +18,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import com.jd.watchlist.adapters.PostingDetail
 
 class WatchlistRunnerTest {
     @TempDir lateinit var dir: Path
@@ -52,6 +53,25 @@ class WatchlistRunnerTest {
         intervalMs = day,
         interEmployerDelayMs = 0,
     )
+
+    @Test
+    fun `a list without locations - the posting page's location is filtered before anything is sent`() {
+        val pageLocation = mapOf("1" to "Seattle, Washington (Onsite)", "2" to "Auburn Hills, MI (Onsite)", "3" to null)
+        val adapter = object : FeedAdapter {
+            override fun list(employer: Employer) = listOf(
+                posting("1", "API QA Lead", location = ""), posting("2", "Vehicle Quality Engineer", location = ""), posting("3", "QA Manager", location = ""),
+            )
+            override fun detail(employer: Employer, posting: Posting) = PostingDetail(longJd, pageLocation[posting.externalId])
+        }
+        val bridge = RecordingBridge()
+        val out = runner(listOf(Employer(company = "Experis", ats = "html")), mapOf("html" to adapter), bridge).runOnce(10 * day)
+
+        assertEquals(listOf("watchlist:html:experis:1", "watchlist:html:experis:3"), bridge.sent.map { it.idempotencyKey },
+            "out of state on the page → never sent; no location anywhere → sent (the processor's WA gate decides)")
+        assertEquals("Seattle, Washington (Onsite)", bridge.sent[0].location, "the page's location travels with it")
+        assertEquals(null, bridge.sent[1].location)
+        assertEquals(1, assertIs<WatchlistRunner.Ran>(out).health.employers.single().skipped)
+    }
 
     @Test
     fun `pre-filters, describes only survivors, and submits as CAREER_SITE with a stable key`() {

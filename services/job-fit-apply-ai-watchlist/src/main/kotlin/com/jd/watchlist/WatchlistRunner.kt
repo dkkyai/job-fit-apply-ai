@@ -96,15 +96,19 @@ class WatchlistRunner(
         val matched = listed.filter(filter::matches)
         var queued = 0; var deduped = 0; var skipped = 0
         for (p in matched) {
-            val text = runCatching { adapter.describe(e, p) }
+            val detail = runCatching { adapter.detail(e, p) }
                 .onFailure { System.err.println("[watchlist] ${e.company} describe failed for ${p.url}: ${it.message}") }
                 .getOrNull()
+            val text = detail?.text
             if (text == null || text.length < MIN_JD_CHARS) { skipped++; continue }   // bridge rejects < 150 chars
+            // A list with no locations: the posting page's location decides, before anything is sent.
+            val location = p.location.ifBlank { detail.location.orEmpty() }
+            if (p.location.isBlank() && !filter.locationMatches(location)) { skipped++; continue }
             val resp = runCatching {
                 bridge.submit(
                     SubmitJobRequest(
                         jdText = text, roleTitle = p.title, company = e.company,
-                        location = p.location.ifBlank { null }, jobUrl = p.url.ifBlank { null },
+                        location = location.ifBlank { null }, jobUrl = p.url.ifBlank { null },
                         idempotencyKey = idempotencyKey(e, p.externalId),
                     )
                 )

@@ -16,7 +16,24 @@ Checks the job feeds of greater-Seattle QE/SDET employers once a day and submits
 python3 -I tools/gen_employers.py tools/employers.csv > src/main/resources/employers.yaml
 ```
 
-A sync test fails if the two disagree. `ats` picks the adapter in `adapters/` (Greenhouse, Lever, Ashby, Workday, Eightfold, Oracle HCM, SmartRecruiters, Jibe, iCIMS, Jobvite, RSS and others); platforms without an adapter are skipped, and `enabled: false` marks a feed that did not verify.
+A sync test fails if the two disagree. `ats` picks the adapter in `adapters/` (Greenhouse, Lever, Ashby, Workday, Eightfold, Oracle HCM, SmartRecruiters, Jibe, iCIMS, Jobvite, RSS and others); platforms without an adapter are skipped, and `enabled: false` marks a feed that did not verify. `may_be_empty: true` marks an employer that normally has no Washington openings, so listing nothing doesn't raise a stale-feed alert.
+
+### Coverage
+
+`ReadmeCoverageTest` checks these counts against `employers.yaml` and the adapter registry.
+
+| Employers | Count |
+|---|---|
+| Polled daily | 179 |
+| Feed did not verify (`enabled: false`) | 5 |
+| No adapter for their platform | 34 |
+| Total | 218 |
+
+The employers this service can't poll reach the pipeline, if at all, through their own job-alert emails, which the processor parses (see [Posting identity](#posting-identity-shared-with-employer-job-alert-emails)):
+
+- **Bot walls:** Walmart Global Tech (Workday alerts) and SAP Concur (SuccessFactors alerts) are already parsed.
+- **No public feed:** Google, Meta, Uber, Insight Global, Cognizant, TCS, Tech Mahindra, UST, Infosys, LTIMindtree, Avanade, IBM, Korry and Randstad need an alert subscription. Alerts from an ATS that `PostingLinks` doesn't recognize are still keyed on their cleaned URL.
+- **Nothing to poll:** BambooHR (Radian) and JazzHR (Tasso) boards had no openings to build a parser against.
 
 ## Filters
 
