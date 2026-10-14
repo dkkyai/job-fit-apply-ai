@@ -48,10 +48,20 @@ object Config {
         """\b(intern|internship|technician|clinical|nurse|driver|warehouse|asic|fpga|rtl|soc|silicon|design verification|formal verification|microbiolog\w*|laboratory|aml)\b""",
     )
 
-    /** Workday has no "list everything" call worth paginating, so it is searched by these terms. */
-    val WORKDAY_SEARCH_TERMS: List<String> =
-        get("WATCHLIST_WORKDAY_SEARCH_TERMS", "test,quality,sdet,qa")
+    /**
+     * Platforms without a cheap "list everything" call (Workday, Eightfold, Jibe, Amazon) are
+     * searched by these terms; titles are still matched client-side afterwards.
+     * WATCHLIST_WORKDAY_SEARCH_TERMS is the original, Workday-only name and still honoured.
+     */
+    val SEARCH_TERMS: List<String> =
+        get("WATCHLIST_SEARCH_TERMS", get("WATCHLIST_WORKDAY_SEARCH_TERMS", "test,quality,sdet,qa"))
             .split(",").map { it.trim() }.filter { it.isNotEmpty() }
+
+    /** Pause between paged requests to one employer. */
+    val PAGE_DELAY_MS: Long = getLong("WATCHLIST_PAGE_DELAY_MS", 300L)
+
+    /** Eightfold (Microsoft, Starbucks…) rate-limits per IP over a long window: pace it slower. */
+    val EIGHTFOLD_PAGE_DELAY_MS: Long = getLong("WATCHLIST_EIGHTFOLD_PAGE_DELAY_MS", 2_000L)
 
     /** Pause between employers so the daily sweep stays polite. */
     val INTER_EMPLOYER_DELAY_MS: Long = getLong("WATCHLIST_INTER_EMPLOYER_DELAY_MS", 750L)

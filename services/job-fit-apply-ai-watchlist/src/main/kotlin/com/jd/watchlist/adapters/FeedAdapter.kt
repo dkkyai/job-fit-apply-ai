@@ -23,12 +23,21 @@ interface FeedAdapter {
 
 /** The adapters this service ships, keyed by the `ats` value in employers.yaml. */
 object Adapters {
-    fun registry(http: Http, workdaySearchTerms: List<String>): Map<String, FeedAdapter> = mapOf(
+    /**
+     * [pause] runs between paged requests to the same employer (politeness / rate limits);
+     * [slowPause] is the longer one for Eightfold, which rate-limits per IP.
+     */
+    fun registry(http: Http, searchTerms: List<String>, pause: () -> Unit = {}, slowPause: () -> Unit = pause): Map<String, FeedAdapter> = mapOf(
         "greenhouse" to GreenhouseAdapter(http),
         "lever" to LeverAdapter(http),
         "ashby" to AshbyAdapter(http),
-        "workday" to WorkdayAdapter(http, workdaySearchTerms),
+        "workday" to WorkdayAdapter(http, searchTerms),
         "rss" to RssAdapter(http),
+        "oracle_hcm" to OracleHcmAdapter(http, pause),
+        "eightfold" to EightfoldAdapter(http, searchTerms, slowPause),
+        "smartrecruiters" to SmartRecruitersAdapter(http, pause),
+        "jibe" to JibeAdapter(http, searchTerms, pause),
+        "amazon" to AmazonAdapter(http, searchTerms, pause),
     )
 }
 

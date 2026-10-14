@@ -33,6 +33,10 @@ class EmployerCatalogTest {
         assertEquals("acme", Employer(company = "Acme", ats = "greenhouse", board = "acme").boardKey)
         assertEquals("boeing/EXTERNAL_CAREERS", Employer(company = "Boeing", ats = "workday", tenant = "boeing", site = "EXTERNAL_CAREERS").boardKey)
         assertEquals("some-co", Employer(company = "Some Co", ats = "custom").boardKey)
+        assertEquals("icfcjb.fa.ocs.oraclecloud.com/CX_4001", Employer(company = "Honeywell", ats = "oracle_hcm", host = "icfcjb.fa.ocs.oraclecloud.com", site = "CX_4001").boardKey)
+        assertEquals("starbucks.eightfold.ai", Employer(company = "Starbucks", ats = "eightfold", host = "starbucks.eightfold.ai", domain = "starbucks.com").boardKey)
+        // Workday keys are unchanged by the host fallback (tenant/site comes first), so live dedup keys hold.
+        assertEquals("boeing/EXTERNAL_CAREERS", Employer(company = "Boeing", ats = "workday", host = "boeing.wd1.myworkdayjobs.com", tenant = "boeing", site = "EXTERNAL_CAREERS").boardKey)
         // A tenant without a site must not produce "boeing/null"; it falls through to the company slug.
         assertEquals("boeing-co", Employer(company = "Boeing Co", ats = "workday", tenant = "boeing").boardKey)
     }
@@ -44,6 +48,12 @@ class EmployerCatalogTest {
         val required = mapOf(
             "greenhouse" to { e: Employer -> e.board }, "lever" to { e: Employer -> e.board }, "ashby" to { e: Employer -> e.board },
             "workday" to { e: Employer -> e.host?.let { e.tenant }?.let { e.site } }, "rss" to { e: Employer -> e.feed },
+            "oracle_hcm" to { e: Employer -> e.host?.let { e.site } }, "eightfold" to { e: Employer -> e.host?.let { e.domain } },
+            "smartrecruiters" to { e: Employer -> e.board }, "jibe" to { e: Employer -> e.feed }, "amazon" to { _: Employer -> "ok" },
+        )
+        assertEquals(
+            com.jd.watchlist.adapters.Adapters.registry(com.jd.watchlist.FakeHttp(), emptyList()).keys, required.keys,
+            "every shipped adapter has its required parameters checked here",
         )
         val broken = all.filter { it.enabled && it.ats in required && required.getValue(it.ats)(it).isNullOrBlank() }
         assertEquals(emptyList(), broken.map { it.company })

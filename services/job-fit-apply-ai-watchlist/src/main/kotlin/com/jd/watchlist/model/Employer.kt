@@ -27,8 +27,16 @@ data class Employer(
     val tenant: String? = null,
     /** Workday career site, e.g. EXTERNAL_CAREERS. */
     val site: String? = null,
-    /** RSS feed URL. */
+    /** RSS feed URL; Jibe: the `/api/jobs` URL including its location filter. */
     val feed: String? = null,
+    /** Eightfold: the tenant domain parameter, e.g. starbucks.com. */
+    val domain: String? = null,
+    /** Eightfold: location filter passed to the search, e.g. "Seattle, WA". */
+    val location: String? = null,
+    /** Eightfold API flavour: "pcsx" (newer search) or "v2" (apply/v2). */
+    val api: String? = null,
+    /** Search terms for this employer, replacing the global ones (Oracle: Seattle-area city names). */
+    val search: List<String>? = null,
     /** RSS: CSS selector for the description on the posting page, used when the feed item has none. */
     val detailSelector: String? = null,
     /** Human-facing careers page (not polled). */
@@ -39,7 +47,12 @@ data class Employer(
 ) {
     /** Stable per-employer scope for idempotency keys: survives a company rename. */
     val boardKey: String
-        get() = listOfNotNull(board, tenant?.let { t -> site?.let { "$t/$it" } }, feed?.let { feedKey(it) })
+        get() = listOfNotNull(
+            board,
+            tenant?.let { t -> site?.let { "$t/$it" } },
+            host?.let { h -> site?.let { "$h/$it" } ?: h },   // Oracle (host + site), Eightfold (host)
+            feed?.let { feedKey(it) },
+        )
             .firstOrNull() ?: company.lowercase().replace(Regex("[^a-z0-9]+"), "-")
 
     private fun feedKey(url: String): String =
