@@ -540,6 +540,7 @@
   host: "iaaviz.fa.ocs.oraclecloud.com"
   site: "CX_1"
   search: ["Bellevue"]
+  may_be_empty: true
   careers_url: "https://iaaviz.fa.ocs.oraclecloud.com/hcmUI/CandidateExperience/en/sites/Jobs-at-Icertis/"
   qe_fit: "low"
   category: "Seattle Software / Internet"
@@ -686,7 +687,8 @@
   ats: "oracle_hcm"
   host: "hckd.fa.us2.oraclecloud.com"
   site: "CX_1"
-  search: ["Bothell"]
+  search: ["Seattle", "Bothell"]
+  may_be_empty: true
   careers_url: "https://careers.molinahealthcare.com/"
   qe_fit: "low"
   category: "Healthcare / Research"
