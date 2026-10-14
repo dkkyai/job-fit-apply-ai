@@ -231,6 +231,11 @@ object Config {
     // When true, pages that return fewer than PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH chars via HTTP
     // (JS-rendered SPAs like Jobright/Next.js) are retried with a clean Playwright session.
     val PLAYWRIGHT_FALLBACK_ON_THIN_CONTENT: Boolean = get("PLAYWRIGHT_FALLBACK_ON_THIN_CONTENT", "true").toBoolean()
+
+    // Job links come from untrusted email and from POST /api/urls, so the scraper refuses private
+    // network targets (localhost, the Docker host, metadata endpoints, tailnet devices). Only the
+    // e2e slice turns this on — it serves its test job page from the host.
+    val SCRAPE_ALLOW_PRIVATE_HOSTS: Boolean = get("SCRAPE_ALLOW_PRIVATE_HOSTS", "false").toBoolean()
     val PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH: Int = get("PLAYWRIGHT_FALLBACK_MIN_CONTENT_LENGTH", "500").toInt()
 
     // ── Steel Browser (self-hosted) ───────────────────────────────────────────────
