@@ -30,6 +30,11 @@ HTML_SITES = {
         "feed": "https://ascendion.com/who-we-are/careers/america/",
         "link_pattern": r"/job-inner-page/\?post=(\d+)", "card_selector": ".crs-job", "title_selector": ".crs-job__title", "detail_selector": ".jd-container",
     },
+    "Akvelon": {
+        "feed": "https://akvelon.com/careers/",
+        "link_pattern": r"akvelon\.com/vacancy/([^/]+)/", "card_selector": ".jet-listing-grid__item",
+        "title_selector": ".elementor-heading-title", "detail_selector": ".elementor-location-single",
+    },
     "Experis (ManpowerGroup)": {
         "feed": "https://www.experis.com/en/all-jobs",
         "link_pattern": r"/en/job/(\d+)/", "location_label": "Location:", "detail_selector": ".details-rich-text",
@@ -41,7 +46,7 @@ REQUIRED_PARAM = {"greenhouse": "board", "lever": "board", "ashby": "board", "wo
                   "workable": "board", "gem": "board", "rippling": "board", "adp": "feed", "phenom": "host", "tiktok": None,
                   "icims": "feed", "jobvite": "board", "apple": None, "capgemini": None, "jobsyn": "host", "epam": None,
                   "successfactors": "host", "ukg": "board", "paylocity": "board", "zoho": "host", "atlassian": None,
-                  "html": "link_pattern"}
+                  "html": "link_pattern", "kforce": "location", "roberthalf": "feed"}
 
 
 def area_cities(text):
@@ -108,6 +113,10 @@ def by_url(url, ats, r):
         return {"ats": "zoho", "host": u.netloc, "site": m.group(1)}
     if u.netloc == "www.atlassian.com" and u.path.rstrip("/") == "/endpoint/careers/listings":
         return {"ats": "atlassian"}
+    if u.netloc == "kforcewebeast.search.windows.net":
+        return {"ats": "kforce", "location": "WA"}
+    if u.netloc == "www.roberthalf.com" and u.path.startswith("/us/en/jobs/all/"):
+        return {"ats": "roberthalf", "feed": url}
     return None
 
 
@@ -163,7 +172,7 @@ def main(path):
         "# Regenerate: python3 -I tools/gen_employers.py tools/employers.csv > src/main/resources/employers.yaml",
         "# ats picks the adapter (greenhouse, lever, ashby, workday, rss, oracle_hcm, eightfold, smartrecruiters, jibe,",
         "# amazon, workable, gem, rippling, adp, phenom, tiktok, icims, jobvite, apple, capgemini, jobsyn, epam,",
-        "# successfactors, ukg, paylocity, zoho, atlassian, html);",
+        "# successfactors, ukg, paylocity, zoho, atlassian, html, kforce, roberthalf);",
         "# other values are platforms without an adapter yet",
         "# and are skipped at run time.",
         "# enabled: false = feed did not verify; re-check before enabling.",

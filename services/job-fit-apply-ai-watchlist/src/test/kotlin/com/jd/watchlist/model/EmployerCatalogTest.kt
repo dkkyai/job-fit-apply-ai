@@ -58,6 +58,7 @@ class EmployerCatalogTest {
             "successfactors" to { e: Employer -> e.host }, "ukg" to { e: Employer -> e.tenant?.let { e.board } },
             "paylocity" to { e: Employer -> e.board }, "zoho" to { e: Employer -> e.host }, "atlassian" to { _: Employer -> "ok" },
             "html" to { e: Employer -> e.feed?.let { e.linkPattern } },
+            "kforce" to { e: Employer -> e.location }, "roberthalf" to { e: Employer -> e.feed },
         )
         assertEquals(
             com.jd.watchlist.adapters.Adapters.registry(com.jd.watchlist.FakeHttp(), emptyList()).keys, required.keys,

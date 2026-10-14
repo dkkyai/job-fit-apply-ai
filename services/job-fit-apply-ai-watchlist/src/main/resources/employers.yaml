@@ -2,7 +2,7 @@
 # Regenerate: python3 -I tools/gen_employers.py tools/employers.csv > src/main/resources/employers.yaml
 # ats picks the adapter (greenhouse, lever, ashby, workday, rss, oracle_hcm, eightfold, smartrecruiters, jibe,
 # amazon, workable, gem, rippling, adp, phenom, tiktok, icims, jobvite, apple, capgemini, jobsyn, epam,
-# successfactors, ukg, paylocity, zoho, atlassian, html);
+# successfactors, ukg, paylocity, zoho, atlassian, html, kforce, roberthalf);
 # other values are platforms without an adapter yet
 # and are skipped at run time.
 # enabled: false = feed did not verify; re-check before enabling.
@@ -48,7 +48,12 @@
   qe_fit: "low"
   category: "Big Tech / Cloud"
 - company: "Akvelon"
-  ats: "custom"
+  ats: "html"
+  feed: "https://akvelon.com/careers/"
+  link_pattern: "akvelon\\.com/vacancy/([^/]+)/"
+  card_selector: ".jet-listing-grid__item"
+  title_selector: ".elementor-heading-title"
+  detail_selector: ".elementor-location-single"
   careers_url: "https://akvelon.com/careers/"
   qe_fit: "medium"
   category: "Consulting / Staffing"
@@ -584,7 +589,8 @@
   qe_fit: "low"
   category: "Games"
 - company: "Kforce"
-  ats: "custom"
+  ats: "kforce"
+  location: "WA"
   careers_url: "https://www.kforce.com/find-work/search-jobs/#/"
   qe_fit: "medium"
   category: "Consulting / Staffing"
@@ -971,7 +977,8 @@
   qe_fit: "medium"
   category: "Seattle Software / Internet"
 - company: "Robert Half (technology)"
-  ats: "custom"
+  ats: "roberthalf"
+  feed: "https://www.roberthalf.com/us/en/jobs/all/seattle-wa?lobid=RHT"
   careers_url: "https://www.roberthalf.com/us/en/jobs/all/seattle-wa"
   qe_fit: "medium"
   category: "Consulting / Staffing"

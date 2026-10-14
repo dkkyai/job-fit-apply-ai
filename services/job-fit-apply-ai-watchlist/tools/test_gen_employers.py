@@ -181,6 +181,15 @@ class HtmlSitesTest(unittest.TestCase):
         self.assertIn("  pages: 2\n", out.getvalue())
 
 
+class StaffingTest(unittest.TestCase):
+    def test_kforce_and_robert_half_are_recognised_by_url(self):
+        e = gen_employers.entry(row(ats="custom", api_endpoint="https://kforcewebeast.search.windows.net/indexes/kforcewebjobentity/docs?api-version=2016-09-01"))
+        self.assertEqual(("kforce", "WA"), (e["ats"], e["location"]))
+        e = gen_employers.entry(row(ats="roberthalf", api_endpoint="https://www.roberthalf.com/us/en/jobs/all/seattle-wa?lobid=RHT"))
+        self.assertEqual(("roberthalf", "https://www.roberthalf.com/us/en/jobs/all/seattle-wa?lobid=RHT"), (e["ats"], e["feed"]))
+        self.assertNotIn("enabled", e)
+
+
 class CommittedYamlTest(unittest.TestCase):
     def test_committed_employers_yaml_matches_the_generator_output(self):
         here = os.path.dirname(os.path.abspath(__file__))

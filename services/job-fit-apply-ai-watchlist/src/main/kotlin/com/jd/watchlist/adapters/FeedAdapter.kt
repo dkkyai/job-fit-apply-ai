@@ -64,6 +64,8 @@ object Adapters {
         "zoho" to ZohoRecruitAdapter(http),
         "atlassian" to AtlassianAdapter(http),
         "html" to GenericHtmlAdapter(http, searchTerms, pause),
+        "kforce" to KforceAdapter(http, searchTerms),
+        "roberthalf" to RobertHalfAdapter(http),
     )
 }
 
