@@ -91,7 +91,7 @@ class WatchlistRunner(
             adapter.list(e)
         } catch (ex: Exception) {
             System.err.println("[watchlist] ${e.company} (${e.ats}) list failed: ${ex.message}")
-            return EmployerHealth(e.company, e.ats, error = ex.message ?: ex.javaClass.simpleName)
+            return EmployerHealth(e.company, e.ats, error = ex.message ?: ex.javaClass.simpleName, mayBeEmpty = e.mayBeEmpty)
         }
         val matched = listed.filter(filter::matches)
         var queued = 0; var deduped = 0; var skipped = 0
@@ -116,7 +116,7 @@ class WatchlistRunner(
             }
         }
         if (matched.isNotEmpty()) println("[watchlist] ${e.company}: ${listed.size} listed, ${matched.size} matched, $queued queued, $deduped deduped")
-        return EmployerHealth(e.company, e.ats, listed.size, matched.size, queued, deduped, skipped)
+        return EmployerHealth(e.company, e.ats, listed.size, matched.size, queued, deduped, skipped, mayBeEmpty = e.mayBeEmpty)
     }
 
     companion object {

@@ -50,6 +50,11 @@ object Adapters {
         "capgemini" to CapgeminiAdapter(http, searchTerms, pause),
         "jobsyn" to JobsynAdapter(http, searchTerms, pause),
         "epam" to EpamAdapter(http, searchTerms, pause),
+        "successfactors" to SuccessFactorsAdapter(http, searchTerms, pause),
+        "ukg" to UkgAdapter(http),
+        "paylocity" to PaylocityAdapter(http),
+        "zoho" to ZohoRecruitAdapter(http),
+        "atlassian" to AtlassianAdapter(http),
     )
 }
 

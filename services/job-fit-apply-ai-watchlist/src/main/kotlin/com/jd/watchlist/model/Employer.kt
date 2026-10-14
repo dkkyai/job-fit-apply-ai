@@ -44,6 +44,11 @@ data class Employer(
     /** high / medium / low — how often this employer hires QE in the Seattle area. */
     val qeFit: String? = null,
     val enabled: Boolean = true,
+    /**
+     * Zero matching postings is this employer's normal state (a small team, or one that rarely
+     * hires in Washington), so an empty listing is not the "feed broke" signal.
+     */
+    val mayBeEmpty: Boolean = false,
 ) {
     /** Stable per-employer scope for idempotency keys: survives a company rename. */
     val boardKey: String

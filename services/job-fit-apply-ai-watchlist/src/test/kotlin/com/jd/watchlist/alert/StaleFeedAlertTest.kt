@@ -67,6 +67,21 @@ class StaleFeedAlertTest {
     }
 
     @Test
+    fun `an employer that may be empty is not suspect for listing nothing - but still is for failing`() {
+        val quiet = Employer(company = "HCLTech", ats = "greenhouse", board = "hcl", mayBeEmpty = true)
+        val adapter = Switchable(empty = true)
+        val alerts = mutableListOf<String>()
+        repeat(3) { runner(adapter, alerts, listOf(quiet)).runOnce((it + 1) * day) }
+        assertEquals(0, alerts.size, "zero openings is its normal state")
+        val last = HealthReport(dir.resolve("health.json"))
+        assertEquals(0, last.previousSuspectRuns()["HCLTech"])
+
+        adapter.empty = false; adapter.fail = true
+        repeat(2) { runner(adapter, alerts, listOf(quiet)).runOnce((it + 4) * day) }
+        assertEquals(1, alerts.size, "a broken feed is still a broken feed")
+    }
+
+    @Test
     fun `a mass failure is summarised, not one line per employer`() {
         val employers = (1..20).map { Employer(company = "Co$it", ats = "greenhouse", board = "co$it") }
         val alerts = mutableListOf<String>()

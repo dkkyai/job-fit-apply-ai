@@ -22,9 +22,14 @@ data class EmployerHealth(
     val error: String? = null,
     /** Consecutive runs (including this one) in which this employer was [suspect]; 0 when healthy. */
     val suspectRuns: Int = 0,
+    /** Copied from [com.jd.watchlist.model.Employer.mayBeEmpty]: listing nothing is normal here. */
+    val mayBeEmpty: Boolean = false,
 ) {
-    /** True when the entry needs a human look: the feed failed, or it listed nothing at all. */
-    val suspect: Boolean get() = error != null || listed == 0
+    /**
+     * True when the entry needs a human look: the feed failed, or it listed nothing at all (unless
+     * that is this employer's normal state).
+     */
+    val suspect: Boolean get() = error != null || (listed == 0 && !mayBeEmpty)
 }
 
 data class RunHealth(
@@ -34,7 +39,7 @@ data class RunHealth(
 ) {
     val polled: Int get() = employers.size
     val failing: List<String> get() = employers.filter { it.error != null }.map { it.company }
-    val empty: List<String> get() = employers.filter { it.error == null && it.listed == 0 }.map { it.company }
+    val empty: List<String> get() = employers.filter { it.error == null && it.listed == 0 && !it.mayBeEmpty }.map { it.company }
 }
 
 /** Writes the last run's [RunHealth] as JSON (read by scripts/doctor.sh). Best-effort. */
