@@ -1,6 +1,6 @@
 # job-fit-apply-ai-watchlist
 
-Checks the job feeds of greater-Seattle QE/SDET employers once a day and submits new QE-titled postings to the bridge. Listing and filtering use no LLM tokens; the processor scores only what reaches the bridge.
+Checks the job feeds of greater-Seattle QE/SDET employers once a day (or at fixed times, see below) and submits new QE-titled postings to the bridge. Listing and filtering use no LLM tokens; the processor scores only what reaches the bridge.
 
 ## How it runs
 
@@ -25,15 +25,15 @@ A sync test fails if the two disagree. `ats` picks the adapter in `adapters/` (G
 
 | Employers | Count |
 |---|---|
-| Polled daily | 179 |
+| Polled | 183 |
 | Feed did not verify (`enabled: false`) | 5 |
-| No adapter for their platform | 34 |
+| No adapter for their platform | 30 |
 | Total | 218 |
 
 The employers this service can't poll reach the pipeline, if at all, through their own job-alert emails, which the processor parses (see [Posting identity](#posting-identity-shared-with-employer-job-alert-emails)):
 
 - **Bot walls:** Walmart Global Tech (Workday alerts) and SAP Concur (SuccessFactors alerts) are already parsed.
-- **No public feed:** Google, Meta, Uber, Insight Global, Cognizant, TCS, Tech Mahindra, UST, Infosys, LTIMindtree, Avanade, IBM, Korry and Randstad need an alert subscription. Alerts from an ATS that `PostingLinks` doesn't recognize are still keyed on their cleaned URL.
+- **No public feed:** Google, Meta, Cognizant, TCS, Tech Mahindra, UST, Infosys, LTIMindtree, Avanade, IBM, Korry and Randstad need an alert subscription (most require an account on the employer's site). Alerts from an ATS that `PostingLinks` doesn't recognize are still keyed on their cleaned URL.
 - **Nothing to poll:** BambooHR (Radian) and JazzHR (Tasso) boards had no openings to build a parser against.
 
 ## Filters

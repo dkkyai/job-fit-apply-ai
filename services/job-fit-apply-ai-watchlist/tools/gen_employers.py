@@ -35,6 +35,11 @@ HTML_SITES = {
         "link_pattern": r"akvelon\.com/vacancy/([^/]+)/", "card_selector": ".jet-listing-grid__item",
         "title_selector": ".elementor-heading-title", "detail_selector": ".elementor-location-single",
     },
+    "Valve": {
+        "feed": "https://www.valvesoftware.com/en/jobs",
+        "link_pattern": r"/jobs\?job_id=(\d+)", "card_selector": ".job_opening", "title_selector": ".job_title",
+        "detail_selector": "section.job_description",
+    },
     "Experis (ManpowerGroup)": {
         "feed": "https://www.experis.com/en/all-jobs",
         "link_pattern": r"/en/job/(\d+)/", "location_label": "Location:", "detail_selector": ".details-rich-text",
@@ -47,7 +52,7 @@ REQUIRED_PARAM = {"greenhouse": "board", "lever": "board", "ashby": "board", "wo
                   "icims": "feed", "jobvite": "board", "apple": None, "capgemini": None, "jobsyn": "host", "epam": None,
                   "successfactors": "host", "ukg": "board", "paylocity": "board", "zoho": "host", "atlassian": None,
                   "html": "link_pattern", "kforce": "location", "roberthalf": "feed",
-                  "jobdiva": "board"}
+                  "jobdiva": "board", "insightglobal": "location", "griddynamics": "feed"}
 
 
 def area_cities(text):
@@ -118,6 +123,10 @@ def by_url(url, ats, r):
         return {"ats": "kforce", "location": "WA"}
     if u.netloc == "www.roberthalf.com" and u.path.startswith("/us/en/jobs/all/"):
         return {"ats": "roberthalf", "feed": url}
+    if u.netloc == "insightglobal.com" and u.path == "/all/jobs":
+        return {"ats": "insightglobal", "location": q.get("filter.locations", ["seattle-wa"])[0]}
+    if u.netloc == "www.griddynamics.com" and u.path.startswith("/careers/discover-openings"):
+        return {"ats": "griddynamics", "feed": url}
     # JobDiva candidate portal: the `a` token names the portal and its RSS feed.
     if u.netloc.endswith(".jobdiva.com") and u.path.startswith("/portal") and q.get("a"):
         return {"ats": "jobdiva", "board": q["a"][0]}

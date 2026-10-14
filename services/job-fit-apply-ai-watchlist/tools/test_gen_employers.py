@@ -197,6 +197,26 @@ class StaffingTest(unittest.TestCase):
         self.assertEqual(False, e.get("enabled"), "no token, no feed")
 
 
+class MoreEmployersTest(unittest.TestCase):
+    def test_insight_global_and_grid_dynamics_are_recognised_by_url(self):
+        e = gen_employers.entry(row(ats="insightglobal", api_endpoint="https://insightglobal.com/all/jobs?keyword=qa&filter.locations=seattle-wa&filter.distance=50"))
+        self.assertEqual(("insightglobal", "seattle-wa"), (e["ats"], e["location"]))
+        self.assertNotIn("enabled", e)
+        e = gen_employers.entry(row(ats="griddynamics", api_endpoint="https://www.griddynamics.com/careers/discover-openings"))
+        self.assertEqual(("griddynamics", "https://www.griddynamics.com/careers/discover-openings"), (e["ats"], e["feed"]))
+
+    def test_uber_is_an_oracle_hcm_site(self):
+        e = gen_employers.entry(row(ats="oracle_hcm", seattle_area_location="Seattle",
+                                    api_endpoint="https://iaziqy.fa.ocs.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=UberCareers"))
+        self.assertEqual(("oracle_hcm", "iaziqy.fa.ocs.oraclecloud.com", "UberCareers", ["Seattle"]), (e["ats"], e["host"], e["site"], e["search"]))
+
+    def test_valve_is_read_by_the_html_adapter(self):
+        e = gen_employers.entry(row(company="Valve", ats="custom"))
+        self.assertEqual("html", e["ats"])
+        self.assertRegex("https://www.valvesoftware.com/en/jobs?job_id=113", e["link_pattern"])
+        self.assertNotRegex("https://www.valvesoftware.com/en/jobs", e["link_pattern"])
+
+
 class CommittedYamlTest(unittest.TestCase):
     def test_committed_employers_yaml_matches_the_generator_output(self):
         here = os.path.dirname(os.path.abspath(__file__))
