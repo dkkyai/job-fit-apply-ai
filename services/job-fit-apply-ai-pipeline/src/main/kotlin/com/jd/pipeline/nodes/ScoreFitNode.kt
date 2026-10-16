@@ -274,10 +274,14 @@ class ScoreFitNode(
     }
 
     /**
-     * How the posted pay compares with the candidate's minimum, in the unit the posting uses:
-     * [CandidatePreferences.minimumContractRateHourly] for hourly pay, `minimum_total_compensation` for annual.
-     * Compared on the posted MAX (the best the role could pay). Null when it can't be assessed — no pay posted,
-     * no minimum set for that unit, or an amount that doesn't fit its unit — so unknown pay never costs points.
+     * How the posted pay compares with the candidate's minimum, compared on the posted MAX (the best the
+     * role could pay):
+     * - annual pay against `minimum_total_compensation`;
+     * - hourly pay on an employee (full- or part-time) role annualized at [HOURS_PER_YEAR] and compared
+     *   against `minimum_total_compensation` too — a W2 rate carries benefits a contract rate doesn't;
+     * - any other hourly pay (contract, or employment type unknown) against [CandidatePreferences.minimumContractRateHourly].
+     * Null when it can't be assessed — no pay posted, no minimum set for that basis, or an amount that
+     * doesn't fit its unit — so unknown pay never costs points.
      */
     internal fun assessComp(input: JDState, compMax: Int?, compPeriod: String): CompAssessment? {
         val prefs = input.candidateProfile?.preferences ?: return null
@@ -285,15 +289,32 @@ class ScoreFitNode(
         val hourly = isHourlyPeriod(compPeriod, input.salaryRange, compMax)
         // An hourly rate in four figures, or an annual one in three, means the unit was misread: can't tell.
         if (hourly == (compMax >= HOURLY_MAX_PLAUSIBLE)) return null
-        val target = if (hourly) prefs.minimumContractRateHourly?.takeIf { it > 0 }
-        else prefs.minimumTotalCompensation?.replace(Regex("[^0-9]"), "")?.toIntOrNull()?.takeIf { it > 0 }
-        if (target == null) return null
+        val minimumTc = prefs.minimumTotalCompensation?.replace(NON_DIGITS, "")?.toIntOrNull()?.takeIf { it > 0 }
 
-        val shortfall = (target - compMax).toLong() * 100 // percent of target, scaled by target, to stay in integers
+        val amount: Int
+        val target: Int
+        val postedText: String
+        val targetText: String
+        when {
+            !hourly -> {
+                amount = compMax; target = minimumTc ?: return null
+                postedText = money(compMax); targetText = money(target)
+            }
+            isEmployeeRole(input.employmentType) -> {
+                amount = compMax * HOURS_PER_YEAR; target = minimumTc ?: return null
+                postedText = "${payAmount(compMax, hourly = true)} ≈ ${money(amount)}/yr"; targetText = money(target)
+            }
+            else -> {
+                amount = compMax; target = prefs.minimumContractRateHourly?.takeIf { it > 0 } ?: return null
+                postedText = payAmount(compMax, hourly = true); targetText = payAmount(target, hourly = true)
+            }
+        }
+
+        val shortfall = (target - amount).toLong() * 100 // percent of target, scaled by target, to stay in integers
         // Rounded up, so a shortfall just past a tier edge never prints as the edge itself ("10% … (−15)")
         val pct = ((shortfall + target - 1) / target).toInt()
-        val posted = "Posted pay (max ${payAmount(compMax, hourly)})"
-        val vs = "the ${payAmount(target, hourly)} target"
+        val posted = "Posted pay (max $postedText)"
+        val vs = "the $targetText target"
         if (shortfall <= 0) return CompAssessment(0, false, "$posted meets $vs")
         COMP_SHORTFALL_TIERS.firstOrNull { (maxPct, _) -> shortfall <= maxPct.toLong() * target }?.let { (_, penalty) ->
             return CompAssessment(-penalty, false, "$posted is $pct% below $vs (−$penalty)")
@@ -301,16 +322,31 @@ class ScoreFitNode(
         return CompAssessment(0, true, "$posted is more than $COMP_SKIP_SHORTFALL_PCT% below $vs")
     }
 
-    /** An explicit period wins; otherwise the board's salary text; otherwise sub-1000 amounts are hourly. */
+    /**
+     * The board's salary text wins when it names a unit — it is the posting's own structured data, and the
+     * model has been seen labelling hourly pay "year". Otherwise the model's period; otherwise sub-1000
+     * amounts are hourly.
+     */
     internal fun isHourlyPeriod(compPeriod: String, salaryRange: String, compMax: Int?): Boolean {
+        val text = salaryRange.lowercase()
+        if (HOURLY_TEXT.containsMatchIn(text)) return true
+        if (ANNUAL_TEXT.containsMatchIn(text)) return false
         when (compPeriod.trim().lowercase()) {
             "hour", "hourly", "hr" -> return true
             "year", "yearly", "annual", "annually", "yr" -> return false
         }
-        val text = salaryRange.lowercase()
-        if (Regex("""/\s*(hr|hour)\b|per hour|hourly""").containsMatchIn(text)) return true
-        if (Regex("""/\s*(yr|year)\b|per year|annual""").containsMatchIn(text)) return false
         return compMax != null && compMax in 1 until HOURLY_MAX_PLAUSIBLE
+    }
+
+    /**
+     * An employee role (full- or part-time) as opposed to a contract. Anything naming a contract wins
+     * ("Contract W2" is a contract), and an unknown type is not an employee role: hourly postings are
+     * mostly contracts.
+     */
+    internal fun isEmployeeRole(employmentType: String): Boolean {
+        val type = employmentType.lowercase()
+        if (CONTRACT_TYPE.containsMatchIn(type)) return false
+        return EMPLOYEE_TYPE.containsMatchIn(type)
     }
 
     private fun payAmount(amount: Int, hourly: Boolean) = if (hourly) "$$amount/hr" else money(amount)
@@ -456,6 +492,15 @@ class ScoreFitNode(
 
         /** Posted amounts at or above this are annual, below it hourly (no hourly rate reaches $1,000). */
         private const val HOURLY_MAX_PLAUSIBLE = 1000
+
+        /** Full-time hours in a year (40 × 52), to annualize an employee's hourly rate. */
+        internal const val HOURS_PER_YEAR = 2080
+
+        private val NON_DIGITS = Regex("[^0-9]")
+        private val HOURLY_TEXT = Regex("""/\s*(hr|hour)\b|per hour|hourly""")
+        private val ANNUAL_TEXT = Regex("""/\s*(yr|year)\b|per year|annual""")
+        private val CONTRACT_TYPE = Regex("""contract|c2c|corp.to.corp|1099|temp|freelance""")
+        private val EMPLOYEE_TYPE = Regex("""full|part|permanent|employee|\bw-?2\b|intern""")
 
         /**
          * Renders a [CandidateProfile] into the markdown block consumed by SCORE_SKILL.md.

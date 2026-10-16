@@ -55,7 +55,7 @@ Then the verb's handler runs. With `JOBBOT_DRY_RUN=true`, it stops after the che
 
 ## Skipped high fits (e.g. pay-gated)
 
-A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate: posted pay more than 40% below the profile's minimum (`minimum_total_compensation`, or `minimum_contract_rate_hourly` for hourly pay), or an onsite or hybrid office outside Washington. It still gets a card, with three differences:
+A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate: posted pay more than 40% below the profile's minimum (`minimum_total_compensation`; `minimum_contract_rate_hourly` for hourly contract pay; hourly pay on a full- or part-time role is annualized at 2,080 hours and compared with `minimum_total_compensation`), or an onsite or hybrid office outside Washington. It still gets a card, with three differences:
 - The card adds a **Skipped:** line, e.g. "Skipped: Posted pay (max $85K) is more than 40% below the $145K target". The text comes from the completed feed's `skip_reason`. The line also appears under an edited card template.
 - **View Report** opens the scoring notes: `report.md` beside `score_fit.txt`, published at `artifact_url`. There is no **View Resume**, because nothing was tailored.
 - There is no **Apply**. An Apply tap on an older card is refused, with the reason.
