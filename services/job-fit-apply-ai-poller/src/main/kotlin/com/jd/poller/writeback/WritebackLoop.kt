@@ -6,6 +6,7 @@ import com.jd.poller.config.PollerConfig
 import com.jd.poller.gmail.GmailClient
 import com.jd.poller.gmail.LabelApplier
 import com.jd.poller.health.Heartbeat
+import java.io.File
 
 /**
  * Write-back loop: drain the bridge's completed feed and apply each job's outcome to Gmail —
@@ -51,16 +52,25 @@ class WritebackLoop(
         val meta = gmail.getMessageMeta(messageId)
         val to = extractEmailAddress(meta.from)
         val subject = buildReSubject(meta.subject)
-        val attachments = collectAttachments(job)
-        gmail.createDraftReply(messageId, to, subject, job.draftText ?: "", attachments)
+        // The downloaded artifacts are temp files owned by this call: createDraftReply() reads them
+        // into the MIME body before it returns, so delete them afterwards — success or failure — or
+        // they pile up in /tmp for the life of the (days-long) poller JVM.
+        val attachments = mutableListOf<File>()
+        try {
+            collectAttachments(job, attachments)
+            gmail.createDraftReply(messageId, to, subject, job.draftText ?: "", attachments.map { it.absolutePath })
+        } finally {
+            attachments.forEach { f ->
+                if (!f.delete() && f.exists()) System.err.println("[writeback] could not delete temp file ${f.absolutePath}")
+            }
+        }
     }
 
-    private fun collectAttachments(job: CompletedJob): List<String> {
-        val a = job.artifacts ?: return emptyList()
-        val files = mutableListOf<String>()
-        bridge.downloadArtifact(a.resumePdf, ".pdf")?.let { files.add(it.absolutePath) }
-        bridge.downloadArtifact(a.coverLetterTxt, ".txt")?.let { files.add(it.absolutePath) }
-        return files
+    /** Downloads into [into] as it goes, so a failed second download still leaves the first for cleanup. */
+    private fun collectAttachments(job: CompletedJob, into: MutableList<File>) {
+        val a = job.artifacts ?: return
+        bridge.downloadArtifact(a.resumePdf, ".pdf")?.let { into.add(it) }
+        bridge.downloadArtifact(a.coverLetterTxt, ".txt")?.let { into.add(it) }
     }
 
     private fun extractEmailAddress(from: String): String =
