@@ -27,8 +27,9 @@
     "Posted pay is well below the candidate's target"
   ],
   "hard_gate_violations": [],
-  "posted_comp_min": 80000,
-  "posted_comp_max": 90000,
+  "posted_comp_min": 70000,
+  "posted_comp_max": 80000,
+  "posted_comp_period": "year",
   "work_arrangement": "remote",
   "office_location": "",
   "confidence": 0.9,

@@ -91,7 +91,7 @@ class ExistingProductPathsE2ETest {
         val company = "E2E PayGate $nonce"
         val result = harness.runScenario(
             company = company,
-            // Scores 72 (over the threshold), but posts at most $90K against the profile's $150K target.
+            // Scores 72 (over the threshold), but posts at most $80K against the profile's $150K target — more than 40% short.
             responses = mapOf("score_fit" to listOf(ok(harness.fixture("llm/score_fit_pay_gated.json")))),
         ) {
             submitScrapedJob(
@@ -99,13 +99,13 @@ class ExistingProductPathsE2ETest {
                 roleTitle = "Staff Software Engineer in Test",
                 jdText = """
                     $company is hiring a Staff Software Engineer in Test to own Kotlin test infrastructure,
-                    mobile automation with Espresso and XCUITest, and CI/CD pipelines. Salary $80,000-$90,000.
+                    mobile automation with Espresso and XCUITest, and CI/CD pipelines. Salary $70,000-$80,000.
                 """.trimIndent(),
                 idempotencyKey = "e2e-paygate-$nonce",
             )
         }
 
-        val reason = "Posted pay (max \$90K) is below the \$150K target"
+        val reason = "Posted pay (max \$80K) is more than 40% below the \$150K target"
         assertEquals("SKIP", result.finalStatus.path("pipeline_action").asText())
         assertEquals(72, result.finalStatus.path("fit_score").asInt())
         assertEquals(reason, result.completedEvent.path("skip_reason").asText())
@@ -119,7 +119,7 @@ class ExistingProductPathsE2ETest {
         assertEquals(artifactUrl, result.track.artifactUrl)
 
         val card = result.telegramMessages.single()
-        assertTrue(card.lines().any { it == "Skipped: Posted pay (max \$90K) is below the \$150K target" }, card)
+        assertTrue(card.lines().any { it == "Skipped: Posted pay (max \$80K) is more than 40% below the \$150K target" }, card)
         // The card's details come through processor → bridge → notifier (the fixture's strengths and gap).
         assertTrue(card.lines().first().endsWith("(72)"), "Company: Title (score): $card")
         assertTrue(card.contains("\n\nFit:\n• Espresso and XCUITest framework ownership\n• CI/CD pipeline ownership\n\n"), card)
