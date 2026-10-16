@@ -87,8 +87,8 @@ class ScoreFitNodeTest {
         // Profile minimums: $200,000 total compensation, $85/hr contract rate.
         private val state = stateWithProfile()
 
-        private fun assess(compMax: Int?, period: String = "", salaryRange: String = "") =
-            ScoreFitNode().assessComp(state.copy(salaryRange = salaryRange), compMax, period)
+        private fun assess(compMax: Int?, period: String = "", salaryRange: String = "", employmentType: String = "") =
+            ScoreFitNode().assessComp(state.copy(salaryRange = salaryRange, employmentType = employmentType), compMax, period)
 
         @Test
         @DisplayName("annual pay at or above the minimum costs nothing")
@@ -159,9 +159,20 @@ class ScoreFitNodeTest {
         }
 
         @Test
-        @DisplayName("an explicit period wins over the salary text")
-        fun periodWinsOverText() {
-            assertEquals(0, assess(95, period = "hour", salaryRange = "\$190K/yr")!!.penalty)
+        @DisplayName("the board's salary text wins over a contradicting model period")
+        fun textWinsOverPeriod() {
+            // The model said "year" for a "$55 - $65/hr" posting: still judged hourly, 24% under $85/hr.
+            val a = assess(65, period = "year", salaryRange = "\$55 - \$65/hr")!!
+            assertEquals(-25, a.penalty)
+            assertEquals("Posted pay (max \$65/hr) is 24% below the \$85/hr target (−25)", a.summary)
+            // …and the other way round: annual text, "hour" period, an annual amount.
+            assertEquals(-5, assess(190_000, period = "hour", salaryRange = "\$170K - \$190K/yr")!!.penalty)
+        }
+
+        @Test
+        @DisplayName("salary text with no unit leaves the decision to the model's period")
+        fun unitlessTextDefersToPeriod() {
+            assertEquals(-5, assess(80, period = "hour", salaryRange = "\$70 - \$80")!!.penalty)
         }
 
         @Test
@@ -203,7 +214,7 @@ class ScoreFitNodeTest {
                 assertTrue(ScoreFitNode().isHourlyPeriod(p, "", 190_000), "'$p' should be hourly")
             }
             for (p in listOf("year", "yearly", "annual", "annually", "yr", "YEAR")) {
-                assertFalse(ScoreFitNode().isHourlyPeriod(p, "\$65/hr", 65), "'$p' should be annual")
+                assertFalse(ScoreFitNode().isHourlyPeriod(p, "", 65), "'$p' should be annual")
             }
         }
 
@@ -265,9 +276,52 @@ class ScoreFitNodeTest {
         }
 
         @Test
-        @DisplayName("an hourly-text posting the model labelled \"year\" can't be assessed (fails open, no penalty)")
-        fun yearLabelOnHourlyPostingFailsOpen() {
-            assertNull(assess(65, period = "year", salaryRange = "\$55 - \$65/hr"))
+        @DisplayName("hourly pay on an employee role is annualized (× 2080) and judged against total compensation")
+        fun employeeHourlyAnnualized() {
+            val a = assess(60, period = "hour", employmentType = "Full-time")!! // $124.8K vs $200K
+            assertEquals(-35, a.penalty)
+            assertEquals("Posted pay (max \$60/hr ≈ \$124.8K/yr) is 38% below the \$200K target (−35)", a.summary)
+            assertEquals(0, assess(100, period = "hour", employmentType = "Full-time")!!.penalty) // $208K
+            assertEquals(-5, assess(90, period = "hour", employmentType = "Part-time")!!.penalty) // $187.2K, 6.4% short
+            val far = assess(50, period = "hour", employmentType = "Full-time")!! // $104K, 48% short
+            assertTrue(far.skip)
+            assertEquals("Posted pay (max \$50/hr ≈ \$104K/yr) is more than 40% below the \$200K target", far.summary)
+        }
+
+        @Test
+        @DisplayName("contract or unknown employment keeps the hourly contract rate")
+        fun contractHourlyUsesRate() {
+            for (type in listOf("Contract", "CONTRACTOR", "Contract W2", "Temporary", "C2C", "")) {
+                assertEquals(-25, assess(60, period = "hour", employmentType = type)!!.penalty, "'$type'") // 29% under $85/hr
+            }
+        }
+
+        @Test
+        @DisplayName("an employee hourly role with no total-compensation minimum isn't assessed, even with a contract rate set")
+        fun employeeHourlyNeedsTc() {
+            val noTc = stateWithProfile(sampleProfile().preferences.copy(minimumTotalCompensation = null))
+                .copy(employmentType = "Full-time")
+            assertNull(ScoreFitNode().assessComp(noTc, 60, "hour"))
+        }
+
+        @Test
+        @DisplayName("employee vs contract classification")
+        fun employeeRoleClassification() {
+            for (t in listOf("Full-time", "FULL_TIME", "fulltime", "Part-time", "Permanent", "Employee", "W2", "W-2", "Internship")) {
+                assertTrue(ScoreFitNode().isEmployeeRole(t), "'$t' should be an employee role")
+            }
+            for (t in listOf("Contract", "Contractor", "Contract W2", "Contract-to-hire", "C2C", "Corp-to-Corp", "1099", "Temporary", "Freelance", "", "Other")) {
+                assertFalse(ScoreFitNode().isEmployeeRole(t), "'$t' should not be an employee role")
+            }
+        }
+
+        @Test
+        @DisplayName("an employee hourly role far under is gated in annualized terms")
+        fun employeeHourlyGate() {
+            assertEquals(
+                listOf("Posted pay (max \$45/hr ≈ \$93.6K/yr) is more than 40% below the \$200K target"),
+                invokeComputeHardGates(state.copy(employmentType = "Full-time"), compMax = 45, compPeriod = "hour"),
+            )
         }
 
         @Test
@@ -320,10 +374,11 @@ class ScoreFitNodeTest {
             }
         """.trimIndent()
 
-        private fun score(dimensions: String, max: Int?, period: String = "year"): JDState =
+        private fun score(dimensions: String, max: Int?, period: String = "year", employmentType: String = ""): JDState =
             ScoreFitNode(llm = LlmCaller { response(dimensions, max, period) })
                 .process(stateWithProfile().copy(
                     jdText = "A staff SDET role. ".repeat(30),
+                    employmentType = employmentType,
                     outputPath = java.nio.file.Files.createTempDirectory("score_fit_comp").toString(),
                 ))
 
@@ -471,6 +526,29 @@ class ScoreFitNodeTest {
             assertTrue(text.contains("Posted Comp: min=70 max=80 (hour)"), text)
             assertTrue(text.contains("comp_penalty: -5"), text)
             assertTrue(text.contains("Posted pay (max \$80/hr) is 6% below the \$85/hr target (−5)"), text)
+        }
+
+        @Test
+        @DisplayName("a full-time hourly job is scored on its annualized pay")
+        fun employeeHourlyScored() {
+            val r = score(perfect, 92, "hour", employmentType = "Full-time") // $191.4K, 4.3% short
+            assertEquals(95f, r.fitScore)
+            assertEquals(PipelineAction.TAILOR, r.pipelineAction)
+            assertEquals("Posted pay (max \$92/hr ≈ \$191.4K/yr) is 5% below the \$200K target (−5)", r.redFlags.last())
+        }
+
+        @Test
+        @DisplayName("a model \"year\" label on an hourly board posting is still penalised against the rate")
+        fun mislabelledHourlyScored() {
+            val r = ScoreFitNode(llm = LlmCaller { response(perfect, 65, "year") }).process(
+                stateWithProfile().copy(
+                    jdText = "A staff SDET role. ".repeat(30),
+                    salaryRange = "\$55 - \$65/hr",
+                    outputPath = java.nio.file.Files.createTempDirectory("score_fit_comp").toString(),
+                )
+            )
+            assertEquals(75f, r.fitScore)
+            assertEquals(-25, r.dimensionScores["comp_penalty"])
         }
 
         @Test
