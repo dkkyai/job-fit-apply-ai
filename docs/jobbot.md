@@ -55,8 +55,8 @@ Then the verb's handler runs. With `JOBBOT_DRY_RUN=true`, it stops after the che
 
 ## Skipped high fits (e.g. pay-gated)
 
-A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate: posted pay below the profile's target, or an onsite or hybrid office outside Washington. It still gets a card, with three differences:
-- The card adds a **Skipped:** line, e.g. "Skipped: Posted pay (max $85K) is below the $145K target". The text comes from the completed feed's `skip_reason`. The line also appears under an edited card template.
+A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate: posted pay more than 40% below the profile's minimum (`minimum_total_compensation`, or `minimum_contract_rate_hourly` for hourly pay), or an onsite or hybrid office outside Washington. It still gets a card, with three differences:
+- The card adds a **Skipped:** line, e.g. "Skipped: Posted pay (max $85K) is more than 40% below the $145K target". The text comes from the completed feed's `skip_reason`. The line also appears under an edited card template.
 - **View Report** opens the scoring notes: `report.md` beside `score_fit.txt`, published at `artifact_url`. There is no **View Resume**, because nothing was tailored.
 - There is no **Apply**. An Apply tap on an older card is refused, with the reason.
 
@@ -116,7 +116,7 @@ Fit:
 • Core tech stack overlap
 
 Gap: Seniority level is a step down
-Skipped: Posted pay (max $85K) is below the $145K target
+Skipped: Posted pay (max $85K) is more than 40% below the $145K target
 #J7708
 ```
 The company links to the posting and the title to the report. A missing company or title reads "Unknown". Each line is left out when its value is unknown, and the blank lines only frame the Fit block.

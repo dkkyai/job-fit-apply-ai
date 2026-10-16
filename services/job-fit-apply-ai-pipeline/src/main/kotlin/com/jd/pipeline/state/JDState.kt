@@ -64,6 +64,8 @@ data class JDState(
     // Extracted JD compensation range and work arrangement for deterministic preference comparison
     val postedCompMin: Int? = null,
     val postedCompMax: Int? = null,
+    // Unit of postedCompMin/Max: "year" (annual USD) or "hour" (USD per hour); blank when the model didn't say
+    val postedCompPeriod: String = "",
     val workArrangement: String = "unknown",
     val officeLocation: String = "",
     // LLM confidence in the scoring (0.0–1.0); low values flag vague JDs for human review

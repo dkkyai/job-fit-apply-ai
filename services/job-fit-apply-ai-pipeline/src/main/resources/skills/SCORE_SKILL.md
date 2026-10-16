@@ -48,7 +48,7 @@ Flag any of the following in `hard_gate_violations`. These cause the pipeline to
 - Requires active security clearance the candidate does not hold
 - Requires visa sponsorship and the candidate does not need it (or vice versa, if incompatible)
 
-Note: Location and compensation comparisons are handled deterministically in code using the profile preferences — do **not** add them here.
+Note: Location and compensation comparisons are handled deterministically in code using the profile preferences — do **not** add them here, and do not factor pay into any dimension score. Pay a little under the candidate's minimum only lowers the final score by a few points; pay far under it skips the role. Both happen in code from `posted_comp_*`, so report those fields faithfully.
 
 ---
 
@@ -79,8 +79,9 @@ Return ONLY valid JSON. No markdown fences, no preamble, no trailing text.
   ],
   "red_flags": ["<soft concern — pulls score down but does not gate>", ...],
   "hard_gate_violations": ["<rule from Hard-Gate list above>", ...],
-  "posted_comp_min": <integer USD annual, or null if not stated>,
-  "posted_comp_max": <integer USD annual, or null if not stated>,
+  "posted_comp_min": <integer USD in the unit the posting uses (see posted_comp_period), or null if not stated>,
+  "posted_comp_max": <integer USD in the unit the posting uses (see posted_comp_period), or null if not stated>,
+  "posted_comp_period": "<year|hour — the unit the posted pay is quoted in; \"year\" when no pay is stated>",
   "work_arrangement": "<remote|hybrid|onsite|unknown>",
   "office_location": "<city, state if onsite or hybrid — empty string if remote or unknown>",
   "office_state": "<two-letter US state code of the onsite/hybrid office — infer it from a city or neighborhood name (e.g. \"South Lake Union\" → \"WA\"); \"non-US\" for an office outside the US; empty string if remote or unknown>",
@@ -97,6 +98,7 @@ Return ONLY valid JSON. No markdown fences, no preamble, no trailing text.
 `strengths` and `gaps`: 2–5 items each, specific and actionable.
 `red_flags`: soft concerns only; empty array [] if none.
 `hard_gate_violations`: empty array [] if none apply.
+`posted_comp_*`: record the pay exactly as the posting quotes it, base pay only (no bonus or equity). Hourly pay stays hourly — $65/hr is `65` with `"hour"`, never multiplied up to an annual figure. Weekly, monthly or daily pay is converted to annual with `"year"`. A range gives min and max; a single figure fills both.
 `confidence`: use 0.9+ for detailed JDs, 0.5–0.7 for vague ones, <0.5 for very sparse JDs.
 
 ---

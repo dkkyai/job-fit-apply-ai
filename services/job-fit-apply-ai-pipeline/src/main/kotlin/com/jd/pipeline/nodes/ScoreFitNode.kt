@@ -125,19 +125,26 @@ class ScoreFitNode(
             val llmHardGates = node.path("hard_gate_violations").map { it.asText() }.filter { it.isNotBlank() }
             val compMin = node.path("posted_comp_min").takeIf { !it.isNull && !it.isMissingNode }?.intValue()
             val compMax = node.path("posted_comp_max").takeIf { !it.isNull && !it.isMissingNode }?.intValue()
+            val compPeriod = node.path("posted_comp_period").asText("")
             val workArrangement = node.path("work_arrangement").asText("unknown")
             val officeLocation = node.path("office_location").asText("")
             val officeState = node.path("office_state").asText("")
             val confidence = node.path("confidence").takeIf { !it.isNull && !it.isMissingNode }?.floatValue()
 
             // Deterministic hard-gate checks using extracted JD data vs profile preferences
-            val deterministicGates = computeHardGates(input, compMin, compMax, workArrangement, officeLocation, officeState)
+            val deterministicGates = computeHardGates(input, compMin, compMax, workArrangement, officeLocation, officeState, compPeriod)
             val allHardGates = (llmHardGates + deterministicGates).distinct()
             if (allHardGates.isNotEmpty()) println("[score_fit] Hard-gate violations: $allHardGates")
 
+            // Pay a little under target costs points rather than skipping; far under is a hard gate above.
+            val comp = assessComp(input, compMax, compPeriod)
+            val compPenalty = comp?.penalty ?: 0
+            val finalScore = (score + compPenalty).coerceAtLeast(0f)
+            if (comp != null && compPenalty < 0) println("[score_fit] ${comp.summary}; score $score → $finalScore")
+
             val action = when {
                 allHardGates.isNotEmpty() -> PipelineAction.SKIP
-                score >= Config.FIT_THRESHOLD -> PipelineAction.TAILOR
+                finalScore >= Config.FIT_THRESHOLD -> PipelineAction.TAILOR
                 else -> PipelineAction.SKIP
             }
             val skippedReason = when {
@@ -154,18 +161,20 @@ class ScoreFitNode(
             if (jdStructured != null) println("[score_fit] JD structure extracted: ${jdStructured.requiredSkills.size} required skills")
 
             input.copy(
-                fitScore = score,
+                fitScore = finalScore,
                 fitReasoning = node.path("fit_reasoning").asText(""),
                 strengths = strengthsWithEvidence.map { it.claim },
                 gaps = gapsWithEvidence.map { it.claim },
-                redFlags = node.path("red_flags").map { it.asText() },
+                redFlags = node.path("red_flags").map { it.asText() } +
+                    listOfNotNull(comp?.takeIf { it.penalty < 0 }?.summary),
                 strengthsWithEvidence = strengthsWithEvidence,
                 gapsWithEvidence = gapsWithEvidence,
-                dimensionScores = dimensionScores,
+                dimensionScores = if (compPenalty < 0) dimensionScores + (COMP_PENALTY_KEY to compPenalty) else dimensionScores,
                 hardGateViolations = allHardGates,
-                salaryRange = input.salaryRange.ifBlank { formatCompRange(compMin, compMax) },
+                salaryRange = input.salaryRange.ifBlank { formatCompRange(compMin, compMax, isHourlyPeriod(compPeriod, "", compMax)) },
                 postedCompMin = compMin,
                 postedCompMax = compMax,
+                postedCompPeriod = compPeriod,
                 workArrangement = workArrangement,
                 officeLocation = officeLocation,
                 scoreConfidence = confidence,
@@ -187,14 +196,15 @@ class ScoreFitNode(
     /**
      * Builds a human-readable salary string from the numeric posted-comp fields.
      * Used as a fallback when no salaryRange display string survived scraping.
-     * Comp values are full-dollar integers (e.g. 150000 → "$150K").
+     * Comp values are full-dollar integers (e.g. 150000 → "$150K"); hourly values are dollars per hour ("$65/hr").
      */
-    private fun formatCompRange(min: Int?, max: Int?): String {
+    private fun formatCompRange(min: Int?, max: Int?, hourly: Boolean = false): String {
         fun k(v: Int) = if (v >= 1000) "$${v / 1000}K" else "$$v"
+        val unit = if (hourly) "/hr" else ""
         return when {
-            min != null && max != null -> "${k(min)} – ${k(max)}"
-            min != null -> "${k(min)}+"
-            max != null -> "up to ${k(max)}"
+            min != null && max != null -> "${k(min)} – ${k(max)}$unit"
+            min != null -> "${k(min)}+$unit"
+            max != null -> "up to ${k(max)}$unit"
             else -> ""
         }
     }
@@ -248,22 +258,65 @@ class ScoreFitNode(
         workArrangement: String,
         officeLocation: String,
         officeState: String = "",
+        compPeriod: String = "",
     ): List<String> {
         val prefs = input.candidateProfile?.preferences ?: return emptyList()
         val identity = input.candidateProfile.identity
         val gates = mutableListOf<String>()
 
-        // Compensation: flag when posted max is explicitly below target
-        val targetTc = prefs.minimumTotalCompensation?.replace(Regex("[^0-9]"), "")?.toIntOrNull()
-        if (targetTc != null && compMax != null && compMax > 0 && compMax < targetTc) {
-            gates.add("Posted pay (max ${money(compMax)}) is below the ${money(targetTc)} target")
-        }
+        // Compensation: skip only when the posted max is far under target; a smaller shortfall is a score penalty (assessComp)
+        assessComp(input, compMax, compPeriod)?.takeIf { it.skip }?.let { gates.add(it.summary) }
 
         if (!prefs.willingToRelocate) {
             locationGate(input, identity.location, workArrangement, officeLocation, officeState)?.let { gates.add(it) }
         }
         return gates
     }
+
+    /**
+     * How the posted pay compares with the candidate's minimum, in the unit the posting uses:
+     * [CandidatePreferences.minimumContractRateHourly] for hourly pay, `minimum_total_compensation` for annual.
+     * Compared on the posted MAX (the best the role could pay). Null when it can't be assessed — no pay posted,
+     * no minimum set for that unit, or an amount that doesn't fit its unit — so unknown pay never costs points.
+     */
+    internal fun assessComp(input: JDState, compMax: Int?, compPeriod: String): CompAssessment? {
+        val prefs = input.candidateProfile?.preferences ?: return null
+        if (compMax == null || compMax <= 0) return null
+        val hourly = isHourlyPeriod(compPeriod, input.salaryRange, compMax)
+        // An hourly rate in four figures, or an annual one in three, means the unit was misread: can't tell.
+        if (hourly == (compMax >= HOURLY_MAX_PLAUSIBLE)) return null
+        val target = if (hourly) prefs.minimumContractRateHourly?.takeIf { it > 0 }
+        else prefs.minimumTotalCompensation?.replace(Regex("[^0-9]"), "")?.toIntOrNull()?.takeIf { it > 0 }
+        if (target == null) return null
+
+        val shortfall = (target - compMax).toLong() * 100 // percent of target, scaled by target, to stay in integers
+        // Rounded up, so a shortfall just past a tier edge never prints as the edge itself ("10% … (−15)")
+        val pct = ((shortfall + target - 1) / target).toInt()
+        val posted = "Posted pay (max ${payAmount(compMax, hourly)})"
+        val vs = "the ${payAmount(target, hourly)} target"
+        if (shortfall <= 0) return CompAssessment(0, false, "$posted meets $vs")
+        COMP_SHORTFALL_TIERS.firstOrNull { (maxPct, _) -> shortfall <= maxPct.toLong() * target }?.let { (_, penalty) ->
+            return CompAssessment(-penalty, false, "$posted is $pct% below $vs (−$penalty)")
+        }
+        return CompAssessment(0, true, "$posted is more than $COMP_SKIP_SHORTFALL_PCT% below $vs")
+    }
+
+    /** An explicit period wins; otherwise the board's salary text; otherwise sub-1000 amounts are hourly. */
+    internal fun isHourlyPeriod(compPeriod: String, salaryRange: String, compMax: Int?): Boolean {
+        when (compPeriod.trim().lowercase()) {
+            "hour", "hourly", "hr" -> return true
+            "year", "yearly", "annual", "annually", "yr" -> return false
+        }
+        val text = salaryRange.lowercase()
+        if (Regex("""/\s*(hr|hour)\b|per hour|hourly""").containsMatchIn(text)) return true
+        if (Regex("""/\s*(yr|year)\b|per year|annual""").containsMatchIn(text)) return false
+        return compMax != null && compMax in 1 until HOURLY_MAX_PLAUSIBLE
+    }
+
+    private fun payAmount(amount: Int, hourly: Boolean) = if (hourly) "$$amount/hr" else money(amount)
+
+    /** [penalty] is zero or negative; [skip] means the shortfall is past the last tier; [summary] is the card/report wording. */
+    internal data class CompAssessment(val penalty: Int, val skip: Boolean, val summary: String)
 
     /**
      * Onsite or hybrid work outside the candidate's home STATE (not city: listings use suburbs and
@@ -349,7 +402,9 @@ class ScoreFitNode(
                 append("\nHard Gate Violations:\n"); state.hardGateViolations.forEach { append("- $it\n") }
             }
             if (state.postedCompMin != null || state.postedCompMax != null) {
-                append("\nPosted Comp: min=${state.postedCompMin ?: "?"} max=${state.postedCompMax ?: "?"}\n")
+                append("\nPosted Comp: min=${state.postedCompMin ?: "?"} max=${state.postedCompMax ?: "?"}")
+                if (state.postedCompPeriod.isNotBlank()) append(" (${state.postedCompPeriod})")
+                append("\n")
             }
             if (state.workArrangement != "unknown") {
                 append("Work Arrangement: ${state.workArrangement}")
@@ -391,6 +446,18 @@ class ScoreFitNode(
         const val MOBILE_BONUS_MAX = 15
 
         /**
+         * Posted max up to N% under the candidate's minimum → N points off the final score
+         * (applied after the 100 clamp, so a perfect job reads 95 a little short). Further under
+         * than the last tier is a hard-gate skip.
+         */
+        internal val COMP_SHORTFALL_TIERS = listOf(10 to 5, 20 to 15, 30 to 25, 40 to 35)
+        internal const val COMP_SKIP_SHORTFALL_PCT = 40
+        const val COMP_PENALTY_KEY = "comp_penalty"
+
+        /** Posted amounts at or above this are annual, below it hourly (no hourly rate reaches $1,000). */
+        private const val HOURLY_MAX_PLAUSIBLE = 1000
+
+        /**
          * Renders a [CandidateProfile] into the markdown block consumed by SCORE_SKILL.md.
          * Delegates to [com.jd.pipeline.utils.CandidateProfileRenderer.renderForScoring].
          * Public for testability.
@@ -419,6 +486,7 @@ class ScoreFitNode(
             |  "hard_gate_violations": ["string", ...],
             |  "posted_comp_min": integer or null,
             |  "posted_comp_max": integer or null,
+            |  "posted_comp_period": "year|hour — the unit posted_comp_min/max are in",
             |  "work_arrangement": "remote|hybrid|onsite|unknown",
             |  "office_location": "string",
             |  "office_state": "two-letter US state code of the office (from city or neighborhood), non-US, or empty",

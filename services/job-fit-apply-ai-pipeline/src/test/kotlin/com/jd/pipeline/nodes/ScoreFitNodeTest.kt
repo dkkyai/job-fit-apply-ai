@@ -1,11 +1,14 @@
 package com.jd.pipeline.nodes
 
 import com.jd.pipeline.models.*
+import com.jd.pipeline.client.LlmCaller
 import com.jd.pipeline.state.JDState
+import com.jd.pipeline.state.PipelineAction
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.assertEquals
 
@@ -78,18 +81,216 @@ class ScoreFitNodeTest {
     // ── Hard-gate logic ───────────────────────────────────────────────────────
 
     @Nested
-    @DisplayName("Hard Gate: Compensation")
-    inner class CompHardGateTests {
+    @DisplayName("Compensation vs. the candidate's minimum")
+    inner class CompTests {
+
+        // Profile minimums: $200,000 total compensation, $85/hr contract rate.
+        private val state = stateWithProfile()
+
+        private fun assess(compMax: Int?, period: String = "", salaryRange: String = "") =
+            ScoreFitNode().assessComp(state.copy(salaryRange = salaryRange), compMax, period)
 
         @Test
-        @DisplayName("flags gate when posted max is below target TC")
-        fun flagsWhenBelowTarget() {
-            val state = stateWithProfile(
-                preferences = sampleProfile().preferences.copy(minimumTotalCompensation = "\$200,000")
+        @DisplayName("annual pay at or above the minimum costs nothing")
+        fun meetsTarget() {
+            assertEquals(0, assess(250_000)!!.penalty)
+            assertEquals(0, assess(200_000)!!.penalty)
+            assertFalse(assess(200_000)!!.skip)
+        }
+
+        @Test
+        @DisplayName("annual shortfall tiers: 10% → -5, 20% → -15, 30% → -25, 40% → -35, past that a skip")
+        fun annualTiers() {
+            // Edges are inclusive: exactly 10% short is still the first tier.
+            assertEquals(-5, assess(190_000)!!.penalty)
+            assertEquals(-5, assess(180_000)!!.penalty)
+            assertEquals(-15, assess(179_999)!!.penalty)
+            assertEquals(-15, assess(160_000)!!.penalty)
+            assertEquals(-25, assess(150_000)!!.penalty)
+            assertEquals(-25, assess(140_000)!!.penalty)
+            assertEquals(-35, assess(139_999)!!.penalty)
+            assertEquals(-35, assess(120_000)!!.penalty)
+            val skip = assess(119_999)!!
+            assertTrue(skip.skip)
+            assertEquals(0, skip.penalty)
+        }
+
+        @Test
+        @DisplayName("summaries read the way a card says them")
+        fun summaries() {
+            assertEquals("Posted pay (max \$170K) is 15% below the \$200K target (−15)", assess(170_000)!!.summary)
+            assertEquals("Posted pay (max \$100K) is more than 40% below the \$200K target", assess(100_000)!!.summary)
+        }
+
+        @Test
+        @DisplayName("the printed shortfall never reads as a tier edge it has just passed")
+        fun printedPercentMatchesTier() {
+            // 10.0005% short is the 20% tier: prints 11%, not 10%.
+            assertEquals("Posted pay (max \$180K) is 11% below the \$200K target (−15)", assess(179_999)!!.summary)
+            // Exactly 10% short is still the first tier and prints 10%.
+            assertEquals("Posted pay (max \$180K) is 10% below the \$200K target (−5)", assess(180_000)!!.summary)
+        }
+
+        @Test
+        @DisplayName("hourly pay is judged against the hourly contract rate, not the annual minimum")
+        fun hourlyUsesContractRate() {
+            // $80/hr would be far below $200K/yr if misread as annual; against $85/hr it is 6% short.
+            val a = assess(80, period = "hour")!!
+            assertEquals(-5, a.penalty)
+            assertEquals("Posted pay (max \$80/hr) is 6% below the \$85/hr target (−5)", a.summary)
+            assertEquals(0, assess(95, period = "hour")!!.penalty)
+            assertTrue(assess(50, period = "hour")!!.skip)
+            assertEquals("Posted pay (max \$50/hr) is more than 40% below the \$85/hr target", assess(50, period = "hour")!!.summary)
+        }
+
+        @Test
+        @DisplayName("hourly is recognised from the board's salary text when the model gave no period")
+        fun hourlyFromSalaryText() {
+            assertEquals(-5, assess(80, salaryRange = "\$70 - \$80/hr")!!.penalty)
+            assertEquals(-5, assess(80, salaryRange = "\$70 to \$80 per hour")!!.penalty)
+            assertEquals(-5, assess(190_000, salaryRange = "\$170K - \$190K/yr")!!.penalty)
+        }
+
+        @Test
+        @DisplayName("with no period or text, a sub-1000 amount is hourly and a larger one annual")
+        fun hourlyFromMagnitude() {
+            assertEquals(-5, assess(80)!!.penalty)
+            assertEquals(-5, assess(190_000)!!.penalty)
+        }
+
+        @Test
+        @DisplayName("an explicit period wins over the salary text")
+        fun periodWinsOverText() {
+            assertEquals(0, assess(95, period = "hour", salaryRange = "\$190K/yr")!!.penalty)
+        }
+
+        @Test
+        @DisplayName("a unit that contradicts its amount can't be assessed, so costs nothing")
+        fun misreadUnit() {
+            assertNull(assess(190_000, period = "hour"), "four-figure \"hourly\" rate")
+            assertNull(assess(150, period = "year"), "three-figure \"annual\" salary")
+        }
+
+        @Test
+        @DisplayName("unknown or zero pay is never assessed")
+        fun unknownPay() {
+            assertNull(assess(null))
+            assertNull(assess(0))
+        }
+
+        @Test
+        @DisplayName("no minimum for the posted unit means no assessment")
+        fun noMinimumForUnit() {
+            val noRate = stateWithProfile(sampleProfile().preferences.copy(minimumContractRateHourly = null))
+            assertNull(ScoreFitNode().assessComp(noRate, 60, "hour"), "hourly pay, no hourly rate set")
+            assertEquals(-35, ScoreFitNode().assessComp(noRate, 130_000, "year")!!.penalty, "annual pay still uses TC")
+
+            val noTc = stateWithProfile(sampleProfile().preferences.copy(minimumTotalCompensation = null))
+            assertNull(ScoreFitNode().assessComp(noTc, 100_000, "year"), "annual pay, no TC set")
+            assertEquals(-5, ScoreFitNode().assessComp(noTc, 80, "hour")!!.penalty, "hourly pay still uses the rate")
+        }
+
+        @Test
+        @DisplayName("no profile means no assessment")
+        fun noProfile() {
+            assertNull(ScoreFitNode().assessComp(JDState(jdText = "jd"), 100_000, "year"))
+        }
+
+        @Test
+        @DisplayName("every accepted period spelling is recognised, ignoring case and padding")
+        fun periodAliases() {
+            for (p in listOf("hour", "hourly", "hr", " HOUR ", "Hourly")) {
+                assertTrue(ScoreFitNode().isHourlyPeriod(p, "", 190_000), "'$p' should be hourly")
+            }
+            for (p in listOf("year", "yearly", "annual", "annually", "yr", "YEAR")) {
+                assertFalse(ScoreFitNode().isHourlyPeriod(p, "\$65/hr", 65), "'$p' should be annual")
+            }
+        }
+
+        @Test
+        @DisplayName("an unrecognised period falls through to the salary text, then to the amount")
+        fun unknownPeriodFallsThrough() {
+            assertTrue(ScoreFitNode().isHourlyPeriod("monthly", "\$60/hr", 190_000))
+            assertFalse(ScoreFitNode().isHourlyPeriod("monthly", "\$190K/yr", 65))
+            assertTrue(ScoreFitNode().isHourlyPeriod("", "", 65))
+            assertFalse(ScoreFitNode().isHourlyPeriod("", "", 190_000))
+            assertFalse(ScoreFitNode().isHourlyPeriod("", "", null))
+        }
+
+        @Test
+        @DisplayName("salary text spellings for hourly and annual pay")
+        fun salaryTextSpellings() {
+            for (t in listOf("\$55/hr", "\$55 / hour", "\$55 - \$65/HR", "\$55 per hour", "\$60 hourly")) {
+                assertTrue(ScoreFitNode().isHourlyPeriod("", t, null), "'$t' should be hourly")
+            }
+            for (t in listOf("\$150K/yr", "\$150K / year", "\$150,000 per year", "\$150K annual")) {
+                assertFalse(ScoreFitNode().isHourlyPeriod("", t, 65), "'$t' should be annual")
+            }
+        }
+
+        @Test
+        @DisplayName("hourly tier edges against the \$85/hr rate")
+        fun hourlyTierEdges() {
+            assertEquals(0, assess(85, "hour")!!.penalty)
+            assertEquals(-5, assess(77, "hour")!!.penalty) // 9.4% short
+            assertEquals(-15, assess(76, "hour")!!.penalty) // 10.6% short
+            assertEquals(-35, assess(51, "hour")!!.penalty) // exactly 40% short
+            assertFalse(assess(51, "hour")!!.skip)
+            assertTrue(assess(50, "hour")!!.skip)
+        }
+
+        @Test
+        @DisplayName("exactly 40% short is the last penalty tier; only beyond it skips")
+        fun exactlyFortyPercent() {
+            val edge = assess(120_000)!!
+            assertEquals(-35, edge.penalty)
+            assertFalse(edge.skip)
+        }
+
+        @Test
+        @DisplayName("the annual minimum parses from currency formatting; blank or non-numeric means none")
+        fun targetParsing() {
+            fun tc(value: String?) = stateWithProfile(sampleProfile().preferences.copy(minimumTotalCompensation = value))
+            assertEquals(-5, ScoreFitNode().assessComp(tc("200000"), 190_000, "year")!!.penalty)
+            assertEquals(-5, ScoreFitNode().assessComp(tc("\$200,000"), 190_000, "year")!!.penalty)
+            assertNull(ScoreFitNode().assessComp(tc(""), 190_000, "year"))
+            assertNull(ScoreFitNode().assessComp(tc("TBD"), 190_000, "year"))
+        }
+
+        @Test
+        @DisplayName("a zero hourly rate means no minimum was set")
+        fun zeroHourlyRate() {
+            val zero = stateWithProfile(sampleProfile().preferences.copy(minimumContractRateHourly = 0))
+            assertNull(ScoreFitNode().assessComp(zero, 60, "hour"))
+        }
+
+        @Test
+        @DisplayName("an hourly-text posting the model labelled \"year\" can't be assessed (fails open, no penalty)")
+        fun yearLabelOnHourlyPostingFailsOpen() {
+            assertNull(assess(65, period = "year", salaryRange = "\$55 - \$65/hr"))
+        }
+
+        @Test
+        @DisplayName("only a shortfall past the last tier is a hard gate")
+        fun onlyFarBelowIsGated() {
+            assertEquals(emptyList(), invokeComputeHardGates(state, compMax = 150_000))
+            assertEquals(emptyList(), invokeComputeHardGates(state, compMax = 120_000))
+            assertEquals(
+                listOf("Posted pay (max \$110K) is more than 40% below the \$200K target"),
+                invokeComputeHardGates(state, compMax = 110_000),
             )
-            val gates = invokeComputeHardGates(state, compMin = 120_000, compMax = 150_000)
-            // Worded for the Telegram card ("Skipped: …"), money in K.
-            assertEquals(listOf("Posted pay (max \$150K) is below the \$200K target"), gates)
+            assertEquals(
+                listOf("Posted pay (max \$40/hr) is more than 40% below the \$85/hr target"),
+                invokeComputeHardGates(state, compMax = 40, compPeriod = "hour"),
+            )
+        }
+
+        @Test
+        @DisplayName("no gate when posted comp is null (not disclosed) or the profile has no minimum")
+        fun noGateWhenUnknown() {
+            assertTrue(invokeComputeHardGates(state, compMin = null, compMax = null).isEmpty())
+            val noTc = stateWithProfile(sampleProfile().preferences.copy(minimumTotalCompensation = null))
+            assertTrue(invokeComputeHardGates(noTc, compMin = 100_000, compMax = 120_000).isEmpty())
         }
 
         @Test
@@ -100,35 +301,184 @@ class ScoreFitNodeTest {
             assertEquals("\$1.2M", ScoreFitNode.money(1_200_000))
             assertEquals("\$950", ScoreFitNode.money(950))
         }
+    }
+
+    @Nested
+    @DisplayName("Compensation penalty applied to the score")
+    inner class CompScoreTests {
+
+        // Rubric dimensions summing to 100, no mobile bonus: a "perfect" job.
+        private val perfect = """{"framework": 15, "cicd": 20, "web_api": 20, "seniority": 20, "stack_overlap": 10, "location": 10, "domain": 5, "mobile": 0}"""
+        private val perfectWithMobile = perfect.replace("\"mobile\": 0", "\"mobile\": 15")
+
+        private fun response(dimensions: String, max: Int?, period: String = "year") = """
+            {
+              "fit_score": 100, "fit_reasoning": "r", "dimension_scores": $dimensions,
+              "strengths": [], "gaps": [], "red_flags": ["soft"], "hard_gate_violations": [],
+              "posted_comp_min": ${max?.let { it - 10 }}, "posted_comp_max": $max, "posted_comp_period": "$period",
+              "work_arrangement": "remote", "confidence": 0.9, "role_title": "Staff SDET"
+            }
+        """.trimIndent()
+
+        private fun score(dimensions: String, max: Int?, period: String = "year"): JDState =
+            ScoreFitNode(llm = LlmCaller { response(dimensions, max, period) })
+                .process(stateWithProfile().copy(
+                    jdText = "A staff SDET role. ".repeat(30),
+                    outputPath = java.nio.file.Files.createTempDirectory("score_fit_comp").toString(),
+                ))
 
         @Test
-        @DisplayName("no gate when posted max meets or exceeds target TC")
-        fun noGateWhenMeetsTarget() {
-            val state = stateWithProfile(
-                preferences = sampleProfile().preferences.copy(minimumTotalCompensation = "\$200,000")
-            )
-            val gates = invokeComputeHardGates(state, compMin = 180_000, compMax = 250_000)
-            assertTrue(gates.isEmpty(), "unexpected gates: $gates")
+        @DisplayName("at or above the minimum a perfect job stays at 100")
+        fun noPenalty() {
+            val r = score(perfect, 210_000)
+            assertEquals(100f, r.fitScore)
+            assertFalse(r.dimensionScores.containsKey("comp_penalty"))
+            assertEquals(listOf("soft"), r.redFlags)
         }
 
         @Test
-        @DisplayName("no gate when posted comp is null (not disclosed)")
-        fun noGateWhenCompUnknown() {
-            val state = stateWithProfile(
-                preferences = sampleProfile().preferences.copy(minimumTotalCompensation = "\$200,000")
-            )
-            val gates = invokeComputeHardGates(state, compMin = null, compMax = null)
-            assertTrue(gates.isEmpty(), "should not flag when comp is undisclosed")
+        @DisplayName("a perfect job slightly under the minimum scores 95 and is still tailored, not gated")
+        fun slightlyUnder() {
+            val r = score(perfect, 190_000)
+            assertEquals(95f, r.fitScore)
+            assertEquals(PipelineAction.TAILOR, r.pipelineAction)
+            assertTrue(r.hardGateViolations.isEmpty())
+            assertEquals(-5, r.dimensionScores["comp_penalty"])
+            assertEquals(listOf("soft", "Posted pay (max \$190K) is 5% below the \$200K target (−5)"), r.redFlags)
         }
 
         @Test
-        @DisplayName("no gate when profile has no target TC set")
-        fun noGateWhenNoTargetTc() {
-            val state = stateWithProfile(
-                preferences = sampleProfile().preferences.copy(minimumTotalCompensation = null)
+        @DisplayName("the penalty comes off after the 100 clamp, so a mobile bonus can't absorb it")
+        fun appliedAfterClamp() {
+            // 100 + 15 clamps to 100; a 15% shortfall then takes 15 off.
+            assertEquals(85f, score(perfectWithMobile, 170_000).fitScore)
+        }
+
+        @Test
+        @DisplayName("a 35-point penalty drops a mid-scoring job under the threshold")
+        fun penaltyCanDropBelowThreshold() {
+            val mid = """{"framework": 10, "cicd": 10, "web_api": 15, "seniority": 15, "stack_overlap": 6, "location": 10, "domain": 4, "mobile": 0}""" // 70
+            val r = score(mid, 130_000) // 35% short
+            assertEquals(35f, r.fitScore)
+            assertEquals(PipelineAction.SKIP, r.pipelineAction)
+            assertEquals("Fit score below threshold", r.skippedReason)
+        }
+
+        @Test
+        @DisplayName("more than 40% under skips on a hard gate and keeps the rubric score")
+        fun farUnderSkips() {
+            val r = score(perfect, 100_000)
+            assertEquals(100f, r.fitScore)
+            assertEquals(PipelineAction.SKIP, r.pipelineAction)
+            assertEquals("Hard gate: Posted pay (max \$100K) is more than 40% below the \$200K target", r.skippedReason)
+        }
+
+        @Test
+        @DisplayName("hourly pay is penalised against the contract rate")
+        fun hourly() {
+            val r = score(perfect, 80, "hour") // $85/hr minimum → 6% short
+            assertEquals(95f, r.fitScore)
+            assertEquals("hour", r.postedCompPeriod)
+            assertTrue(r.redFlags.last().startsWith("Posted pay (max \$80/hr)"), r.redFlags.toString())
+        }
+
+        @Test
+        @DisplayName("exactly 40% short on a perfect job is still tailored at 65")
+        fun fortyPercentStillTailored() {
+            val r = score(perfect, 120_000)
+            assertEquals(65f, r.fitScore)
+            assertEquals(PipelineAction.TAILOR, r.pipelineAction)
+            assertEquals(-35, r.dimensionScores["comp_penalty"])
+        }
+
+        @Test
+        @DisplayName("the score never goes below zero")
+        fun floorsAtZero() {
+            val weak = """{"framework": 0, "cicd": 5, "web_api": 5, "seniority": 5, "stack_overlap": 0, "location": 5, "domain": 0, "mobile": 0}""" // 20
+            val r = score(weak, 130_000) // 35% short
+            assertEquals(0f, r.fitScore)
+            assertEquals(PipelineAction.SKIP, r.pipelineAction)
+        }
+
+        @Test
+        @DisplayName("far-under hourly pay is a hard-gate skip worded in dollars per hour")
+        fun hourlyFarUnder() {
+            val r = score(perfect, 40, "hour")
+            assertEquals(100f, r.fitScore)
+            assertEquals(PipelineAction.SKIP, r.pipelineAction)
+            assertEquals("Hard gate: Posted pay (max \$40/hr) is more than 40% below the \$85/hr target", r.skippedReason)
+            assertFalse(r.dimensionScores.containsKey("comp_penalty"), "a skip keeps the rubric score")
+        }
+
+        @Test
+        @DisplayName("hourly pay at or above the contract rate is not penalised")
+        fun hourlyMeetsRate() {
+            val r = score(perfect, 90, "hour")
+            assertEquals(100f, r.fitScore)
+            assertEquals(listOf("soft"), r.redFlags)
+        }
+
+        @Test
+        @DisplayName("a response without posted_comp_period (older prompt) is read by magnitude")
+        fun missingPeriodField() {
+            val noPeriod = response(perfect, 190_000).replace("\"posted_comp_period\": \"year\",", "")
+            val r = ScoreFitNode(llm = LlmCaller { noPeriod }).process(
+                stateWithProfile().copy(
+                    jdText = "A staff SDET role. ".repeat(30),
+                    outputPath = java.nio.file.Files.createTempDirectory("score_fit_comp").toString(),
+                )
             )
-            val gates = invokeComputeHardGates(state, compMin = 100_000, compMax = 120_000)
-            assertTrue(gates.isEmpty(), "should not flag when no target TC configured")
+            assertEquals(95f, r.fitScore)
+            assertEquals("", r.postedCompPeriod)
+        }
+
+        @Test
+        @DisplayName("without a candidate profile no pay penalty is applied")
+        fun noProfileNoPenalty() {
+            val r = ScoreFitNode(llm = LlmCaller { response(perfect, 50_000) }).process(
+                JDState(
+                    jdText = "A staff SDET role. ".repeat(30),
+                    outputPath = java.nio.file.Files.createTempDirectory("score_fit_comp").toString(),
+                )
+            )
+            assertEquals(100f, r.fitScore)
+            assertTrue(r.hardGateViolations.isEmpty())
+        }
+
+        @Test
+        @DisplayName("the stored salary range is unit-aware when the board gave none, and untouched when it did")
+        fun salaryRangeFallback() {
+            val hourly = score(perfect, 80, "hour")
+            assertEquals("\$70 – \$80/hr", hourly.salaryRange)
+            val annual = score(perfect, 190_000)
+            assertEquals("\$189K – \$190K", annual.salaryRange)
+
+            val withBoardText = ScoreFitNode(llm = LlmCaller { response(perfect, 80, "hour") }).process(
+                stateWithProfile().copy(
+                    jdText = "A staff SDET role. ".repeat(30),
+                    salaryRange = "\$70 - \$80/hr",
+                    outputPath = java.nio.file.Files.createTempDirectory("score_fit_comp").toString(),
+                )
+            )
+            assertEquals("\$70 - \$80/hr", withBoardText.salaryRange)
+        }
+
+        @Test
+        @DisplayName("score_fit.txt records the pay unit and the comp penalty")
+        fun reportShowsPenalty() {
+            val r = score(perfect, 80, "hour")
+            val text = java.nio.file.Files.readString(java.nio.file.Path.of(r.scoreOutputPath).resolve("score_fit.txt"))
+            assertTrue(text.contains("Posted Comp: min=70 max=80 (hour)"), text)
+            assertTrue(text.contains("comp_penalty: -5"), text)
+            assertTrue(text.contains("Posted pay (max \$80/hr) is 6% below the \$85/hr target (−5)"), text)
+        }
+
+        @Test
+        @DisplayName("unknown pay costs nothing")
+        fun unknownPay() {
+            val r = score(perfect, null)
+            assertEquals(100f, r.fitScore)
+            assertEquals(PipelineAction.TAILOR, r.pipelineAction)
         }
     }
 
@@ -312,7 +662,8 @@ class ScoreFitNodeTest {
         workArrangement: String = "unknown",
         officeLocation: String = "",
         officeState: String = "",
-    ): List<String> = ScoreFitNode().computeHardGates(state, compMin, compMax, workArrangement, officeLocation, officeState)
+        compPeriod: String = "",
+    ): List<String> = ScoreFitNode().computeHardGates(state, compMin, compMax, workArrangement, officeLocation, officeState, compPeriod)
 
     private fun stateWithProfile(preferences: CandidatePreferences = sampleProfile().preferences): JDState =
         JDState(
