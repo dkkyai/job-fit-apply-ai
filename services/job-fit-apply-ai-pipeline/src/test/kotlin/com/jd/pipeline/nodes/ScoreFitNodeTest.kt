@@ -123,6 +123,15 @@ class ScoreFitNodeTest {
         }
 
         @Test
+        @DisplayName("the printed shortfall never reads as a tier edge it has just passed")
+        fun printedPercentMatchesTier() {
+            // 10.0005% short is the 20% tier: prints 11%, not 10%.
+            assertEquals("Posted pay (max \$180K) is 11% below the \$200K target (−15)", assess(179_999)!!.summary)
+            // Exactly 10% short is still the first tier and prints 10%.
+            assertEquals("Posted pay (max \$180K) is 10% below the \$200K target (−5)", assess(180_000)!!.summary)
+        }
+
+        @Test
         @DisplayName("hourly pay is judged against the hourly contract rate, not the annual minimum")
         fun hourlyUsesContractRate() {
             // $80/hr would be far below $200K/yr if misread as annual; against $85/hr it is 6% short.

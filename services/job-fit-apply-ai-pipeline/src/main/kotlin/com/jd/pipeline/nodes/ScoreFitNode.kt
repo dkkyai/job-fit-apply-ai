@@ -290,7 +290,8 @@ class ScoreFitNode(
         if (target == null) return null
 
         val shortfall = (target - compMax).toLong() * 100 // percent of target, scaled by target, to stay in integers
-        val pct = Math.round(shortfall.toDouble() / target).toInt()
+        // Rounded up, so a shortfall just past a tier edge never prints as the edge itself ("10% … (−15)")
+        val pct = ((shortfall + target - 1) / target).toInt()
         val posted = "Posted pay (max ${payAmount(compMax, hourly)})"
         val vs = "the ${payAmount(target, hourly)} target"
         if (shortfall <= 0) return CompAssessment(0, false, "$posted meets $vs")
