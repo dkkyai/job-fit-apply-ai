@@ -12,11 +12,11 @@ Processor ──► Bridge (completed feed: completed_seq, job_url, message_id, 
                 │                                  getUpdates (the ONLY reader)
                 │                                     jobbot  (Hermes, network `jobbot` only)
                 │                                      ├─ jobbot_actions plugin: taps → /plugin/tap
-                │                                      └─ agent: read-only MCP tools (mcp__jfaa__*)
+                │                                      └─ agent: JFAA MCP tools (mcp__jfaa__*)
                 │                                               │ Bearer JOBBOT_MCP_TOKEN
-                └──── GET (route allowlist) ───────── jobbot-mcp  (networks default + jobbot)
-                      POST only tracks/{id}/events|status   ├─ pipeline-output (ro), resume/profile YAML (ro)
-                                                       ├─ poller-secrets (ro): Gmail token, refreshed in memory
+                └──── GET (route allowlist) ───────── jobbot-mcp  (networks default + jobbot + jobbot-browser)
+                      POST only tracks/{id}/events|status,  ├─ pipeline-output (ro), resume/profile YAML (ro)
+                      jobs/{id}/tailor                 ├─ poller-secrets (ro): Gmail token, refreshed in memory
                                                        └─ /state/actions.db (taps, undo records, errors)
 ```
 
@@ -25,7 +25,13 @@ Processor ──► Bridge (completed feed: completed_seq, job_url, message_id, 
 - **One bot, split by direction.** The notifier only calls `sendMessage`; its Telegram client cannot build any other method. The `jobbot` container is the token's **only** `getUpdates` reader. Telegram allows one, and a second reader gets HTTP 409. `make doctor` fails while the retired `pm2 nanobot-jobbot` is online.
 - **Alerts never depend on JobBot.** The notifier works with `jobbot` stopped. Without JobBot, cards just have no working action buttons, so leave `NOTIFIER_TELEGRAM_ACTIONS` blank whenever JobBot is down for long.
 - **Buttons are code, not prompts.** A tap is decided by `jobbot-mcp`'s `TapService`, which is deterministic Kotlin. The model never sees a tap unless a verb hands work to it (Reply, later).
-- **The model is (almost) read-only.** Its tools are `get_job`, `list_high_fit`, `read_job_file`, `list_tracks`, `get_profile`, `get_track_timeline` and `get_job_email`. Its only writes are `add_track_note` and `set_track_status`, which append to a job's history in the bridge's `track_events` as `source=jobbot`, and only on a track matched by `track_id` or `artifact_url`, never a fuzzy match. Hermes's terminal, file, browser, code-execution, delegation, cron and skill-editing toolsets are disabled. Config, persona and plugins are re-seeded from the image on every start (`docker/jobbot/seed.py`).
+- **The model's tools are narrow.** Its Telegram toolsets are `web`, `memory`, `clarify`, `session_search` and the JFAA MCP server (`mcp__jfaa__*`), which has up to 16 tools:
+  - **Read:** `get_job`, `list_high_fit`, `read_job_file`, `list_tracks`, `get_profile`, `get_track_timeline`, plus `get_job_email` and `get_reply_draft` with Gmail, and `get_alert_template` with a template file.
+  - **Tracks:** `add_track_note` and `set_track_status`. They append to a job's history in the bridge's `track_events` as `source=jobbot`, and only on a track matched by `track_id` or `artifact_url`, never a fuzzy match.
+  - **Gmail:** `write_reply_draft` (saves a draft, never sends) and `request_send_approval` (posts a ✅ Send preview; see Sending replies). Registered only when the Gmail token and credentials files are set.
+  - **Card template:** `preview_alert_template`, `update_alert_template` and `revert_alert_template` (see Card template). Registered only when `JOBBOT_TEMPLATE_FILE` is set.
+
+  Hermes's terminal, file, browser, code-execution, delegation, cron and skill-editing toolsets are disabled. Config, persona and plugins are re-seeded from the image on every start (`docker/jobbot/seed.py`).
 - **Untrusted content is data.** Job postings, reports quoting them, and emails never become instructions. File text from `read_job_file` is prefixed with a notice saying so.
 
 ## Card buttons
@@ -186,7 +192,7 @@ docker compose --env-file ~/projects/job-fit-apply-ai/.env --profile jobbot up -
 
 **Check.**
 - `make doctor` has a JobBot section.
-- `docker logs jobfit-jobbot` should show `[jobbot-seed] wrote config.yaml`, `Wired native handlers from plugin 'jobbot_actions'`, `MCP server 'jfaa' (HTTP): registered 5 tool(s)`, and `Connected to Telegram (polling mode)`.
+- `docker logs jobfit-jobbot` should show `[jobbot-seed] wrote config.yaml`, `Wired native handlers from plugin 'jobbot_actions'`, `MCP server 'jfaa' (HTTP): registered 16 tool(s)` (12 without Gmail), and `Connected to Telegram (polling mode)`.
 - Gateway logs live in `${JFAA_DATA_ROOT}/jobbot/logs/`.
 
 **One-shot agent test (no Telegram):**
