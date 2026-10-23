@@ -32,6 +32,8 @@ class CargoTools(
     private val outbox: Outbox,
     private val apply: ApplyService?,
     private val clock: Clock = Clock.systemUTC(),
+    /** JOBBOT_DRY_RUN: validate everything, then say what would happen. Applying and writing STATUS.md do nothing. */
+    private val dryRun: Boolean = false,
 ) {
     fun register(server: Server) {
         val ro = ToolAnnotations(readOnlyHint = true, destructiveHint = false, openWorldHint = false)
@@ -286,6 +288,14 @@ class CargoTools(
             state == "in_progress" -> "draft approved: \"$quote\" — $note"
             else -> "per Richard: \"$quote\" — $note"
         }
+        if (dryRun) {
+            val line = "- ${java.time.Instant.ofEpochSecond(clock.instant().epochSecond)} | $state | ${full.replace(Regex("\\s+"), " ").trim()}"
+            return ok(buildJsonObject {
+                put("dry_run", true)
+                put("would_append", line)
+                put("note", "JOBBOT_DRY_RUN is on: nothing was written, committed or pushed.")
+            })
+        }
         val r = repo.appendStatus(folder, state, full)
         return ok(buildJsonObject { put("line", r.line); put("pushed", r.pushed); put("result", r.message) })
     }
@@ -298,7 +308,11 @@ class CargoTools(
         repo.sync(force = true)
         val p = resolvePacket(req) ?: return err(whyNoPacket(req))
         return when (val outcome = start(p, req.string("approval_quote"))) {
-            is Started -> ok(buildJsonObject { put("packet", p.folder); put("result", outcome.message) })
+            is Started -> ok(buildJsonObject {
+                put("packet", p.folder)
+                if (dryRun) put("dry_run", true)
+                put("result", outcome.message)
+            })
             is Skipped -> err(outcome.why)
         }
     }
@@ -321,10 +335,15 @@ class CargoTools(
             }
         }
         return ok(buildJsonObject {
-            put("started", buildJsonArray { started.forEach { (p, m) -> add(buildJsonObject { put("packet", p.folder); put("company", p.company); put("title", p.title); put("result", m) }) } })
+            if (dryRun) put("dry_run", true)
+            put(if (dryRun) "would_start" else "started", buildJsonArray { started.forEach { (p, m) -> add(buildJsonObject { put("packet", p.folder); put("company", p.company); put("title", p.title); put("result", m) }) } })
             put("skipped", buildJsonArray { skipped.forEach { (p, why) -> add(buildJsonObject { put("packet", p.folder); put("company", p.company); put("title", p.title); put("why", why) }) } })
             put("already_completed", completed)
-            put("note", "Each started application posts its own ✅ Submit / ✖ Discard card, one at a time. Nothing is submitted until Richard taps.")
+            put(
+                "note",
+                if (dryRun) "JOBBOT_DRY_RUN is on: every packet was checked and nothing was started, written or pushed."
+                else "Each started application posts its own ✅ Submit / ✖ Discard card, one at a time. Nothing is submitted until Richard taps.",
+            )
         })
     }
 
@@ -354,9 +373,9 @@ class CargoTools(
         }
         val answers = runCatching { Packets.readText(repo.resolve("${p.folder}/application-answers.md")) }.getOrNull()
         val job = PacketApply(p.folder, "${p.company} — ${p.title}", p.company, p.title, p.applyUrl!!, upload, answers, quote)
-        val r = svc.applyPacket(job, "mcp")
+        val r = if (dryRun) svc.dryRunPacket(job, "mcp") else svc.applyPacket(job, "mcp")
         val text = r.reply ?: r.toast ?: r.outcome
-        return if (r.outcome == Outcomes.DONE) Started(text) else Skipped("${p.company} — ${p.title}: $text")
+        return if (r.outcome == Outcomes.DONE || r.outcome == Outcomes.DRY_RUN) Started(text) else Skipped("${p.company} — ${p.title}: $text")
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────────────

@@ -171,6 +171,8 @@ With `JOBBOT_DRY_RUN=true` it runs these checks and stops.
 - A STATUS.md line JobBot can't read (a `- …` item that isn't `- <time> | <state> | <note>`) means its real state is unknown, so the packet needs your say-so. A `completed` line is recognised whatever its note or spacing, in any case.
 - Two packets with the same apply URL count as one job.
 
+**Dry run.** With `JOBBOT_DRY_RUN=true`, `cargo_apply` and `cargo_apply_ready` run every eligibility, hash, URL and approval check and then answer `[dry run] Would apply to … with …` (under `would_start`, never `started`). No browser is opened, no fill is queued, no review card is posted, and nothing is written or pushed to STATUS.md; each packet leaves one `dry_run` action record that never blocks the real application. `cargo_append_status` returns the line it would append. Reads, searches and `cargo_send_*` are unaffected, since they change nothing for anyone else. `make doctor` warns while it is on.
+
 **Token.** A fine-grained GitHub token (this repo only, Contents read/write) lives in `<jobbot-secrets>/cargo-github-token`, mode 600, mounted into `jobbot-mcp` only. The `jobbot` container never has it, so the model cannot read it. `git` gets it as an `http.extraHeader` through its environment for network commands only, so it is not in argv, `.git/config` or the remote URL, and it is scrubbed from any output. Rotate it by replacing the file; it is read on every network command, so no restart is needed.
 
 **Checkout.** `<data root>/jobbot-cargo`, mounted at `/cargo` in `jobbot-mcp`. It is refreshed at most once a minute (and before every apply and write). If GitHub is unreachable the tools say so and serve the last copy. STATUS.md is merged with git's union rule in this checkout (`.git/info/attributes`, not in the repo), so another agent appending to the same file at the same moment keeps both lines instead of conflicting. A conflict nothing can merge is aborted, never left half-rebased. A STATUS line that could not be pushed stays committed locally and is pushed by the next sync. `make doctor` checks the token file, its mode and the last sync.
@@ -246,7 +248,7 @@ The model has **no send tool**.
 | `JOBBOT_FILL_MODEL` | The model that plans application fills. Defaults to `JOBBOT_MODEL`; set it to pin the fill model separately, so tuning the chat model never changes how applications are filled. Currently `deepseek-v4.1-flash:cloud`. |
 | `JOBBOT_MODEL` | Chosen by the env-llm-tuner skill. Default `deepseek-v4.1-flash:cloud`. Ollama Cloud ids end in `:cloud`; the bare name 404s. The fallback is oMLX `Qwen3.6-35B-A3B-OptiQ-4bit`. |
 | `JOBBOT_ACTIONS` | Verbs JobBot acts on. `NOTIFIER_TELEGRAM_ACTIONS` must be a subset. |
-| `JOBBOT_DRY_RUN` | `true` validates and logs taps but does nothing. |
+| `JOBBOT_DRY_RUN` | `true` runs every check and logs what would happen, but does nothing: taps, resume uploads, `cargo_apply`, `cargo_apply_ready` and `cargo_append_status` (see below). Reading and sending files still work. |
 | `JOBBOT_SEND_ENABLED` | Kill switch for ✅ Send (default `false`). |
 | `JOBBOT_MAX_SENDS_PER_DAY` | Daily cap on sends (default 10). |
 | `NOTIFIER_TELEGRAM_ACTIONS` | Verbs the cards show. |

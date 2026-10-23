@@ -265,4 +265,39 @@ class ApplyServiceCargoTest {
         assertEquals(Outcomes.DONE, bare.applyPacket(packet(), "mcp").outcome)
         assertNull(rig.events.firstOrNull())
     }
+
+    @Test
+    fun `a packet dry run records an action and touches nothing else`() {
+        val rig = Rig()
+        val r = rig.service.dryRunPacket(packet(), "mcp")
+        assertEquals(Outcomes.DRY_RUN, r.outcome)
+        assertEquals("[dry run] Would apply to Acme — SDET with Richard-Hatcher-Resume.pdf.", r.reply)
+        assertEquals(emptyList(), rig.events, "no STATUS line")
+        assertEquals(emptyList(), rig.jobs, "no fill")
+        assertEquals(emptyList(), rig.page.actions, "no browser")
+        assertEquals(emptyList(), rig.outbox.pending(), "no review")
+        val row = rig.store.recent(5).single()
+        assertEquals("dry_run", row.status)
+        assertEquals("apply", row.verb, "not a fill, so it never counts as one")
+        assertTrue(row.details!!.contains(folder))
+    }
+
+    @Test
+    fun `a packet dry run checks the URL like a real one`() {
+        val rig = Rig()
+        for (url in listOf("http://127.1/x", "file:///etc/passwd", "")) {
+            val r = rig.service.dryRunPacket(packet(url = url), "mcp")
+            assertEquals(Outcomes.REFUSED, r.outcome, url)
+        }
+        assertEquals(emptyList(), rig.store.recent(5))
+    }
+
+    @Test
+    fun `dry runs leave the way clear for the real application`() {
+        val rig = Rig()
+        repeat(3) { rig.service.dryRunPacket(packet(), "mcp") }
+        assertEquals(Outcomes.DONE, rig.service.applyPacket(packet(), "mcp").outcome)
+        assertEquals(listOf("in_progress", "parked_at_review"), rig.states())
+        assertEquals(1, rig.jobs.size)
+    }
 }

@@ -62,7 +62,7 @@ class CargoToolsTest {
         ),
     )
 
-    private inner class Rig(applyEnabled: Boolean = true, git: com.jd.jobbot.cargo.GitRunner = ProcessGit(null)) {
+    private inner class Rig(applyEnabled: Boolean = true, git: com.jd.jobbot.cargo.GitRunner = ProcessGit(null), dryRun: Boolean = false) {
         val repo = CargoRepo(tmp.resolve("checkout"), remote.bare.toString(), "main", git, clock, Duration.ZERO)
         val store = ActionStore(":memory:", clock)
         val outbox = Outbox(tmp.resolve("o.db").toString(), tmp.resolve("shots"), clock)
@@ -82,7 +82,7 @@ class CargoToolsTest {
             lookup, store, emptyMap(), setOf(user), setOf("apply"), false, Duration.ofDays(7), clock,
             idHandlers = mapOf("submit" to IdVerbHandler(service::submit), "discard" to IdVerbHandler(service::discard), "resume" to IdVerbHandler(service::resume)),
         )
-        val tools = CargoTools(repo, outbox, if (applyEnabled) service else null, clock)
+        val tools = CargoTools(repo, outbox, if (applyEnabled) service else null, clock, dryRun)
         fun tap(verb: String, n: Long) = taps.tap(TapRequest(verb, n, user, user, 5, now.epochSecond))
         fun review() = outbox.pending().last()
         fun fillId() = review().buttons.first { it.callbackData.startsWith("submit:") }.callbackData.substringAfter(':').toLong()
@@ -719,5 +719,125 @@ class CargoToolsTest {
         assertTrue(skipped.getValue("applications/draftprogress/sdet/v00").contains("another agent"))
         assertTrue(skipped.getValue("applications/draftnew/sdet/v00").contains("DRAFT"))
         assertEquals(7, started.size + skipped.size + o["already_completed"]!!.jsonPrimitive.int, "every packet is accounted for")
+    }
+
+    // ── JOBBOT_DRY_RUN ───────────────────────────────────────────────────────────────────────
+
+    private fun remoteCommits() = CargoRemote.git(remote.freshClone(), "rev-list", "--count", "HEAD").toInt()
+
+    @Test
+    fun `dry run checks a packet and says what it would do, and does nothing`() {
+        seedStandard()
+        val rig = Rig(dryRun = true)
+        val before = remoteCommits()
+        val o = rig.tools.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
+        assertEquals("true", o["dry_run"]!!.jsonPrimitive.content)
+        assertEquals("[dry run] Would apply to Apple — Tools Engineer with Richard-Hatcher-Resume.pdf.", o["result"]!!.jsonPrimitive.content)
+        assertEquals(0, rig.jobs.size, "no fill ran")
+        assertEquals(emptyList(), rig.page.actions, "no browser was touched")
+        assertEquals(emptyList(), rig.outbox.pending(), "no review card was posted")
+        assertEquals(before, remoteCommits(), "nothing was pushed to the cargo repo")
+        assertFalse(Files.exists(remote.freshClone().resolve("applications/apple/tools/v03/STATUS.md")), "STATUS.md was not created")
+        val row = rig.store.recent(5).single()
+        assertEquals("dry_run", row.status)
+        assertEquals("apply", row.verb)
+        assertEquals(AD_HOC_SEQ, row.seq)
+        assertTrue(row.details!!.contains("applications/apple/tools/v03"))
+    }
+
+    @Test
+    fun `dry run still enforces every rule a real run does`() {
+        seedStandard()
+        remote.packet("badhash", "sdet", badHash = true)
+        remote.packet("badurl", "sdet", url = "http://127.1/x")
+        remote.publish()
+        val t = Rig(dryRun = true).tools
+        assertTrue(t.applyOne(req("folder" to "applications/tiktok/qa/v00")).fails().contains("needs Richard's approval"))
+        assertTrue(t.applyOne(req("folder" to "applications/flex/sdet/v00", "approval_quote" to "yes")).fails().contains("already completed"))
+        assertTrue(t.applyOne(req("folder" to "applications/capgemini/sdet/v00", "approval_quote" to "yes")).fails().contains("no apply URL"))
+        assertTrue(t.applyOne(req("folder" to "applications/becu/sdet/v01")).fails().contains("older version"))
+        assertTrue(t.applyOne(req("folder" to "applications/badhash/sdet/v00")).fails().contains("hash"))
+        assertTrue(t.applyOne(req("folder" to "applications/badurl/sdet/v00")).fails().contains("apply URL"))
+        assertTrue(t.applyOne(req("folder" to "applications/nope/x/v00")).fails().contains("No current packet"))
+    }
+
+    @Test
+    fun `dry run with Richard's approval passes a DRAFT, and still writes nothing`() {
+        seedStandard()
+        val rig = Rig(dryRun = true)
+        val before = remoteCommits()
+        rig.tools.applyOne(req("folder" to "applications/tiktok/qa/v00", "approval_quote" to "apply to the tiktok draft")).ok()
+        assertEquals(before, remoteCommits())
+        assertEquals(0, rig.jobs.size)
+    }
+
+    @Test
+    fun `dry run of apply-ready lists what would start under its own name, and starts nothing`() {
+        seedStandard()
+        val rig = Rig(dryRun = true)
+        val before = remoteCommits()
+        val o = rig.tools.applyReady(req()).ok()
+        assertEquals("true", o["dry_run"]!!.jsonPrimitive.content)
+        assertTrue("started" !in o, "a dry run never claims to have started anything")
+        assertEquals(listOf("applications/apple/sdet/v02", "applications/apple/tools/v03"), o["would_start"]!!.jsonArray.map { it.jsonObject["packet"]!!.jsonPrimitive.content })
+        assertTrue(o["would_start"]!!.jsonArray.all { it.jsonObject["result"]!!.jsonPrimitive.content.startsWith("[dry run] Would apply") })
+        assertTrue(o["note"]!!.jsonPrimitive.content.contains("nothing was started"))
+        // The same packets are skipped for the same reasons as in a live run.
+        val skipped = o["skipped"]!!.jsonArray.map { it.jsonObject["packet"]!!.jsonPrimitive.content }.toSet()
+        assertTrue("applications/becu/sdet/v01" in skipped && "applications/tiktok/qa/v00" in skipped && "applications/capgemini/sdet/v00" in skipped)
+        assertEquals(0, rig.jobs.size)
+        assertEquals(emptyList(), rig.outbox.pending())
+        assertEquals(before, remoteCommits())
+        assertEquals(2, rig.store.recent(10).count { it.status == "dry_run" })
+    }
+
+    @Test
+    fun `dry run of apply-ready honours its limit like a live run`() {
+        seedStandard()
+        val o = Rig(dryRun = true).tools.applyReady(req("max" to 1)).ok()
+        assertEquals(1, o["would_start"]!!.jsonArray.size)
+        assertTrue(o["skipped"]!!.jsonArray.any { it.jsonObject["why"]!!.jsonPrimitive.content.contains("limit of 1") })
+    }
+
+    @Test
+    fun `dry run writes no status line, but checks the same rules`() {
+        seedStandard()
+        val rig = Rig(dryRun = true)
+        val before = remoteCommits()
+        val o = rig.tools.appendStatus(req("folder" to "applications/apple/tools/v03", "state" to "blocked", "note" to "needs a code")).ok()
+        assertEquals("true", o["dry_run"]!!.jsonPrimitive.content)
+        assertTrue(o["would_append"]!!.jsonPrimitive.content.endsWith("| blocked | needs a code"), o.toString())
+        assertEquals(before, remoteCommits())
+        assertTrue(rig.tools.appendStatus(req("folder" to "applications/becu/sdet/v00", "state" to "completed", "note" to "x")).fails().contains("newest version"))
+        assertTrue(rig.tools.appendStatus(req("folder" to "applications/apple/tools/v03", "state" to "completed", "note" to "x")).fails().contains("Richard's own words"))
+        assertTrue(rig.tools.appendStatus(req("folder" to "applications/flex/sdet/v00", "state" to "blocked", "note" to "x")).fails().contains("already completed"))
+    }
+
+    @Test
+    fun `dry run does not stop reading or sending files, which change nothing for anyone else`() {
+        seedStandard()
+        val rig = Rig(dryRun = true)
+        assertEquals(6, rig.tools.list(req()).ok()["total_roles"]!!.jsonPrimitive.int)
+        rig.tools.sendResume(req("company" to "flex")).ok()
+        assertEquals(1, rig.outbox.pending().size)
+    }
+
+    @Test
+    fun `dry run with Apply off gives the same answer as live`() {
+        seedStandard()
+        assertTrue(Rig(applyEnabled = false, dryRun = true).tools.applyOne(req("folder" to "applications/apple/tools/v03")).fails().contains("isn't switched on"))
+    }
+
+    @Test
+    fun `a dry run does not block the real application that follows`() {
+        seedStandard()
+        val dry = Rig(dryRun = true)
+        dry.tools.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
+        dry.tools.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
+        // Same store, dry run off: the real application starts normally.
+        val live = CargoTools(dry.repo, dry.outbox, dry.service, clock, dryRun = false)
+        live.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
+        assertEquals(1, dry.jobs.size)
+        assertEquals(listOf("in_progress", "parked_at_review"), dry.statusOnRemote("applications/apple/tools/v03").map { it.split(" | ")[1] })
     }
 }

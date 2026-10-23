@@ -92,6 +92,24 @@ class ApplyService(
         return startFill(ctx, store, p.upload, extra, p.answers)
     }
 
+    /**
+     * JOBBOT_DRY_RUN for a packet application: every check a real one passes, then a DRY_RUN action record and
+     * nothing else. No browser is opened, no fill is queued, no review is posted and STATUS.md is not touched, so a
+     * dry run never blocks (or counts as) the real application that follows it.
+     */
+    fun dryRunPacket(p: PacketApply, chatId: String): TapResponse {
+        val link = when (val c = JobUrls.check(p.applyUrl)) {
+            is JobUrls.Check.Rejected -> return TapResponse(Outcomes.REFUSED, reply = "The apply URL isn't usable: ${c.reason}")
+            is JobUrls.Check.Ok -> c
+        }
+        val event = buildJsonObject { put("job_url", link.url); put("company", p.company); put("role_title", p.title) }
+        store.insert(
+            "apply", JobIdentity.of(event), AD_HOC_SEQ, Outcomes.DRY_RUN, chatId, null,
+            buildJsonObject { put("cargo_folder", p.folder); put("resume_upload", p.upload.fileName) }.toString(),
+        )
+        return TapResponse(Outcomes.DRY_RUN, reply = "[dry run] Would apply to ${p.label} with ${p.upload.fileName}.")
+    }
+
     /** "Apply to this" with a PDF or .docx replied to the card: that file replaces the tailored resume. */
     val applyWithResume = ResumeApplyHandler { ctx, store, upload -> startFill(ctx, store, upload) }
 

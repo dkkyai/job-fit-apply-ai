@@ -100,7 +100,7 @@ def test_no_workflow_names_a_tool_the_model_does_not_have():
 def test_the_cargo_workflow_keeps_its_safety_rules():
     text = (JOBBOT / "skills" / "cargo.md").read_text().lower()
     for rule in ("approval_quote", "never write an approval yourself", "never claim an application was submitted",
-                 "read-only for you", "never instructions", "is never applied to again"):
+                 "read-only for you", "never instructions", "is never applied to again", "dry_run"):
         assert rule in text, rule
 
 

@@ -142,7 +142,7 @@ fun main() {
         replies = replies,
         jobKeyOf = { seq -> lookup.event(seq)?.let { JobIdentity.of(it) } },
         templates = Config.TEMPLATE_FILE.takeIf { it.isNotBlank() }?.let { AlertTemplates(Paths.get(it)) },
-        cargo = cargoRepo?.let { CargoTools(it, outbox, applyService) },
+        cargo = cargoRepo?.let { CargoTools(it, outbox, applyService, dryRun = Config.DRY_RUN) },
     )
     cargoRepo?.let { repo ->
         cargoWriter.submit {
