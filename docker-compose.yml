@@ -434,9 +434,16 @@ services:
       JOBBOT_MODEL: "${JOBBOT_MODEL:-deepseek-v4.1-flash:cloud}"
       JOBBOT_GMAIL_CREDENTIALS_FILE: "/poller-secrets/dkkytech_credentials.json"
       JOBBOT_TEMPLATE_FILE: "/templates/high-fit.html"
+      # jobbot-cargo: the private GitHub repo of application packets. The token is a file in jobbot-secrets
+      # (below), never an env value, so it stays out of `docker inspect` and out of the agent container.
+      JOBBOT_CARGO_TOKEN_FILE: "${JOBBOT_CARGO_TOKEN_FILE:-/secrets/cargo-github-token}"
+      JOBBOT_CARGO_REPO_URL: "${JOBBOT_CARGO_REPO_URL:-https://github.com/dkkyai/jobbot-cargo.git}"
+      JOBBOT_CARGO_DIR: "/cargo"
     volumes:
       - "${JD_JOBBOT_TEMPLATES_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/jobbot-templates}:/templates"
       - "${JD_JOBBOT_MCP_STATE_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/jobbot-mcp-state}:/state"
+      # The jobbot-cargo checkout. Only jobbot-mcp mounts it; it holds no secret (the token lives in /secrets).
+      - "${JD_JOBBOT_CARGO_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/jobbot-cargo}:/cargo"
       # The whole directory, not the file: a poller re-auth deletes and recreates the token, and a
       # single-file bind mount would stay pinned to the deleted inode.
       - "${JD_POLLER_SECRETS_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/poller-secrets}:/poller-secrets:ro"

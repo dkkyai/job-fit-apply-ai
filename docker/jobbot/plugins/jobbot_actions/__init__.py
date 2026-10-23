@@ -1,4 +1,4 @@
-"""jobbot_actions — JFAA card buttons and /jdstatus for the JobBot Hermes gateway.
+"""jobbot_actions — JFAA card buttons, resume uploads, files for Richard and /jdstatus for the JobBot Hermes gateway.
 
 Telegram allows one update reader per bot token, and JobBot's gateway is it: taps on the cards the
 JFAA notifier sends arrive here. Hermes' core dispatcher ignores callback data it does not own, so
@@ -74,7 +74,7 @@ async def _wake_agent(adapter, query, message, prompt):
 
 
 def _wire(application, adapter):
-    from telegram.ext import ApplicationHandlerStop, CallbackQueryHandler
+    from telegram.ext import ApplicationHandlerStop, CallbackQueryHandler, MessageHandler, filters
 
     global _bot, _loop
     _bot = application.bot
@@ -118,9 +118,55 @@ def _wire(application, adapter):
             await _wake_agent(adapter, query, message, result["agent_prompt"])
         raise ApplicationHandlerStop
 
+    async def on_resume(update, context):
+        """A PDF or .docx with "apply" in the caption: apply with that resume.
+
+        Either a reply to a job's card (the card's #J reference says which job), or the job's link in the
+        caption. The file goes straight to jobbot-mcp, which validates it and runs the same fill as the
+        Apply button, ending at ✅ Submit. Anything else is left for Hermes to handle as usual.
+        """
+        message = update.message
+        doc = getattr(message, "document", None)
+        user = getattr(message, "from_user", None)
+        if doc is None or user is None or not core.wants_apply(message.caption):
+            return
+        if not core.is_allowed(user.id, _allowed):
+            return  # Hermes' own authorization answers strangers
+        name = doc.file_name or ""
+        if core.resume_extension(name) is None:
+            await message.reply_text(core.RESUME_TYPES)
+            raise ApplicationHandlerStop
+        if not doc.file_size or doc.file_size > core.MAX_RESUME_BYTES:
+            await message.reply_text(core.RESUME_TOO_BIG)
+            raise ApplicationHandlerStop
+        card = getattr(message, "reply_to_message", None)
+        seq = core.job_ref_from((card.text or card.caption or "") if card else "")
+        url = None if seq else core.job_url_from(message.caption)
+        if seq is None and url is None:
+            await message.reply_text(core.NEEDS_JOB)
+            raise ApplicationHandlerStop
+        try:
+            file = await doc.get_file()
+            data = bytes(await file.download_as_bytearray())
+            payload = core.apply_resume_payload(
+                user.id, message.chat_id, name, data, seq=seq, job_url=url,
+                message_id=card.message_id if seq else None,
+                message_date=int(card.date.timestamp()) if seq and getattr(card, "date", None) else None,
+            )
+            result = await asyncio.to_thread(_client.apply_resume, payload)
+        except Exception as e:  # Telegram download failure, unreachable backend, bad JSON, timeout
+            logger.warning("resume apply failed for %s: %s", seq or url, e)
+            await message.reply_text(core.UNAVAILABLE)
+            raise ApplicationHandlerStop
+        logger.info("resume apply %s -> %s", seq or url, result.get("outcome"))
+        await message.reply_text(result.get("reply") or result.get("toast") or "Done.")
+        raise ApplicationHandlerStop
+
     # Group -1 runs before Hermes' catch-all callback handler (group 0); ApplicationHandlerStop
     # keeps our taps from reaching it, and non-matching callbacks never enter this handler.
     application.add_handler(CallbackQueryHandler(on_button, pattern=core.CALLBACK_PATTERN), group=-1)
+    # Same group, earlier than Hermes' media handler: a resume sent to apply never reaches the agent.
+    application.add_handler(MessageHandler(filters.Document.ALL, on_resume), group=-1)
     if _home_chat and _loop is not None:
         _loop.create_task(_pump_outbox(application.bot))
     logger.info("jobbot_actions: card-button handler registered")
@@ -165,6 +211,13 @@ async def _post_outbox_item(bot, chat_id, item):
     row = item.get("buttons") or []
     markup = _markup([row]) if row else None
     text = item.get("text") or ""
+    if item.get("has_document"):
+        data = await asyncio.to_thread(_client.outbox_document, item["id"])
+        await bot.send_document(
+            chat_id=chat_id, document=data, filename=item.get("document_name") or "document",
+            caption=text[:1024] or None, reply_markup=markup,
+        )
+        return
     if item.get("has_photo"):
         photo = await asyncio.to_thread(_client.outbox_photo, item["id"])
         if core.caption_fits(text):

@@ -33,4 +33,50 @@ class OutboxTest {
             assertEquals(Outbox.MAX_TEXT, o.pending().single().text.length)
         }
     }
+
+    @Test
+    fun `documents are queued with their name and delivered once`() {
+        Outbox(dir.resolve("o.db").toString(), dir.resolve("shots")).use { o ->
+            val text = o.post("plain")
+            val doc = o.postDocument("Résumé for Acme", "Richard-Hatcher-Resume.pdf", byteArrayOf(37, 80, 68, 70))
+            val item = o.pending().single { it.id == doc }
+            assertTrue(item.hasDocument)
+            assertEquals("Richard-Hatcher-Resume.pdf", item.documentName)
+            assertEquals("Résumé for Acme", item.text)
+            assertContentEquals(byteArrayOf(37, 80, 68, 70), o.document(doc))
+            assertTrue(!o.pending().single { it.id == text }.hasDocument)
+            assertNull(o.document(text))
+            o.delivered(doc)
+            assertEquals(listOf(text), o.pending().map { it.id })
+        }
+    }
+
+    @Test
+    fun `the queued file is a copy, unaffected by later changes to its source`() {
+        val source = dir.resolve("source.pdf")
+        java.nio.file.Files.write(source, byteArrayOf(1, 2, 3))
+        Outbox(dir.resolve("o.db").toString(), dir.resolve("shots")).use { o ->
+            val id = o.postDocument("x", "r.pdf", java.nio.file.Files.readAllBytes(source))
+            java.nio.file.Files.write(source, byteArrayOf(9))
+            assertContentEquals(byteArrayOf(1, 2, 3), o.document(id))
+        }
+    }
+
+    @Test
+    fun `an outbox database from before documents existed is upgraded in place`() {
+        val db = dir.resolve("old.db").toString()
+        java.sql.DriverManager.getConnection("jdbc:sqlite:$db").use { c ->
+            c.createStatement().use {
+                it.execute("CREATE TABLE outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, buttons TEXT, photo TEXT, created_at INTEGER NOT NULL, delivered_at INTEGER)")
+                it.execute("INSERT INTO outbox(text, buttons, created_at) VALUES ('queued before the upgrade', '[]', 1)")
+            }
+        }
+        Outbox(db, dir.resolve("shots")).use { o ->
+            assertEquals("queued before the upgrade", o.pending().single().text)
+            o.postDocument("new", "a.pdf", byteArrayOf(1))
+            assertEquals(2, o.pending().size)
+        }
+        // Opening it a second time must not trip over the columns that now exist.
+        Outbox(db, dir.resolve("shots")).use { o -> assertEquals(2, o.pending().size) }
+    }
 }

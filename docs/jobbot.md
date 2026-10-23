@@ -25,10 +25,11 @@ Processor ──► Bridge (completed feed: completed_seq, job_url, message_id, 
 - **One bot, split by direction.** The notifier only calls `sendMessage`; its Telegram client cannot build any other method. The `jobbot` container is the token's **only** `getUpdates` reader. Telegram allows one, and a second reader gets HTTP 409. `make doctor` fails while the retired `pm2 nanobot-jobbot` is online.
 - **Alerts never depend on JobBot.** The notifier works with `jobbot` stopped. Without JobBot, cards just have no working action buttons, so leave `NOTIFIER_TELEGRAM_ACTIONS` blank whenever JobBot is down for long.
 - **Buttons are code, not prompts.** A tap is decided by `jobbot-mcp`'s `TapService`, which is deterministic Kotlin. The model never sees a tap unless a verb hands work to it (Reply, later).
-- **The model's tools are narrow.** Its Telegram toolsets are `web`, `memory`, `clarify`, `session_search` and the JFAA MCP server (`mcp__jfaa__*`), which has up to 16 tools:
+- **The model's tools are narrow.** Its Telegram toolsets are `web`, `memory`, `clarify`, `session_search` and the JFAA MCP server (`mcp__jfaa__*`), which has up to 26 tools:
   - **Read:** `get_job`, `list_high_fit`, `read_job_file`, `list_tracks`, `get_profile`, `get_track_timeline`, plus `get_job_email` and `get_reply_draft` with Gmail, and `get_alert_template` with a template file.
   - **Tracks:** `add_track_note` and `set_track_status`. They append to a job's history in the bridge's `track_events` as `source=jobbot`, and only on a track matched by `track_id` or `artifact_url`, never a fuzzy match.
   - **Gmail:** `write_reply_draft` (saves a draft, never sends) and `request_send_approval` (posts a ✅ Send preview; see Sending replies). Registered only when the Gmail token and credentials files are set.
+  - **jobbot-cargo:** ten `cargo_*` tools over Richard's private packet repo (see Application packets). Registered only when `JOBBOT_CARGO_TOKEN_FILE` is set.
   - **Card template:** `preview_alert_template`, `update_alert_template` and `revert_alert_template` (see Card template). Registered only when `JOBBOT_TEMPLATE_FILE` is set.
 
   Hermes's terminal, file, browser, code-execution, delegation, cron and skill-editing toolsets are disabled. Config, persona and plugins are re-seeded from the image on every start (`docker/jobbot/seed.py`).
@@ -108,6 +109,73 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 2. Run `scripts/setup-tailscale-serve.sh`.
 3. Open the viewer and sign in to Google as dkkytech@ once. That also covers 2-step verification.
 4. Set `JOBBOT_APPLY_ENABLED=true`.
+
+## Apply with your own resume
+
+Send JobBot a resume from your machine and it applies with that file instead of the tailored one. Two ways, both in Telegram, both with the word **apply** in the caption:
+
+| You send | Caption | What happens |
+|---|---|---|
+| A PDF or .docx **as a reply to a job's card** | `apply to this` | Applies to that card's job. The card's `#J` reference says which |
+| A PDF or .docx **with a job link** | `apply https://jobs.lever.co/acme/123` | Applies at that link. No JFAA card needed |
+
+If you reply to a card *and* put a link in the caption, the card wins. Without "apply" in the caption the file goes to the agent as usual.
+
+**How it runs.** The `jobbot_actions` plugin catches the document before Hermes does and posts it to `jobbot-mcp` (`POST /plugin/apply-resume`). From there it is the same fill as the Apply button: `FillAgent` in JobBot's browser, a review card, and nothing submitted until **✅ Submit**. The model never sees the file and the agent never sees the message.
+
+**What is different from the Apply button**
+- **Your file is uploaded as-is**, under its own name (`Richard Hatcher - Senior SDET.pdf`, or `.docx` with the Word content type).
+- **Answers still come from `candidate_profile.yaml`** (and `resume.yaml`). The model cannot read your file, so it answers only from the profile, and it is told so. The tailored resume and its cover letter are dropped for this application, because they describe a different resume.
+- **No cover letter.** If a form requires one, JobBot hands off with ▶ Continue.
+- **Skipped jobs work.** A pay-gated or otherwise skipped card has no Apply button, but a resume reply to it applies, because you chose the file. It still needs a posting URL.
+- **The review card says so:** `Resume: <file name> (your file, not the tailored one). No cover letter.`
+
+**Checks, in code, before anything is filled**
+1. You are in `JOBBOT_TELEGRAM_ALLOWED_USERS`.
+2. For a card reply: the card is at most 7 days old (`JOBBOT_CARD_TTL_DAYS`) and the job resolves on the bridge.
+3. Apply is enabled (`apply` in `JOBBOT_ACTIONS`, `JOBBOT_APPLY_ENABLED=true`). Otherwise JobBot says it can't use the file; it is not silently dropped.
+4. **Only PDF and .docx**, at most 10 MB. The bytes must really be one: a PDF has a `%PDF-` header; a .docx is a zip with `word/document.xml`, and one carrying `word/vbaProject*` (macros) is refused. Names lose any path and anything that is not plain text.
+5. For a link: `http` or `https` only, no username or password in it, and never an IP address, `localhost`, a single-word host or a `.local` / `.internal` / `.lan` name. The apply browser's own network rules (`SitePolicy`) still apply once it is there.
+
+With `JOBBOT_DRY_RUN=true` it runs these checks and stops.
+
+**Same job twice.** A second file for a job that is already being filled, waiting on you, or waiting for review is not used, and JobBot says so (Discard the open one, then send again). Identity is the posting URL, so a link and a card for the same posting count as one job.
+
+**Link applications have no JFAA track.** Submitting one posts `Submitted: Job at <site>` but does not touch a track, because none exists. `/jdstatus` lists them as `(not a JFAA job)`.
+
+**Not supported:** sending the file and the link in two separate messages; a `.doc`, `.pages` or `.rtf`; a second attachment in the same message.
+
+## Application packets (jobbot-cargo)
+
+`jobbot-cargo` is a private GitHub repo (`dkkyai/jobbot-cargo`) of application packets: `applications/<company>/<role>/vNN/` with `APPLICATION_PACKET.md` (status READY/DRAFT, apply URL, the file to upload), `application-answers.md`, `job-posting.md`, the résumé files and an append-only `STATUS.md`. JobBot reads all of it and writes exactly one thing: lines appended to `STATUS.md`.
+
+**What you can ask in Telegram:** "how many are READY", "how many are in DRAFT", "what haven't we applied to", "send me the latest résumé for Apple", "apply to all the ready packets", "apply to the BECU one", or any question about the repo's contents.
+
+| Tool | Does |
+|---|---|
+| `cargo_list` | Counts by status and by application state, and one row per role with whether it can be applied to now |
+| `cargo_get_packet`, `cargo_files`, `cargo_read_file`, `cargo_search` | Read anything in the repo. A `job-posting.md` is marked as untrusted web text |
+| `cargo_send_resume`, `cargo_send_file` | Send a file to your Telegram as a document. A company with several roles is not guessed at |
+| `cargo_append_status` | The only write: one line on a packet's STATUS.md, committed and pushed |
+| `cargo_apply`, `cargo_apply_ready` | Start applications from READY packets (below) |
+
+**How an application runs.** The same fill as a pasted link: JobBot's browser opens the packet's apply URL, uploads the packet's own résumé under its own name, and answers from `application-answers.md` for the application's questions and from `candidate_profile.yaml` for demographics, EEO, pay and preferences. Where the answers say `ask`, or a question isn't covered, it hands off to you. It ends at **✅ Submit / ✖ Discard**; the model can start an application but never submit one. Fills run one at a time, so "apply to all the ready packets" posts one review card after another.
+
+**STATUS.md, written by code.** Each step of a packet application appends a line, commits as `JobBot` and pushes: `in_progress` when the form is opened, `parked_at_review` when it is filled and waiting for your tap, `completed` when you tap Submit and the site confirms, and `blocked` for a hand-off, a failed fill, a Discard, an expired review or an unconfirmed submit. Earlier lines are never edited. A line the model writes with `cargo_append_status` is limited to the same four states, and only to the newest version of a role (an older version takes no lines at all); `completed` and a reopened packet need your own words (`approval_quote`), and a line cannot be forged with an embedded newline.
+
+**Who may be applied to** (the repo's own rules, in `CargoEligibility`):
+- READY and `not_started`, or `in_progress` for more than 2 h. A fresher `in_progress` line may be another agent filling the same form, so it is left alone whatever anyone says.
+- **`completed` never**, whatever anyone says.
+- Needs your say-so: a **DRAFT**, `blocked` / `parked_at_review`, or a role with a **⚠ older version** already worked on. JobBot asks you; only your exact words, passed as `approval_quote` and written into STATUS.md (`draft approved: "…"`), unlock it. `cargo_apply_ready` never applies to these; it skips and lists them with the reason.
+- The packet's résumé must match the hash its files table lists, and be a real PDF or .docx. A packet with no apply URL is never started, and its URL gets the same check as a pasted link (public http/https only; never an IP address in any form (`127.1`, `0x7f.0.0.1` and `2130706433` too), `localhost`, a `.internal` name or a link with a password in it).
+- A STATUS.md line JobBot can't read (a `- …` item that isn't `- <time> | <state> | <note>`) means its real state is unknown, so the packet needs your say-so. A `completed` line is recognised whatever its note or spacing, in any case.
+- Two packets with the same apply URL count as one job.
+
+**Token.** A fine-grained GitHub token (this repo only, Contents read/write) lives in `<jobbot-secrets>/cargo-github-token`, mode 600, mounted into `jobbot-mcp` only. The `jobbot` container never has it, so the model cannot read it. `git` gets it as an `http.extraHeader` through its environment for network commands only, so it is not in argv, `.git/config` or the remote URL, and it is scrubbed from any output. Rotate it by replacing the file; it is read on every network command, so no restart is needed.
+
+**Checkout.** `<data root>/jobbot-cargo`, mounted at `/cargo` in `jobbot-mcp`. It is refreshed at most once a minute (and before every apply and write). If GitHub is unreachable the tools say so and serve the last copy. STATUS.md is merged with git's union rule in this checkout (`.git/info/attributes`, not in the repo), so another agent appending to the same file at the same moment keeps both lines instead of conflicting. A conflict nothing can merge is aborted, never left half-rebased. A STATUS line that could not be pushed stays committed locally and is pushed by the next sync. `make doctor` checks the token file, its mode and the last sync.
+
+**Limits.** The model has no shell and no file edits: it cannot change a résumé, an answers file or anything else. Only the PDF is uploaded; the .docx and .txt copies are for you (`cargo_send_resume` with `format`). `INDEX.md` is never read for state, because it is only as current as its last sync.
 
 ## Card template
 
@@ -192,7 +260,7 @@ docker compose --env-file ~/projects/job-fit-apply-ai/.env --profile jobbot up -
 
 **Check.**
 - `make doctor` has a JobBot section.
-- `docker logs jobfit-jobbot` should show `[jobbot-seed] wrote config.yaml`, `Wired native handlers from plugin 'jobbot_actions'`, `MCP server 'jfaa' (HTTP): registered 16 tool(s)` (12 without Gmail), and `Connected to Telegram (polling mode)`.
+- `docker logs jobfit-jobbot` should show `[jobbot-seed] wrote config.yaml`, `Wired native handlers from plugin 'jobbot_actions'`, `MCP server 'jfaa' (HTTP): registered 26 tool(s)` (22 without Gmail), and `jobbot-cargo: up to date`, and `Connected to Telegram (polling mode)`.
 - Gateway logs live in `${JFAA_DATA_ROOT}/jobbot/logs/`.
 
 **One-shot agent test (no Telegram):**
@@ -219,12 +287,20 @@ Then set `NOTIFIER_TELEGRAM_ACTIONS=` (blank) and recreate the notifier, so card
 |---|---|
 | Notifier unit + contract | `services/job-fit-apply-ai-notifier`: `./gradlew test` |
 | jobbot-mcp unit, fake-bridge HTTP, real MCP client over HTTP | `services/job-fit-apply-ai-jobbot-mcp`: `./gradlew test` |
-| Hermes plugin (stubbed Telegram/Hermes) + seed | `docker/jobbot`: `python -m pytest tests` |
+| Hermes plugin (stubbed Telegram/Hermes) + seed, including the plugin against a real local HTTP backend | `docker/jobbot`: `python -m pytest tests` |
+| **Plugin wire contract**: one JSON file both sides test against (tap and résumé requests, tap responses, outbox items) | `docker/jobbot/contract/plugin_wire.json`; Kotlin `PluginWireContractTest`, Python `test_core.py` / `test_handler.py` |
+| **jobbot-cargo**: packet parsing and eligibility, `CargoRepo` against a real local git remote (clone, pull, append, push, conflicts, token handling), the tools | `services/job-fit-apply-ai-jobbot-mcp`: `PacketsTest`, `CargoRepoTest`, `CargoToolsTest`, `ApplyServiceCargoTest` |
+| **End to end**: a real MCP client over HTTP, the real server, a git remote and `ApplyService` with a fake browser, from "apply to the ready packets" to the pushed STATUS trail | `CargoEndToEndTest` |
+| Tool allowlist matches the tools jobbot-mcp registers; the skill files name only real tools | `docker/jobbot/tests/test_seed.py` |
 | **Live jobbot-browser** (opt-in): real Chromium over CDP + a fixture job site + a scripted model | `JOBBOT_BROWSER_CDP_URL=http://127.0.0.1:19223 FIXTURE_HOST=host.docker.internal ./gradlew test --tests '*ApplyBrowserLiveTest*'` |
 | Compose isolation (networks, mounts, ports, profile) | `make compose-data-root-test` |
 | Buttons at the wire (Bridge → Processor → Notifier) | `make e2e` |
 
 ## Known gaps
+
+- **Packet applications upload only the PDF.** A form that cannot take a PDF, or asks for pasted résumé text, hands off to you.
+
+- **Your own resume is never read.** An uploaded PDF or .docx goes to the site untouched, and answers come from the profile. If the file says something the profile doesn't, the form follows the profile.
 
 - **Memory is Hermes's built-in** (`MEMORY.md` / `USER.md`). The planned separate Hindsight bank needs a provider that isn't in the `v2026.9.24` image.
 - **Workflows are in the persona, not skills.** They live in `docker/jobbot/skills/*.md` and are appended to the persona at boot. Hermes's skills toolset is disabled, because it would let the agent write its own skills.

@@ -39,3 +39,23 @@ class EligibilityContractTest {
         }
     }
 }
+
+/** Apply with a resume Richard sent has its own rule: no tailored resume needed, a posting URL is. */
+class ResumeUploadEligibilityTest {
+    @kotlin.test.Test
+    fun `any completed job with a posting URL qualifies, whatever the pipeline did with it`() {
+        for (action in listOf("TAILOR", "OFFER", "SKIP")) {
+            kotlin.test.assertTrue(Eligibility.eligibleForResumeUpload(com.jd.jobbot.support.FakeBridge.event(5, action = action)), action)
+        }
+    }
+
+    @kotlin.test.Test
+    fun `a job without a posting URL does not`() {
+        kotlin.test.assertFalse(Eligibility.eligibleForResumeUpload(com.jd.jobbot.support.FakeBridge.event(5, jobUrl = null)))
+    }
+
+    @kotlin.test.Test
+    fun `an event that is not a completion does not`() {
+        kotlin.test.assertFalse(Eligibility.eligibleForResumeUpload(kotlinx.serialization.json.buildJsonObject { }))
+    }
+}

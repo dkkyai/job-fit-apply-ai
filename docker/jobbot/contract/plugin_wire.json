@@ -1,0 +1,62 @@
+{
+  "_comment": "The wire between the Hermes plugin (Python) and jobbot-mcp (Kotlin). Both sides test against this file: Kotlin decodes the requests strictly and encodes the responses; Python builds the requests and acts on the responses. Rename a field on one side and the other side's test fails.",
+  "tap_requests": [
+    {
+      "name": "a button tap on a card",
+      "args": {"verb": "apply", "seq": 7663, "user_id": 8679792351, "chat_id": 8679792351, "message_id": 55, "message_date": 1790812800},
+      "payload": {"verb": "apply", "seq": 7663, "user_id": "8679792351", "chat_id": "8679792351", "message_id": 55, "message_date": 1790812800},
+      "expect": {"verb": "apply", "seq": 7663, "userId": "8679792351", "chatId": "8679792351", "messageId": 55, "messageDate": 1790812800}
+    },
+    {
+      "name": "a Submit tap addresses the fill, not a job",
+      "args": {"verb": "submit", "seq": 12, "user_id": 42, "chat_id": 42, "message_id": 9, "message_date": 1790812801},
+      "payload": {"verb": "submit", "seq": 12, "user_id": "42", "chat_id": "42", "message_id": 9, "message_date": 1790812801},
+      "expect": {"verb": "submit", "seq": 12, "userId": "42", "chatId": "42", "messageId": 9, "messageDate": 1790812801}
+    }
+  ],
+  "resume_apply_requests": [
+    {
+      "name": "a pdf replied to a job card",
+      "args": {"user_id": 8679792351, "chat_id": 8679792351, "file_name": "Richard Hatcher.pdf", "data_b64": "JVBERg==", "seq": 7663, "message_id": 55, "message_date": 1790812800},
+      "payload": {"user_id": "8679792351", "chat_id": "8679792351", "file_name": "Richard Hatcher.pdf", "file_data": "JVBERg==", "seq": 7663, "message_id": 55, "message_date": 1790812800},
+      "expect": {"seq": 7663, "jobUrl": null, "userId": "8679792351", "chatId": "8679792351", "messageId": 55, "messageDate": 1790812800, "fileName": "Richard Hatcher.pdf", "fileData": "JVBERg=="}
+    },
+    {
+      "name": "a docx with a job link and no card",
+      "args": {"user_id": 8679792351, "chat_id": 8679792351, "file_name": "resume.docx", "data_b64": "UEs=", "job_url": "https://jobs.lever.co/acme/123"},
+      "payload": {"user_id": "8679792351", "chat_id": "8679792351", "file_name": "resume.docx", "file_data": "UEs=", "job_url": "https://jobs.lever.co/acme/123"},
+      "expect": {"seq": null, "jobUrl": "https://jobs.lever.co/acme/123", "userId": "8679792351", "chatId": "8679792351", "messageId": null, "messageDate": null, "fileName": "resume.docx", "fileData": "UEs="}
+    }
+  ],
+  "tap_responses": [
+    {
+      "name": "Archive: a toast and a new action row",
+      "response": {"outcome": "done", "toast": "Archived.", "action_row": [{"text": "↩ Undo archive", "callback_data": "undo:7663"}]},
+      "expect": {"toast": "Archived.", "reply": null, "keyboard": [["View Report"], ["↩ Undo archive"]]}
+    },
+    {
+      "name": "Apply: a reply and nothing else",
+      "response": {"outcome": "done", "toast": "Filling #J7663…", "reply": "Filling the application for Acme in the apply browser."},
+      "expect": {"toast": "Filling #J7663…", "reply": "Filling the application for Acme in the apply browser.", "keyboard": null}
+    },
+    {
+      "name": "a reply with its own Send and Cancel buttons",
+      "response": {"outcome": "awaiting_approval", "reply": "Reply draft for #J7663", "reply_row": [{"text": "✅ Send", "callback_data": "send:4"}, {"text": "✖ Cancel", "callback_data": "cancel:4"}]},
+      "expect": {"toast": null, "reply": "Reply draft for #J7663", "reply_buttons": ["send:4", "cancel:4"], "keyboard": null}
+    },
+    {
+      "name": "an expired card loses its action row",
+      "response": {"outcome": "expired", "toast": "This card is more than 7 days old, so its buttons have expired.", "action_row": []},
+      "expect": {"toast": "This card is more than 7 days old, so its buttons have expired.", "reply": null, "keyboard": [["View Report"]]}
+    }
+  ],
+  "outbox_items": [
+    {"name": "plain text", "item": {"id": 1, "text": "Reminder: the application is waiting."}, "sends": "message"},
+    {
+      "name": "a review with a screenshot and buttons",
+      "item": {"id": 2, "text": "Ready to submit Acme — SDET", "buttons": [{"text": "✅ Submit", "callback_data": "submit:2"}, {"text": "✖ Discard", "callback_data": "discard:2"}], "has_photo": true},
+      "sends": "photo"
+    },
+    {"name": "a résumé as a document", "item": {"id": 3, "text": "Résumé for Acme — SDET", "has_document": true, "document_name": "Richard-Hatcher-Resume.pdf"}, "sends": "document"}
+  ]
+}

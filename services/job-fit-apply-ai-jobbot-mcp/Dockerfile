@@ -7,9 +7,9 @@ RUN ./gradlew --no-daemon installDist
 # ── Runtime stage: JRE + dist ──
 FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
-# curl only for the container healthcheck
+# curl for the container healthcheck; git for the jobbot-cargo checkout
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/build/install/job-fit-apply-ai-jobbot-mcp/ /app/
 # Playwright attaches to jobbot-browser over CDP; it never needs its own browsers.

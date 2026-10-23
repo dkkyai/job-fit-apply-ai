@@ -35,5 +35,12 @@ object Eligibility {
         }
     }
 
+    /**
+     * Apply with a resume Richard supplied. Unlike the Apply button, this does not need a tailored resume —
+     * a skipped (e.g. pay-gated) job qualifies, because he chose the file himself. It still needs a posting URL.
+     */
+    fun eligibleForResumeUpload(event: JsonObject): Boolean =
+        (event.long("completed_seq") ?: 0) > 0 && event.str("job_url") != null
+
     fun eligibleVerbs(event: JsonObject): List<String> = VERBS.filter { eligible(it, event) }
 }

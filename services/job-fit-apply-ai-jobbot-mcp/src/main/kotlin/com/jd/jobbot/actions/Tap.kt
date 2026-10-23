@@ -17,6 +17,27 @@ data class TapRequest(
     @SerialName("message_date") val messageDate: Long? = null,
 )
 
+/** The `seq` of an application that has no JFAA card: a resume plus a job link Richard pasted. */
+const val AD_HOC_SEQ = 0L
+
+/**
+ * "Apply to this" with a resume attached. Either a reply to a job's card ([seq] is the card's `#J` reference;
+ * [messageDate] and [messageId] are the card's, so its age is checked like a tap's), or a bare resume with a
+ * [jobUrl] and no card. When both are present the card wins.
+ */
+@Serializable
+data class ResumeApplyRequest(
+    val seq: Long? = null,
+    @SerialName("job_url") val jobUrl: String? = null,
+    @SerialName("user_id") val userId: String,
+    @SerialName("chat_id") val chatId: String,
+    @SerialName("message_id") val messageId: Long? = null,
+    @SerialName("message_date") val messageDate: Long? = null,
+    @SerialName("file_name") val fileName: String? = null,
+    /** The file, base64-encoded. */
+    @SerialName("file_data") val fileData: String,
+)
+
 @Serializable
 data class InlineButton(
     val text: String,
@@ -67,6 +88,11 @@ fun interface IdVerbHandler {
 /** One verb's behavior. Handlers run only after the tap passed every shared check. */
 fun interface VerbHandler {
     fun handle(ctx: TapContext, store: ActionStore): TapResponse
+}
+
+/** Starts an application with a resume Richard supplied, after the shared checks passed. */
+fun interface ResumeApplyHandler {
+    fun handle(ctx: TapContext, store: ActionStore, upload: ResumeUpload): TapResponse
 }
 
 object Outcomes {
