@@ -39,6 +39,7 @@ services:
       start_period: 10s
 
   bridge:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-bridge
     build: ./services/job-fit-apply-ai-bridge
     container_name: ${CONTAINER_PREFIX:-jobfit}-bridge
     restart: unless-stopped
@@ -71,6 +72,7 @@ services:
       start_period: 20s
 
   frontend:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-frontend
     build:
       context: ./apps/job-fit-apply-ai-backlog
       args:
@@ -89,6 +91,7 @@ services:
       start_period: 10s
 
   markserv:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-markserv
     build: ./docker/markserv
     container_name: ${CONTAINER_PREFIX:-jobfit}-markserv
     restart: unless-stopped
@@ -110,6 +113,7 @@ services:
       start_period: 10s
 
   poller:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-poller
     build: ./services/job-fit-apply-ai-poller
     container_name: ${CONTAINER_PREFIX:-jobfit}-poller
     restart: unless-stopped
@@ -139,6 +143,7 @@ services:
     # is baked into the image.
 
   jsearch:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-jsearch
     build: ./services/job-fit-apply-ai-jsearch
     container_name: ${CONTAINER_PREFIX:-jobfit}-jsearch
     restart: unless-stopped
@@ -163,6 +168,7 @@ services:
     # are baked into the image; the JVM only runs ~once/day and exits.
 
   watchlist:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-watchlist
     build: ./services/job-fit-apply-ai-watchlist
     container_name: ${CONTAINER_PREFIX:-jobfit}-watchlist
     restart: unless-stopped
@@ -198,6 +204,7 @@ services:
   # on Apple Silicon under Docker Desktop (bundled Chromium SIGTRAPs); Steel's own api/Dockerfile
   # (apt Debian arm64 Chromium + xvfb) works. Verified end-to-end. Updated to latest main 2026-07-20.
   steel:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-steel
     build:
       context: "https://github.com/steel-dev/steel-browser.git#5880b48c1af107219ff3d904edbb8f6b76bea9b6"
       dockerfile: api/Dockerfile
@@ -264,6 +271,7 @@ services:
       start_period: 45s
 
   processor:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-processor
     build: ./services/job-fit-apply-ai-pipeline
     container_name: ${CONTAINER_PREFIX:-jobfit}-processor
     restart: unless-stopped
@@ -343,6 +351,7 @@ services:
     # --health, heartbeat freshness) is baked into the image.
 
   notifier:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-notifier
     build: ./services/job-fit-apply-ai-notifier
     container_name: ${CONTAINER_PREFIX:-jobfit}-notifier
     restart: unless-stopped
@@ -396,6 +405,7 @@ services:
   # and profile, and the deterministic button-tap logic. It sits on both networks; the agent
   # container sits on `jobbot` only, so it cannot resolve bridge, db or steel.
   jobbot-mcp:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-jobbot-mcp
     build: ./services/job-fit-apply-ai-jobbot-mcp
     container_name: ${CONTAINER_PREFIX:-jobfit}-jobbot-mcp
     profiles: ["jobbot"]
@@ -449,6 +459,7 @@ services:
     # No ports. Healthcheck (curl /health) is baked into the image.
 
   jobbot:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-jobbot
     build: ./docker/jobbot
     container_name: ${CONTAINER_PREFIX:-jobfit}-jobbot
     profiles: ["jobbot"]
@@ -483,6 +494,7 @@ services:
   # `jobbot-browser` network, from jobbot-mcp; the web viewer is published on host loopback for
   # `tailscale serve`, behind JOBBOT_BROWSER_PASSWORD. See docs/jobbot.md (Apply).
   jobbot-browser:
+    image: ${IMAGE_PREFIX:-job-fit-apply-ai}-jobbot-browser
     build: ./docker/jobbot-browser
     container_name: ${CONTAINER_PREFIX:-jobfit}-jobbot-browser
     # "apply" is the profile's old name, kept so an older COMPOSE_PROFILES still starts it.
