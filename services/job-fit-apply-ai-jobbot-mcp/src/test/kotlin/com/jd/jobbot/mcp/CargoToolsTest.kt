@@ -693,4 +693,31 @@ class CargoToolsTest {
         assertTrue(t.readFile(req()).fails().isNotBlank())
         assertTrue(t.appendStatus(req("folder" to "applications/apple/tools/v03")).fails().isNotBlank())
     }
+
+    @Test
+    fun `cargo_apply_ready accounts for every packet, started or skipped with a reason or counted as completed`() {
+        remote.packet("ready", "sdet")
+        remote.packet("done", "sdet", statusLines = listOf("- 2026-10-16T16:05:00Z | completed | confirmed"))
+        remote.packet("draftblocked", "sdet", status = "DRAFT", statusLines = listOf("- 2026-10-16T16:05:00Z | blocked | needs a code"))
+        remote.packet("draftparked", "sdet", status = "DRAFT", statusLines = listOf("- 2026-10-16T16:05:00Z | parked_at_review | filled"))
+        remote.packet("draftprogress", "sdet", status = "DRAFT", statusLines = listOf("- ${now.minusSeconds(60)} | in_progress | opened"))
+        remote.packet("readyblocked", "sdet", statusLines = listOf("- 2026-10-16T16:05:00Z | blocked | needs a code"))
+        remote.packet("draftnew", "sdet", status = "DRAFT")
+        remote.publish()
+        val rig = Rig()
+        val o = rig.tools.applyReady(req()).ok()
+        val started = o["started"]!!.jsonArray.map { it.jsonObject["packet"]!!.jsonPrimitive.content }
+        val skipped = o["skipped"]!!.jsonArray.associate { it.jsonObject["packet"]!!.jsonPrimitive.content to it.jsonObject["why"]!!.jsonPrimitive.content }
+        assertEquals(listOf("applications/ready/sdet/v00"), started)
+        assertEquals(1, o["already_completed"]!!.jsonPrimitive.int)
+        assertEquals(
+            setOf("draftblocked", "draftparked", "draftprogress", "readyblocked", "draftnew").map { "applications/$it/sdet/v00" }.toSet(),
+            skipped.keys, "no packet is silently dropped",
+        )
+        assertTrue(skipped.getValue("applications/draftblocked/sdet/v00").contains("blocked"), skipped.toString())
+        assertTrue(skipped.getValue("applications/draftparked/sdet/v00").contains("parked_at_review"))
+        assertTrue(skipped.getValue("applications/draftprogress/sdet/v00").contains("another agent"))
+        assertTrue(skipped.getValue("applications/draftnew/sdet/v00").contains("DRAFT"))
+        assertEquals(7, started.size + skipped.size + o["already_completed"]!!.jsonPrimitive.int, "every packet is accounted for")
+    }
 }

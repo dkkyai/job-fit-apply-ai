@@ -126,7 +126,8 @@ class CargoTools(
         server.addTool(
             name = "cargo_apply_ready",
             description = "Start applications for every packet that is READY and not applied to (one at a time; each ends at its own " +
-                "✅ Submit card). Packets that need Richard's say-so (a ⚠, blocked, in progress elsewhere, DRAFT) are skipped and listed.",
+                "✅ Submit card). Every other packet is listed under `skipped` with the reason (a ⚠ older version, blocked, parked, in progress " +
+                "elsewhere, DRAFT, no apply URL); only the completed ones are left out, as a count in `already_completed`.",
             inputSchema = props(emptyList(), Triple("max", "integer", "At most this many (default 10, max 20)")),
             toolAnnotations = write,
         ) { req -> applyReady(req) }
@@ -309,9 +310,10 @@ class CargoTools(
         val max = (req.int("max") ?: 10).coerceIn(1, 20)
         val started = mutableListOf<Pair<Packet, String>>()
         val skipped = mutableListOf<Pair<Packet, String>>()
+        var completed = 0
         for (p in repo.packets()) {
-            if (p.application == "completed") continue
-            if (p.status != "READY" && p.application != "not_started") continue
+            // Completed ones are counted, not listed: they are done, and listing them would bury the ones that need Richard.
+            if (p.application == "completed") { completed++; continue }
             if (started.size >= max) { skipped += p to "over this call's limit of $max"; continue }
             when (val o = start(p, null)) {
                 is Started -> started += p to o.message
@@ -321,6 +323,7 @@ class CargoTools(
         return ok(buildJsonObject {
             put("started", buildJsonArray { started.forEach { (p, m) -> add(buildJsonObject { put("packet", p.folder); put("company", p.company); put("title", p.title); put("result", m) }) } })
             put("skipped", buildJsonArray { skipped.forEach { (p, why) -> add(buildJsonObject { put("packet", p.folder); put("company", p.company); put("title", p.title); put("why", why) }) } })
+            put("already_completed", completed)
             put("note", "Each started application posts its own ✅ Submit / ✖ Discard card, one at a time. Nothing is submitted until Richard taps.")
         })
     }
