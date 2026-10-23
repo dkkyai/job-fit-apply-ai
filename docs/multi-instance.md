@@ -30,6 +30,7 @@ Then edit both (tailnet name, test-channel notifier creds, `JFAA_DATA_ROOT`,
 |---|---|---|
 | `COMPOSE_PROJECT_NAME` | `job-fit-apply-ai` (pinned in `.env` — see warning below) | `jobfit-test` |
 | `CONTAINER_PREFIX` | `jobfit` (default) | `jobfit-test` |
+| `IMAGE_PREFIX` | `job-fit-apply-ai` (default) | `jobfit-test` |
 | `COMPOSE_PROFILES` | `intake` (poller + jsearch run) | *(empty — no Gmail-touching service exists)* |
 | `JFAA_DATA_ROOT` | the prod root | a distinct dir — all six durable mounts follow |
 | `PIPELINE_ENV_FILE` | pipeline `.env` | pipeline `.env.test` |
