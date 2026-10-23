@@ -1,9 +1,15 @@
 package com.jd.jobbot.cli
 
 import com.jd.jobbot.actions.ActionStore
+import com.jd.jobbot.actions.AD_HOC_SEQ
 import com.jd.jobbot.actions.IdVerbHandler
 import com.jd.jobbot.actions.Outbox
 import com.jd.jobbot.apply.ApplyService
+import com.jd.jobbot.apply.CargoStatusListener
+import com.jd.jobbot.cargo.CargoRepo
+import com.jd.jobbot.cargo.ProcessGit
+import com.jd.jobbot.mcp.CargoTools
+import java.nio.file.Files
 import com.jd.jobbot.apply.Credentials
 import com.jd.jobbot.apply.FillAgent
 import com.jd.jobbot.apply.JobContext
@@ -61,17 +67,35 @@ fun main() {
     val files = OutputFiles(Config.OUTPUT_ROOT)
     val profile = ProfileReader(Config.RESUME_YAML, Config.CANDIDATE_PROFILE_YAML)
     val credentials = Credentials(Paths.get(Config.CREDENTIALS_FILE), Config.ACCOUNT_EMAIL)
+    val cargoRepo = if (Config.CARGO_TOKEN_FILE.isNotBlank()) {
+        if (!Files.isRegularFile(Paths.get(Config.CARGO_TOKEN_FILE))) log.error("JOBBOT_CARGO_TOKEN_FILE {} is missing — the cargo repo can't be cloned or pushed", Config.CARGO_TOKEN_FILE)
+        CargoRepo(Paths.get(Config.CARGO_DIR), Config.CARGO_REPO_URL, Config.CARGO_BRANCH, ProcessGit(Paths.get(Config.CARGO_TOKEN_FILE)))
+    } else {
+        log.warn("JOBBOT_CARGO_TOKEN_FILE not set — the jobbot-cargo tools are off")
+        null
+    }
+    // STATUS.md lines are written and pushed off the request path: a git push must never hold up a tap.
+    val cargoWriter = Executors.newSingleThreadExecutor { r -> Thread(r, "cargo-status").apply { isDaemon = true } }
     val applyService = if (Config.APPLY_ENABLED) {
         ApplyService(
             browser = PlaywrightApplyBrowser(Config.BROWSER_CDP_URL),
             fill = FillAgent(OpenAiCompatibleLlm(Config.LLM_URL, Config.FILL_MODEL), credentials, gmail?.let { Verifier(it) })::run,
             lookup = lookup,
-            contextFor = { seq -> jobContext(seq, lookup, bridge, files, profile) },
+            contextFor = { seq -> if (seq == AD_HOC_SEQ) adHocJobContext(profile) else jobContext(seq, lookup, bridge, files, profile) },
             store = store,
             outbox = outbox,
             tracks = tracks,
             viewerUrl = Config.BROWSER_VIEWER_URL.ifBlank { null },
             credentials = credentials,
+            cargoStatus = cargoRepo?.let { repo ->
+                CargoStatusListener { folder, state, note ->
+                    cargoWriter.submit {
+                        runCatching { repo.appendStatus(folder, state, note) }
+                            .onSuccess { if (!it.pushed) store.recordError("cargo status $folder", it.message) }
+                            .onFailure { store.recordError("cargo status $folder", it.message ?: it.javaClass.simpleName) }
+                    }
+                }
+            },
             reviewTtl = Duration.ofHours(Config.APPLY_REVIEW_TTL_HOURS),
             reminderAfter = Duration.ofHours(Config.APPLY_REMINDER_HOURS),
         ).also { svc ->
@@ -103,6 +127,7 @@ fun main() {
         idHandlers = applyService?.let {
             mapOf("submit" to IdVerbHandler(it::submit), "discard" to IdVerbHandler(it::discard), "resume" to IdVerbHandler(it::resume))
         } ?: emptyMap(),
+        resumeApply = applyService?.applyWithResume,
     )
     val status = StatusReport(bridge, store, Config.HANDLED_VERBS, Config.DRY_RUN, gmailAuth)
     val tools = JobbotTools(
@@ -117,7 +142,14 @@ fun main() {
         replies = replies,
         jobKeyOf = { seq -> lookup.event(seq)?.let { JobIdentity.of(it) } },
         templates = Config.TEMPLATE_FILE.takeIf { it.isNotBlank() }?.let { AlertTemplates(Paths.get(it)) },
+        cargo = cargoRepo?.let { CargoTools(it, outbox, applyService, dryRun = Config.DRY_RUN) },
     )
+    cargoRepo?.let { repo ->
+        cargoWriter.submit {
+            val s = repo.sync(force = true)
+            if (s.ok) log.info("jobbot-cargo: {} ({} roles)", s.message, repo.packets().size) else log.error("jobbot-cargo sync failed: {}", s.message)
+        }
+    }
     log.info("jobbot-mcp on :{} (dry_run={}, verbs={})", Config.PORT, Config.DRY_RUN, Config.HANDLED_VERBS)
     embeddedServer(CIO, port = Config.PORT) {
         jobbotModule(
@@ -143,6 +175,19 @@ internal fun jobContext(seq: Long, lookup: JobLookup, bridge: BridgeReadClient, 
         resumeYaml = file("tailored_resume.yaml"),
         coverLetter = file("cover_letter.txt"),
         resumePdf = e.str("job_id")?.let { runCatching { bridge.resumePdf(it) }.getOrNull() },
+    )
+}
+
+/**
+ * The profile half of a pasted-link application. The posting URL, ref and resume are filled in by ApplyService;
+ * there is no JFAA event, company, tailored resume or cover letter for a link Richard supplied himself.
+ */
+internal fun adHocJobContext(profile: ProfileReader): JobContext {
+    val p = profile.read()
+    return JobContext(
+        ref = "", company = null, title = null, jobUrl = "", accountEmail = Config.ACCOUNT_EMAIL,
+        profileYaml = listOfNotNull(p.candidateProfileYaml, p.resumeYaml).joinToString("\n---\n").ifBlank { null },
+        resumeYaml = null, coverLetter = null, resumePdf = null,
     )
 }
 

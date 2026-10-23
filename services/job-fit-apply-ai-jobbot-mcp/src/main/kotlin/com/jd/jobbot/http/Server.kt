@@ -67,6 +67,17 @@ fun Application.jobbotModule(
             val resp = taps.tap(req)
             call.respondText(JSON.encodeToString(com.jd.jobbot.actions.TapResponse.serializer(), resp), ContentType.Application.Json)
         }
+        // "Apply to this" + a resume replied to a card: the plugin forwards the file, jobbot-mcp validates and fills.
+        post("/plugin/apply-resume") {
+            val req = try {
+                JSON.decodeFromString(com.jd.jobbot.actions.ResumeApplyRequest.serializer(), call.receiveText())
+            } catch (e: Exception) {
+                call.respondText("""{"error":"bad request"}""", ContentType.Application.Json, HttpStatusCode.BadRequest)
+                return@post
+            }
+            val resp = taps.applyWithResume(req)
+            call.respondText(JSON.encodeToString(com.jd.jobbot.actions.TapResponse.serializer(), resp), ContentType.Application.Json)
+        }
         // The preview + Send/Cancel buttons for an approval the model requested (posted by the plugin).
         get("/plugin/approval/{id}") {
             val id = call.parameters["id"]?.toLongOrNull()
@@ -86,6 +97,11 @@ fun Application.jobbotModule(
             val bytes = call.parameters["id"]?.toLongOrNull()?.let { outbox?.photo(it) }
             if (bytes == null) call.respondText("", status = HttpStatusCode.NotFound)
             else call.respondBytes(bytes, ContentType.Image.PNG)
+        }
+        get("/plugin/outbox/{id}/document") {
+            val bytes = call.parameters["id"]?.toLongOrNull()?.let { outbox?.document(it) }
+            if (bytes == null) call.respondText("", status = HttpStatusCode.NotFound)
+            else call.respondBytes(bytes, ContentType.Application.OctetStream)
         }
         post("/plugin/outbox/{id}/delivered") {
             call.parameters["id"]?.toLongOrNull()?.let { outbox?.delivered(it) }

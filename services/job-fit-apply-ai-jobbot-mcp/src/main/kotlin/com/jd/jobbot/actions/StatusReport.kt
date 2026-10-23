@@ -45,7 +45,7 @@ class StatusReport(
         val recent = store.recent(5)
         if (recent.isNotEmpty()) {
             appendLine("Recent actions:")
-            recent.forEach { appendLine("• ${fmt.format(Instant.ofEpochMilli(it.updatedAt))} ${it.verb} ${JobRef.format(it.seq)} — ${it.status.replace('_', ' ')}") }
+            recent.forEach { appendLine("• ${fmt.format(Instant.ofEpochMilli(it.updatedAt))} ${it.verb} ${if (it.seq == AD_HOC_SEQ) "(not a JFAA job)" else JobRef.format(it.seq)} — ${it.status.replace('_', ' ')}") }
         }
         val errors = store.recentErrors(5)
         appendLine(if (errors.isEmpty()) "Recent errors: none" else "Recent errors:")

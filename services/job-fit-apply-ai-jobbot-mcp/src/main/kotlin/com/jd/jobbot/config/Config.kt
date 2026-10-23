@@ -75,6 +75,14 @@ object Config {
     val LLM_URL: String = get("JOBBOT_LLM_URL", "http://host.docker.internal:11434/v1")
     val FILL_MODEL: String = get("JOBBOT_FILL_MODEL", get("JOBBOT_MODEL", "deepseek-v4.1-flash:cloud"))
 
+    // ── jobbot-cargo (application packets in a private GitHub repo) ─────────────────────────────
+    /** The GitHub token file, mounted from jobbot-secrets. Blank turns the cargo tools off. */
+    val CARGO_TOKEN_FILE: String = get("JOBBOT_CARGO_TOKEN_FILE", "")
+    val CARGO_REPO_URL: String = get("JOBBOT_CARGO_REPO_URL", "https://github.com/dkkyai/jobbot-cargo.git")
+    val CARGO_BRANCH: String = get("JOBBOT_CARGO_BRANCH", "main")
+    /** Where the checkout lives (a volume owned by jobbot-mcp). */
+    val CARGO_DIR: String = get("JOBBOT_CARGO_DIR", "/cargo")
+
     /** The notifier's card template (shared volume; the notifier mounts it read-only). Blank = no template tools. */
     val TEMPLATE_FILE: String = get("JOBBOT_TEMPLATE_FILE", "")
 

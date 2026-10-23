@@ -165,6 +165,46 @@ class ApplyBrowserLiveTest {
         assertTrue(outbox.pending().last().text.startsWith("Submitted:"))
     }
 
+    @Test
+    fun `a pasted link and a docx resume fill in the real browser and submit only on the tap`() {
+        val lookup = object : JobLookup(BridgeReadClient("http://unused")) {}
+        val store = ActionStore(":memory:")
+        val outbox = Outbox(dir.resolve("o.db").toString(), dir.resolve("shots"))
+        val creds = Credentials(dir.resolve("site-credentials.json"), "dkkytech@gmail.com")
+        val model = ScriptedModel()
+        val service = ApplyService(
+            browser = PlaywrightApplyBrowser(System.getenv("JOBBOT_BROWSER_CDP_URL")),
+            fill = FillAgent(model, creds, null)::run,
+            lookup = lookup,
+            contextFor = { JobContext("", null, null, "", "dkkytech@gmail.com", "years: 15+", null, null, null) },
+            store = store, outbox = outbox, tracks = null, viewerUrl = null,
+            worker = MoreExecutors.newDirectExecutorService(),
+        )
+        val taps = TapService(lookup, store, emptyMap(), setOf("1"), setOf("apply"), false, Duration.ofDays(7),
+            idHandlers = mapOf("submit" to IdVerbHandler(service::submit), "discard" to IdVerbHandler(service::discard)),
+            resumeApply = service.applyWithResume)
+
+        // JobUrls refuses IP literals and single-label names, so FIXTURE_HOST must be a dotted name (the default is).
+        val docx = com.jd.jobbot.support.ResumeFiles.docx()
+        val r = taps.applyWithResume(
+            com.jd.jobbot.actions.ResumeApplyRequest(
+                jobUrl = "$base/job", userId = "1", chatId = "1", fileName = "Richard Hatcher.docx",
+                fileData = com.jd.jobbot.support.ResumeFiles.b64(docx),
+            ),
+        )
+        assertEquals(Outcomes.DONE, r.outcome, r.reply)
+        val review = outbox.pending().last()
+        assertTrue(review.text.contains("Resume: Richard Hatcher.docx"), review.text)
+        assertTrue(submissions.isEmpty(), "the fill must not submit")
+
+        val id = review.buttons.first().callbackData.substringAfter(':').toLong()
+        assertEquals(Outcomes.DONE, taps.tap(TapRequest("submit", id, "1", "1", 1, java.time.Instant.now().epochSecond)).outcome)
+        val body = submissions.single()
+        assertTrue(body.contains("Richard Hatcher.docx"), "the uploaded file keeps its own name")
+        assertTrue(body.contains("wordprocessingml.document"), "and its Word content type")
+        assertFalse(body.contains("RichardHatcherResume.pdf"), "the tailored resume is not sent")
+    }
+
     private fun idWhere(user: String, attr: String) = Regex(""""id":"(e\d+)"[^}]*$attr""").find(user)?.groupValues?.get(1)
 
     @Test

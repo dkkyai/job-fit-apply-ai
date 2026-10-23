@@ -254,6 +254,16 @@ else
       else warn "jobbot-browser up but not healthy  →  docker logs $P-jobbot-browser"; fi
     else bad "jobbot-browser not running  →  docker compose --profile jobbot-browser up -d jobbot-browser"; fi
   else ok "Apply not enabled — an Apply tap answers \"Not implemented yet\""; fi
+  # jobbot-cargo: the private repo of application packets. The token is a file in jobbot-secrets, never an env value.
+  if running "$P-jobbot-mcp"; then
+    if docker exec "$P-jobbot-mcp" test -s /secrets/cargo-github-token 2>/dev/null; then
+      mode="$(docker exec "$P-jobbot-mcp" stat -c '%a' /secrets/cargo-github-token 2>/dev/null || true)"
+      [ "$mode" = "600" ] && ok "jobbot-cargo token present (mode 600)" || warn "jobbot-cargo token mode is ${mode:-unknown}, expected 600  →  chmod 600 <jobbot-secrets>/cargo-github-token"
+      if docker logs "$P-jobbot-mcp" 2>&1 | grep -q "jobbot-cargo sync failed"; then
+        bad "jobbot-cargo sync failed  →  docker logs $P-jobbot-mcp | grep jobbot-cargo   (token expired or lacks Contents read/write?)"
+      elif docker logs "$P-jobbot-mcp" 2>&1 | grep -q "jobbot-cargo: "; then ok "jobbot-cargo synced"; else warn "jobbot-cargo has not synced yet"; fi
+    else warn "no cargo token at <jobbot-secrets>/cargo-github-token — the cargo_* tools are off"; fi
+  fi
   # Telegram allows one getUpdates reader per token: the retired PM2 bot would fight the container (HTTP 409).
   if command -v pm2 >/dev/null 2>&1 && pm2 jlist 2>/dev/null | python3 -c 'import json,sys; sys.exit(0 if any(p.get("name")=="nanobot-jobbot" and p.get("pm2_env",{}).get("status")=="online" for p in json.load(sys.stdin)) else 1)' 2>/dev/null; then
     bad "pm2 nanobot-jobbot is online — it reads the same bot token as the jobbot container  →  pm2 stop nanobot-jobbot"

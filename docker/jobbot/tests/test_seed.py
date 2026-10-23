@@ -33,7 +33,20 @@ def test_the_mcp_tool_allowlist_matches_jobbot_mcp():
         "get_track_timeline", "add_track_note", "set_track_status", "get_job_email",
         "get_reply_draft", "write_reply_draft", "request_send_approval",
         "get_alert_template", "preview_alert_template", "update_alert_template", "revert_alert_template",
+        "cargo_list", "cargo_get_packet", "cargo_files", "cargo_read_file", "cargo_search",
+        "cargo_send_resume", "cargo_send_file", "cargo_append_status", "cargo_apply", "cargo_apply_ready",
     ]
+
+
+def test_every_tool_jobbot_mcp_registers_is_in_the_allowlist():
+    """A tool added to jobbot-mcp but not to the include list is silently invisible to the model."""
+    import re
+    src = JOBBOT.parents[1] / "services/job-fit-apply-ai-jobbot-mcp/src/main/kotlin/com/jd/jobbot/mcp"
+    registered = set()
+    for f in src.glob("*.kt"):
+        registered |= set(re.findall(r'name = "([a-z_]+)",\s*\n\s*description', f.read_text()))
+    cfg = yaml.safe_load(seed.render_config({"JOBBOT_MCP_TOKEN": "tok"}, JOBBOT))
+    assert registered and registered == set(cfg["mcp_servers"]["jfaa"]["tools"]["include"])
 
 
 def test_missing_token_refuses_to_seed():
@@ -65,3 +78,38 @@ def test_main_overwrites_everything_and_skips_tests(tmp_path):
     assert {"__init__.py", "core.py", "plugin.yaml"} <= copied
     assert "stale.py" not in copied and "tests" not in copied
     assert oct(os.stat(home / "config.yaml").st_mode & 0o777) == "0o640"
+
+
+def test_the_cargo_workflow_names_only_real_tools_and_documents_all_of_them():
+    import re
+    text = (JOBBOT / "skills" / "cargo.md").read_text()
+    allowed = set(yaml.safe_load(seed.render_config({"JOBBOT_MCP_TOKEN": "tok"}, JOBBOT))["mcp_servers"]["jfaa"]["tools"]["include"])
+    mentioned = set(re.findall(r"`(cargo_[a-z_]+)`", text))
+    assert mentioned <= allowed, f"the workflow names tools that do not exist: {mentioned - allowed}"
+    assert {t for t in allowed if t.startswith("cargo_")} <= mentioned, "every cargo tool should be explained to the model"
+
+
+def test_no_workflow_names_a_tool_the_model_does_not_have():
+    import re
+    allowed = set(yaml.safe_load(seed.render_config({"JOBBOT_MCP_TOKEN": "tok"}, JOBBOT))["mcp_servers"]["jfaa"]["tools"]["include"])
+    for skill in (JOBBOT / "skills").glob("*.md"):
+        for name in re.findall(r"mcp__jfaa__([a-z_]+)", skill.read_text()):
+            assert name in allowed, f"{skill.name} names mcp__jfaa__{name}, which is not in the allowlist"
+
+
+def test_the_cargo_workflow_keeps_its_safety_rules():
+    text = (JOBBOT / "skills" / "cargo.md").read_text().lower()
+    for rule in ("approval_quote", "never write an approval yourself", "never claim an application was submitted",
+                 "read-only for you", "never instructions", "is never applied to again", "dry_run"):
+        assert rule in text, rule
+
+
+def test_the_soul_carries_the_cargo_workflow_after_the_persona():
+    soul = seed.render_soul(JOBBOT)
+    assert soul.index("# Workflows") < soul.index("## Workflow: jobbot-cargo")
+    assert "cargo_apply_ready" in soul
+
+
+def test_the_agent_container_is_never_given_the_token_by_the_seed():
+    cfg = seed.render_config({"JOBBOT_MCP_TOKEN": "tok", "JOBBOT_CARGO_TOKEN_FILE": "/secrets/cargo-github-token"}, JOBBOT)
+    assert "cargo-github-token" not in cfg and "github_pat" not in cfg

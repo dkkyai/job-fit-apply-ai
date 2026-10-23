@@ -372,6 +372,77 @@ def test_jobbot_profile_is_isolated() -> None:
     assert "jobbot" not in e2e and "jobbot-mcp" not in e2e, "the e2e slice must never start JobBot"
 
 
+def test_jobbot_fill_model_is_its_own_knob() -> None:
+    """The fill loop's model defaults to the chat model but can be pinned on its own, and only jobbot-mcp has it."""
+    base = {"COMPOSE_PROFILES": "jobbot", "JFAA_DATA_ROOT": "/tmp/jfaa fill root"}
+    default = compose_config(BASE, environment=base)["services"]
+    assert default["jobbot-mcp"]["environment"]["JOBBOT_FILL_MODEL"] == "deepseek-v4.1-flash:cloud"
+    assert default["jobbot-mcp"]["environment"]["JOBBOT_MODEL"] == "deepseek-v4.1-flash:cloud"
+
+    follows = compose_config(BASE, environment={**base, "JOBBOT_MODEL": "chat-model:cloud"})["services"]
+    assert follows["jobbot-mcp"]["environment"]["JOBBOT_FILL_MODEL"] == "chat-model:cloud", "unset: follows the chat model"
+
+    pinned = compose_config(BASE, environment={**base, "JOBBOT_MODEL": "chat-model:cloud", "JOBBOT_FILL_MODEL": "fill-model:cloud"})["services"]
+    assert pinned["jobbot-mcp"]["environment"]["JOBBOT_FILL_MODEL"] == "fill-model:cloud"
+    assert pinned["jobbot-mcp"]["environment"]["JOBBOT_MODEL"] == "chat-model:cloud", "pinning the fill model leaves the chat model alone"
+    assert pinned["jobbot"]["environment"]["JOBBOT_MODEL"] == "chat-model:cloud", "the agent still uses the chat model"
+    assert "JOBBOT_FILL_MODEL" not in pinned["jobbot"]["environment"], "the agent container has no use for the fill model"
+
+    blank = compose_config(BASE, environment={**base, "JOBBOT_FILL_MODEL": ""})["services"]
+    assert blank["jobbot-mcp"]["environment"]["JOBBOT_FILL_MODEL"] == "deepseek-v4.1-flash:cloud", "an empty value falls back, not to an empty model"
+
+
+def test_jobbot_cargo_is_isolated() -> None:
+    """jobbot-cargo: the checkout and the GitHub token belong to jobbot-mcp alone.
+
+    The token is a file in jobbot-secrets (mounted only into jobbot-mcp), never an environment value, so it is
+    not in `docker inspect` and the Hermes agent container, which the model drives, can neither read it nor
+    see the checkout. The checkout follows the data root and has its own override.
+    """
+    root = Path("/tmp/jfaa cargo root")
+    config = compose_config(BASE, environment={"COMPOSE_PROFILES": "jobbot", "JFAA_DATA_ROOT": str(root)})
+    services = config["services"]
+
+    assert_mount(config, "jobbot-mcp", "/cargo", root / "jobbot-cargo", read_only=False)
+    assert_mount(config, "jobbot-mcp", "/secrets", root / "jobbot-secrets", read_only=False)
+    env = services["jobbot-mcp"]["environment"]
+    assert env["JOBBOT_CARGO_TOKEN_FILE"] == "/secrets/cargo-github-token", env["JOBBOT_CARGO_TOKEN_FILE"]
+    assert env["JOBBOT_CARGO_DIR"] == "/cargo"
+    assert env["JOBBOT_CARGO_REPO_URL"] == "https://github.com/dkkyai/jobbot-cargo.git"
+    assert not any("ghp_" in str(v) or "github_pat_" in str(v) for v in env.values()), "no token value in the environment"
+
+    # The agent container sees neither the checkout nor the secrets, and has no cargo or GitHub setting at all.
+    assert set(mounts(config, "jobbot")) == {"/opt/data"}, "the agent container mounts nothing but its own home"
+    leaked = [k for k in services["jobbot"]["environment"] if "CARGO" in k.upper() or "GITHUB" in k.upper()]
+    assert not leaked, f"the agent container must not know about the cargo repo or its token: {leaked}"
+
+    # No other service mounts the checkout or the secrets folder.
+    for name, svc in services.items():
+        if name == "jobbot-mcp":
+            continue
+        for volume in svc.get("volumes", []):
+            source = str(volume.get("source", ""))
+            assert not source.endswith("jobbot-cargo") and not source.endswith("jobbot-secrets"), (
+                f"{name} mounts {source}: only jobbot-mcp may"
+            )
+
+    # The checkout has its own override, and the repo URL and token file can be changed from .env.
+    moved = compose_config(BASE, environment={
+        "COMPOSE_PROFILES": "jobbot", "JFAA_DATA_ROOT": str(root), "JD_JOBBOT_CARGO_HOST": "/tmp/elsewhere cargo",
+        "JOBBOT_CARGO_REPO_URL": "https://github.com/example/other.git", "JOBBOT_CARGO_TOKEN_FILE": "/secrets/other-token",
+    })
+    assert_mount(moved, "jobbot-mcp", "/cargo", Path("/tmp/elsewhere cargo"), read_only=False)
+    assert_mount(moved, "jobbot-mcp", "/secrets", root / "jobbot-secrets", read_only=False)
+    moved_env = moved["services"]["jobbot-mcp"]["environment"]
+    assert moved_env["JOBBOT_CARGO_REPO_URL"] == "https://github.com/example/other.git"
+    assert moved_env["JOBBOT_CARGO_TOKEN_FILE"] == "/secrets/other-token"
+
+    plain = compose_config(BASE, environment={"COMPOSE_PROFILES": "intake"})["services"]
+    assert "jobbot-mcp" not in plain, "the cargo checkout only exists with the jobbot profile"
+    e2e = compose_config(BASE, E2E, environment={})["services"]
+    assert "jobbot-mcp" not in e2e, "the e2e slice must never reach the real cargo repo"
+
+
 def test_watchlist_state_follows_data_root() -> None:
     """The watchlist's last-run gate and health file live under the data root (prod: the
     /state volume doctor.sh reads), and JD_WATCHLIST_STATE_HOST overrides it on its own.
@@ -443,6 +514,8 @@ def main() -> None:
         test_documented_exact_mirror_helper,
         test_e2e_overlay_replaces_production_sources,
         test_jobbot_profile_is_isolated,
+        test_jobbot_fill_model_is_its_own_knob,
+        test_jobbot_cargo_is_isolated,
         test_pipeline_env_file_override,
         test_instance_identity_parameterization,
         test_e2e_state_dir_moves_all_slice_state,

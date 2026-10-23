@@ -53,6 +53,7 @@ class JobbotTools(
     private val replies: ReplySupport? = null,
     private val jobKeyOf: (Long) -> String? = { null },
     private val templates: AlertTemplates? = null,
+    private val cargo: CargoTools? = null,
 ) {
     fun server(): Server {
         val server = Server(
@@ -112,6 +113,8 @@ class JobbotTools(
             inputSchema = ToolSchema(),
             toolAnnotations = ro,
         ) { _ -> safely { getProfile() } }
+
+        cargo?.register(server)
 
         if (tracks != null) {
             server.addTool(
