@@ -372,6 +372,26 @@ def test_jobbot_profile_is_isolated() -> None:
     assert "jobbot" not in e2e and "jobbot-mcp" not in e2e, "the e2e slice must never start JobBot"
 
 
+def test_jobbot_fill_model_is_its_own_knob() -> None:
+    """The fill loop's model defaults to the chat model but can be pinned on its own, and only jobbot-mcp has it."""
+    base = {"COMPOSE_PROFILES": "jobbot", "JFAA_DATA_ROOT": "/tmp/jfaa fill root"}
+    default = compose_config(BASE, environment=base)["services"]
+    assert default["jobbot-mcp"]["environment"]["JOBBOT_FILL_MODEL"] == "deepseek-v4.1-flash:cloud"
+    assert default["jobbot-mcp"]["environment"]["JOBBOT_MODEL"] == "deepseek-v4.1-flash:cloud"
+
+    follows = compose_config(BASE, environment={**base, "JOBBOT_MODEL": "chat-model:cloud"})["services"]
+    assert follows["jobbot-mcp"]["environment"]["JOBBOT_FILL_MODEL"] == "chat-model:cloud", "unset: follows the chat model"
+
+    pinned = compose_config(BASE, environment={**base, "JOBBOT_MODEL": "chat-model:cloud", "JOBBOT_FILL_MODEL": "fill-model:cloud"})["services"]
+    assert pinned["jobbot-mcp"]["environment"]["JOBBOT_FILL_MODEL"] == "fill-model:cloud"
+    assert pinned["jobbot-mcp"]["environment"]["JOBBOT_MODEL"] == "chat-model:cloud", "pinning the fill model leaves the chat model alone"
+    assert pinned["jobbot"]["environment"]["JOBBOT_MODEL"] == "chat-model:cloud", "the agent still uses the chat model"
+    assert "JOBBOT_FILL_MODEL" not in pinned["jobbot"]["environment"], "the agent container has no use for the fill model"
+
+    blank = compose_config(BASE, environment={**base, "JOBBOT_FILL_MODEL": ""})["services"]
+    assert blank["jobbot-mcp"]["environment"]["JOBBOT_FILL_MODEL"] == "deepseek-v4.1-flash:cloud", "an empty value falls back, not to an empty model"
+
+
 def test_jobbot_cargo_is_isolated() -> None:
     """jobbot-cargo: the checkout and the GitHub token belong to jobbot-mcp alone.
 
@@ -494,6 +514,7 @@ def main() -> None:
         test_documented_exact_mirror_helper,
         test_e2e_overlay_replaces_production_sources,
         test_jobbot_profile_is_isolated,
+        test_jobbot_fill_model_is_its_own_knob,
         test_jobbot_cargo_is_isolated,
         test_pipeline_env_file_override,
         test_instance_identity_parameterization,

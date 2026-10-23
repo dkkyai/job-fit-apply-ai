@@ -432,6 +432,8 @@ services:
       JOBBOT_CREDENTIALS_FILE: "/secrets/site-credentials.json"
       JOBBOT_LLM_URL: "http://host.docker.internal:11434/v1"
       JOBBOT_MODEL: "${JOBBOT_MODEL:-deepseek-v4.1-flash:cloud}"
+      # The fill loop's own model. A separate knob so tuning the chat model never changes how applications are filled.
+      JOBBOT_FILL_MODEL: "${JOBBOT_FILL_MODEL:-${JOBBOT_MODEL:-deepseek-v4.1-flash:cloud}}"
       JOBBOT_GMAIL_CREDENTIALS_FILE: "/poller-secrets/dkkytech_credentials.json"
       JOBBOT_TEMPLATE_FILE: "/templates/high-fit.html"
       # jobbot-cargo: the private GitHub repo of application packets. The token is a file in jobbot-secrets

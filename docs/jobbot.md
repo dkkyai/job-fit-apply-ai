@@ -71,7 +71,7 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 
 **How it works**
 - **Tap Apply.** `jobbot-mcp` queues a fill. Fills run one at a time.
-- **Model-planned, code-executed.** The fill loop (`FillAgent`) asks the model (`JOBBOT_MODEL`) for symbolic steps on element ids, and executes them in **JobBot's browser**: the `jobbot-browser` container, a headed Chromium 154 with a persistent profile.
+- **Model-planned, code-executed.** The fill loop (`FillAgent`) asks the model (`JOBBOT_FILL_MODEL`, which defaults to `JOBBOT_MODEL`) for symbolic steps on element ids, and executes them in **JobBot's browser**: the `jobbot-browser` container, a headed Chromium 154 with a persistent profile.
 - **Review card.** When the form is ready, JobBot posts a screenshot and every filled field (passwords masked) under ✅ Submit / ✖ Discard.
 - **Submit.** ✅ Submit clicks the site's submit button **only** if the form still matches what the card showed (field fingerprint) and exactly one submit control exists. It then sets the track to `applied` and adds an `application_submitted` event.
 - **Review window.** A filled form waits **4 h** (`JOBBOT_APPLY_REVIEW_TTL_HOURS`), with a reminder at 3 h. After that it expires and nothing is submitted.
@@ -243,6 +243,7 @@ The model has **no send tool**.
 | `JOBBOT_TELEGRAM_ALLOWED_USERS` | Your Telegram user id. |
 | `JOBBOT_TELEGRAM_HOME_CHANNEL` | Your chat id. |
 | `JOBBOT_MCP_TOKEN` | Shared secret between `jobbot` and `jobbot-mcp` (`openssl rand -hex 32`). |
+| `JOBBOT_FILL_MODEL` | The model that plans application fills. Defaults to `JOBBOT_MODEL`; set it to pin the fill model separately, so tuning the chat model never changes how applications are filled. Currently `deepseek-v4.1-flash:cloud`. |
 | `JOBBOT_MODEL` | Chosen by the env-llm-tuner skill. Default `deepseek-v4.1-flash:cloud`. Ollama Cloud ids end in `:cloud`; the bare name 404s. The fallback is oMLX `Qwen3.6-35B-A3B-OptiQ-4bit`. |
 | `JOBBOT_ACTIONS` | Verbs JobBot acts on. `NOTIFIER_TELEGRAM_ACTIONS` must be a subset. |
 | `JOBBOT_DRY_RUN` | `true` validates and logs taps but does nothing. |
