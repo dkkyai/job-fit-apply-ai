@@ -49,7 +49,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.io.TempDir
 import java.net.InetSocketAddress
-import java.net.ServerSocket
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
@@ -82,7 +81,8 @@ class HermesFillEndToEndTest {
     private lateinit var taps: TapService
     private val sessions = FillSessions()
     private val jobs = java.util.concurrent.CopyOnWriteArrayList<JobContext>()
-    private val mcpPort = ServerSocket(0).use { it.localPort }
+    /** Bound to port 0 and read back, so no other process can take the port between choosing and binding it. */
+    private var mcpPort = 0
     private val http = HttpClient(ClientCIO) { install(SSE) }
     private val runCount = AtomicInteger()
     private val runStates = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String?>>()
@@ -164,9 +164,10 @@ class HermesFillEndToEndTest {
             resumeApply = service.applyWithResume,
         )
         val tools = JobbotTools(lookup, client, OutputFiles("/nonexistent"), ProfileReader("/nonexistent/a", "/nonexistent/b"), 55, 400)
-        mcpServer = embeddedServer(CIO, port = mcpPort, host = "127.0.0.1") {
+        mcpServer = embeddedServer(CIO, port = 0, host = "127.0.0.1") {
             jobbotModule(mcpToken, listOf("127.0.0.1", "localhost"), taps, StatusReport(client, store, setOf("apply"), false), tools, outbox = outbox, fills = FillTools(sessions))
         }.start(wait = false)
+        mcpPort = runBlocking { mcpServer.engine.resolvedConnectors().first().port }
     }
 
     @AfterTest
