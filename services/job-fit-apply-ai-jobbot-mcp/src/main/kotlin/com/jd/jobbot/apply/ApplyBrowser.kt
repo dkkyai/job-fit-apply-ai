@@ -43,7 +43,9 @@ data class Snapshot(
     val url: String,
     val title: String = "",
     val elements: List<Element> = emptyList(),
+    /** True when a CAPTCHA a person has to solve is on the page (decided by [CaptchaPolicy] from [captchaWidgets]). */
     val captcha: Boolean = false,
+    val captchaWidgets: List<CaptchaWidget> = emptyList(),
     val text: String = "",
 )
 
@@ -166,7 +168,7 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
             return read()
         }
 
-        private fun read(): Snapshot = JSON.decodeFromString(Snapshot.serializer(), page.evaluate(SNAPSHOT_JS) as String)
+        private fun read(): Snapshot = decodeSnapshot(page.evaluate(SNAPSHOT_JS) as String)
 
         override fun goto(url: String) { page.navigate(url); settle() }
         override fun fill(id: String, value: String) { el(id).fill(value) }
@@ -245,6 +247,10 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
     companion object {
         private val JSON = Json { ignoreUnknownKeys = true }
         val ID = Regex("""^e\d{1,6}$""")
+
+        /** The page script's JSON as a [Snapshot], with the CAPTCHA verdict taken from what the page actually shows. */
+        internal fun decodeSnapshot(json: String): Snapshot =
+            JSON.decodeFromString(Snapshot.serializer(), json).let { it.copy(captcha = it.captcha || CaptchaPolicy.blocks(it.captchaWidgets)) }
         /** How long a Google click is watched for a popup or FedCM dialog: 32 × 250 ms. */
         private const val POPUP_POLLS = 32
         private const val SNAPSHOT_TRIES = 3
@@ -335,9 +341,24 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
                 });
                 if (out.length >= 200) break;
               }
-              const captcha = !!document.querySelector(
-                'iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="challenges.cloudflare"],iframe[src*="arkoselabs"],.g-recaptcha,.h-captcha,[data-sitekey],#px-captcha');
-              return JSON.stringify({ url: location.href, title: document.title, elements: out, captcha,
+              // Facts only: whether a CAPTCHA needs a person is decided in Kotlin (CaptchaPolicy), where it is tested.
+              // An invisible reCAPTCHA badge is an iframe too, and must not stop the fill.
+              const shown = (el) => {
+                const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+                return r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden'
+                  && parseFloat(cs.opacity) > 0.05 && r.bottom > 0 && r.right > 0;
+              };
+              const captchaWidgets = [];
+              for (const el of document.querySelectorAll(
+                  'iframe[src*="recaptcha"],iframe[src*="hcaptcha"],iframe[src*="challenges.cloudflare"],iframe[src*="arkoselabs"],.g-recaptcha,.h-captcha,[data-sitekey],#px-captcha')) {
+                // A container that holds a frame is judged by the frame.
+                if (el.tagName !== 'IFRAME' && el.querySelector('iframe')) continue;
+                const r = el.getBoundingClientRect();
+                captchaWidgets.push({ src: el.tagName === 'IFRAME' ? (el.src || '') : '', tag: el.tagName.toLowerCase(),
+                  size: el.getAttribute('data-size') || '', width: Math.round(r.width), height: Math.round(r.height), shown: shown(el) });
+                if (captchaWidgets.length >= 20) break;
+              }
+              return JSON.stringify({ url: location.href, title: document.title, elements: out, captchaWidgets,
                 text: bodyText.slice(0, 4000) });
             }
         """.trimIndent()

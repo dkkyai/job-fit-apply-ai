@@ -72,7 +72,7 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 **How it works**
 - **Tap Apply.** `jobbot-mcp` queues a fill. Fills run one at a time.
 - **Model-planned, code-executed.** The fill loop (`FillAgent`) asks the model (`JOBBOT_FILL_MODEL`, which defaults to `JOBBOT_MODEL`) for symbolic steps on element ids, and executes them in **JobBot's browser**: the `jobbot-browser` container, a headed Chromium 154 with a persistent profile.
-- **Review card.** When the form is ready, JobBot posts a screenshot and every filled field (passwords masked) under ✅ Submit / ✖ Discard.
+- **Review card.** When the form is ready, JobBot posts a screenshot and every filled field (passwords masked) under ✅ Submit / ✖ Discard. The screenshot is the whole page, so it is fitted to Telegram's photo limits first (width + height ≤ 9,000, sides within 15:1, file ≤ 9 MB; a very tall page keeps its top). If Telegram refuses the photo anyway, the message and its buttons go out without it and the screenshot follows as a file, so a hand-off or review is never lost for want of a picture.
 - **Submit.** ✅ Submit clicks the site's submit button **only** if the form still matches what the card showed (field fingerprint) and exactly one submit control exists. It then sets the track to `applied` and adds an `application_submitted` event.
 - **Review window.** A filled form waits **4 h** (`JOBBOT_APPLY_REVIEW_TTL_HOURS`), with a reminder at 3 h. After that it expires and nothing is submitted.
 - **Hand-offs.** A CAPTCHA, phone or ID check, a sign-in Google won't auto-complete, or a question the profile can't answer is posted with the viewer link and **▶ Continue**.
@@ -94,7 +94,7 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 - **Google consent.** Approved automatically only for basic sign-in scopes (name, email, profile). The account's own address on the screen doesn't count as a Gmail scope. Anything else is handed to Richard.
 - **After a restart.** A fill waiting on a hand-off or review loses its tab when jobbot-mcp restarts. ▶ Continue then expires it, and the card's Apply button starts a fresh fill.
 - **Verification email.** Codes and links come only from the site's (or its ATS's) own sender, and links must point back at the site.
-- **CAPTCHAs** are never solved. They are handed off.
+- **CAPTCHAs** are never solved. One a person would have to solve (a visible "I'm not a robot" checkbox, an open image challenge, Turnstile, hCaptcha) is handed off. An **invisible** reCAPTCHA is not: it scores the visitor in the background and asks nothing, and Ashby, Greenhouse and Lever forms all carry one. The page script reports each widget's address, size and whether it is on screen, and `CaptchaPolicy` decides, ignoring `size=invisible` badges, frames parked off-screen, 1-pixel trackers and submit buttons that merely carry a site key.
 
 **JobBot's browser** (`docker/jobbot-browser`, profile `jobbot-browser`; called `apply-browser` before 2026-10-02)
 - **Image:** `linuxserver/chromium`, pinned by digest. Its Selkies web viewer streams over WebRTC/websockets.
@@ -142,6 +142,8 @@ With `JOBBOT_DRY_RUN=true` it runs these checks and stops.
 **Same job twice.** A second file for a job that is already being filled, waiting on you, or waiting for review is not used, and JobBot says so (Discard the open one, then send again). Identity is the posting URL, so a link and a card for the same posting count as one job.
 
 **Link applications have no JFAA track.** Submitting one posts `Submitted: Job at <site>` but does not touch a track, because none exists. `/jdstatus` lists them as `(not a JFAA job)`.
+
+**Delivery.** The plugin acknowledges an outbox item only once it has been posted. A failure (Telegram down, a refused message) is retried on the next poll, up to 10 attempts, then logged as an error and dropped so one bad item cannot stall the queue. A failing item never holds up the ones behind it.
 
 **Not supported:** sending the file and the link in two separate messages; a `.doc`, `.pages` or `.rtf`; a second attachment in the same message.
 

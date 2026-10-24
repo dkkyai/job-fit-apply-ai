@@ -78,6 +78,18 @@ class ApplyBrowserLiveTest {
                 // A "Google" button whose popup opens somewhere the guard forbids.
                 "/login3" -> 200 to page("""<iframe id="gsi_bad" src="/gsi-bad" title="Sign in with Google Button" style="width:300px;height:44px;border:0"></iframe>""")
                 "/gsi-bad" -> 200 to page("""<button style="margin:0;width:100%;height:44px" onclick="window.open('https://mail.google.com/mail/u/0/','gsi','popup')">Sign in with Google</button>""")
+                // Ashby, Greenhouse and Lever carry an invisible reCAPTCHA: a small badge frame, plus the challenge frame
+                // parked off-screen until something triggers it. Neither asks a person anything.
+                "/captcha-invisible" -> 200 to page("""<h1>Apply</h1><label for="fn">First name</label><input id="fn">
+                    <iframe src="/recaptcha/enterprise/anchor?ar=1&k=x&size=invisible&badge=bottomright" title="reCAPTCHA"
+                      style="position:fixed;right:0;bottom:14px;width:256px;height:60px;border:0"></iframe>
+                    <div style="visibility:hidden;position:absolute;top:-10000px;width:400px;height:580px">
+                      <iframe src="/recaptcha/api2/bframe?k=x" title="recaptcha challenge" style="width:400px;height:580px"></iframe></div>
+                    <button class="g-recaptcha" data-sitekey="x" data-callback="go">Submit application</button>""")
+                // The "I'm not a robot" checkbox: a person has to tick it.
+                "/captcha-visible" -> 200 to page("""<h1>Apply</h1><label for="fn">First name</label><input id="fn">
+                    <iframe src="/recaptcha/api2/anchor?ar=1&k=x&size=normal" title="reCAPTCHA" style="width:304px;height:78px;border:0"></iframe>""")
+                "/recaptcha/enterprise/anchor", "/recaptcha/api2/anchor", "/recaptcha/api2/bframe" -> 200 to page("<div>reCAPTCHA</div>")
                 "/submit" -> {
                     submissions += ex.requestBody.readBytes().toString(Charsets.ISO_8859_1)
                     200 to page("<h1>Thank you for applying!</h1>")
@@ -203,6 +215,22 @@ class ApplyBrowserLiveTest {
         assertTrue(body.contains("Richard Hatcher.docx"), "the uploaded file keeps its own name")
         assertTrue(body.contains("wordprocessingml.document"), "and its Word content type")
         assertFalse(body.contains("RichardHatcherResume.pdf"), "the tailored resume is not sent")
+    }
+
+    @Test
+    fun `an invisible reCAPTCHA does not stop the fill, a visible checkbox does`() {
+        val page = PlaywrightApplyBrowser(System.getenv("JOBBOT_BROWSER_CDP_URL")).open { true }
+        try {
+            page.goto("$base/captcha-invisible")
+            val invisible = page.snapshot()
+            assertTrue(invisible.captchaWidgets.isNotEmpty(), "the badge and the parked challenge frame were seen: ${invisible.captchaWidgets}")
+            assertFalse(invisible.captcha, "but none of them needs a person: ${invisible.captchaWidgets}")
+            page.goto("$base/captcha-visible")
+            val visible = page.snapshot()
+            assertTrue(visible.captcha, "a visible checkbox does: ${visible.captchaWidgets}")
+        } finally {
+            page.close()
+        }
     }
 
     private fun idWhere(user: String, attr: String) = Regex(""""id":"(e\d+)"[^}]*$attr""").find(user)?.groupValues?.get(1)
