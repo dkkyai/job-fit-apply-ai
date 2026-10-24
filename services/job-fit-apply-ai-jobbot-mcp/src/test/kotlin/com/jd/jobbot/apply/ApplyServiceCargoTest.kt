@@ -56,7 +56,7 @@ class ApplyServiceCargoTest {
         val events = mutableListOf<Triple<String, String, String>>()
         val jobs = mutableListOf<JobContext>()
         val page = FakePage(form).also { p -> p.onClick = { if (it == "e3") p.snap = p.snap.copy(url = p.snap.url + "/done", text = "Thank you for applying!") } }
-        var outcome: (ApplyPage) -> FillResult = { p -> FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
+        var outcome: (ApplyPage) -> FillResult = { p -> FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
         val lookup = JobLookup(BridgeReadClient("http://unused"))
         val service = ApplyService(
             browser = { _ -> if (openFails) error("chromium is down") else page },
@@ -155,7 +155,7 @@ class ApplyServiceCargoTest {
     fun `a hand-off is recorded, Continue keeps the packet's data, and the next review is recorded`() {
         val rig = Rig()
         var first = true
-        rig.outcome = { p -> if (first) { first = false; FillResult.NeedsHuman("CAPTCHA on jobs.example.com", null) } else FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
+        rig.outcome = { p -> if (first) { first = false; FillResult.NeedsHuman("CAPTCHA on jobs.example.com", null) } else FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
         rig.service.applyPacket(packet(), "mcp")
         assertEquals(listOf("in_progress", "blocked"), rig.states())
         assertEquals("needs Richard: CAPTCHA on jobs.example.com", rig.events.last().third)

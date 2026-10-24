@@ -15,9 +15,14 @@ def test_config_renders_valid_yaml_with_env_and_defaults():
     assert cfg["model"] == {"provider": "ollama", "default": "x:cloud"}
     assert cfg["mcp_servers"]["jfaa"]["url"] == "http://jobbot-mcp:8790/mcp"
     assert cfg["mcp_servers"]["jfaa"]["headers"]["Authorization"] == "Bearer tok"
-    assert cfg["platform_toolsets"]["telegram"] == ["web", "memory", "clarify", "session_search", "mcp-jfaa"]
+    assert cfg["platform_toolsets"]["telegram"] == ["web", "memory", "clarify", "session_search", "jfaa"]
     assert {"terminal", "file", "browser", "code_execution", "skills", "delegation"} <= set(cfg["agent"]["disabled_toolsets"])
-    assert cfg["platforms"]["api_server"]["enabled"] is False
+    assert cfg["platform_toolsets"]["api_server"] == ["fill"], "a fill run gets the fill server and nothing else"
+    assert "fill" not in cfg["platform_toolsets"]["telegram"], "the chat is not offered the fill server"
+    assert cfg["mcp_servers"]["fill"]["url"] == "http://jobbot-mcp:8790/mcp-fill"
+    assert cfg["mcp_servers"]["fill"]["tools"]["include"] == ["fill_context", "fill_snapshot", "fill_act", "fill_finish"]
+    assert cfg["mcp_servers"]["fill"]["headers"]["Authorization"] == "Bearer tok"
+    assert "api_server" not in cfg.get("platforms", {}), "the API server is switched on by the key in the environment, never by this file"
     assert cfg["plugins"]["enabled"] == ["jobbot_actions"]
 
 
@@ -38,15 +43,38 @@ def test_the_mcp_tool_allowlist_matches_jobbot_mcp():
     ]
 
 
-def test_every_tool_jobbot_mcp_registers_is_in_the_allowlist():
-    """A tool added to jobbot-mcp but not to the include list is silently invisible to the model."""
+def _registered_tools(*, fill):
     import re
     src = JOBBOT.parents[1] / "services/job-fit-apply-ai-jobbot-mcp/src/main/kotlin/com/jd/jobbot/mcp"
-    registered = set()
+    names = set()
     for f in src.glob("*.kt"):
-        registered |= set(re.findall(r'name = "([a-z_]+)",\s*\n\s*description', f.read_text()))
+        if (f.name == "FillTools.kt") == fill:
+            names |= set(re.findall(r'name = "([a-z_]+)",\s*\n\s*description', f.read_text()))
+    return names
+
+
+def test_every_tool_jobbot_mcp_registers_is_in_the_allowlist():
+    """A tool added to jobbot-mcp but not to the include list is silently invisible to the model."""
     cfg = yaml.safe_load(seed.render_config({"JOBBOT_MCP_TOKEN": "tok"}, JOBBOT))
+    registered = _registered_tools(fill=False)
     assert registered and registered == set(cfg["mcp_servers"]["jfaa"]["tools"]["include"])
+
+
+def test_the_fill_tools_are_their_own_server_and_only_those():
+    cfg = yaml.safe_load(seed.render_config({"JOBBOT_MCP_TOKEN": "tok"}, JOBBOT))
+    fill = _registered_tools(fill=True)
+    assert fill == {"fill_context", "fill_snapshot", "fill_act", "fill_finish"}
+    assert fill == set(cfg["mcp_servers"]["fill"]["tools"]["include"])
+    assert not fill & set(cfg["mcp_servers"]["jfaa"]["tools"]["include"]), "the chat must not be offered the fill tools"
+
+
+def test_a_fill_run_can_reach_none_of_the_chat_tools():
+    """The planner of a fill reads untrusted page text: mail, drafts, tracks and the cargo repo are not its to call."""
+    cfg = yaml.safe_load(seed.render_config({"JOBBOT_MCP_TOKEN": "tok"}, JOBBOT))
+    assert cfg["platform_toolsets"]["api_server"] == ["fill"]
+    for dangerous in ("get_job_email", "write_reply_draft", "request_send_approval", "cargo_apply", "cargo_append_status", "set_track_status", "get_profile"):
+        assert dangerous not in cfg["mcp_servers"]["fill"]["tools"]["include"], dangerous
+    assert set(cfg["agent"]["disabled_toolsets"]) >= {"terminal", "file", "code_execution", "browser", "delegation", "cronjob", "skills"}
 
 
 def test_missing_token_refuses_to_seed():
@@ -113,3 +141,17 @@ def test_the_soul_carries_the_cargo_workflow_after_the_persona():
 def test_the_agent_container_is_never_given_the_token_by_the_seed():
     cfg = seed.render_config({"JOBBOT_MCP_TOKEN": "tok", "JOBBOT_CARGO_TOKEN_FILE": "/secrets/cargo-github-token"}, JOBBOT)
     assert "cargo-github-token" not in cfg and "github_pat" not in cfg
+
+
+def test_platform_toolsets_name_real_mcp_servers():
+    """Hermes treats MCP server NAMES in a platform list as an allowlist; an unknown name is ignored and every server
+    is included. `mcp-fill` (with a prefix) once let a fill run see the mail tools, so each name must be a server."""
+    cfg = yaml.safe_load(seed.render_config({"JOBBOT_MCP_TOKEN": "tok"}, JOBBOT))
+    servers = set(cfg["mcp_servers"])
+    builtin = {"web", "memory", "clarify", "session_search"}
+    for platform, names in cfg["platform_toolsets"].items():
+        mcp_names = [n for n in names if n not in builtin]
+        assert mcp_names, f"{platform} lists no MCP server, so Hermes would give it all of them"
+        assert set(mcp_names) <= servers, f"{platform} lists {set(mcp_names) - servers}, which is not an MCP server (no 'mcp-' prefix)"
+    assert set(cfg["platform_toolsets"]["telegram"]) & servers == {"jfaa"}
+    assert set(cfg["platform_toolsets"]["api_server"]) & servers == {"fill"}

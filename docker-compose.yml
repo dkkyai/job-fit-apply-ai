@@ -414,9 +414,8 @@ services:
       bridge:
         condition: service_healthy
     networks: [default, jobbot, jobbot-browser]
-    extra_hosts:
-      # The fill loop's model (Ollama route on the host), same as the agent's.
-      - "host.docker.internal:host-gateway"
+    # No route to the host: jobbot-mcp no longer calls a model. Hermes plans application fills (below) and is the only
+    # thing in JobBot that talks to Ollama.
     environment:
       JAVA_TOOL_OPTIONS: "-Xmx384m -XX:MaxMetaspaceSize=160m -XX:+ExitOnOutOfMemoryError"
       JD_BRIDGE_URL: "http://bridge:8765"
@@ -440,7 +439,10 @@ services:
       JOBBOT_BROWSER_VIEWER_URL: "${JOBBOT_BROWSER_VIEWER_URL:-${JOBBOT_APPLY_VIEWER_URL:-}}"
       JOBBOT_ACCOUNT_EMAIL: "${JOBBOT_ACCOUNT_EMAIL:-dkkytech@gmail.com}"
       JOBBOT_CREDENTIALS_FILE: "/secrets/site-credentials.json"
-      JOBBOT_LLM_URL: "http://host.docker.internal:11434/v1"
+      # Hermes plans application fills: jobbot-mcp starts a run on Hermes' API (its own session, off the chat) whose only
+      # tools are the guarded fill_* ones. Same shared-secret idea as JOBBOT_MCP_TOKEN (openssl rand -hex 32, 16+ chars).
+      JOBBOT_HERMES_URL: "http://jobbot:8642"
+      JOBBOT_HERMES_API_KEY: "${JOBBOT_HERMES_API_KEY:-}"
       JOBBOT_MODEL: "${JOBBOT_MODEL:-deepseek-v4.1-flash:cloud}"
       # The fill loop's own model. A separate knob so tuning the chat model never changes how applications are filled.
       JOBBOT_FILL_MODEL: "${JOBBOT_FILL_MODEL:-${JOBBOT_MODEL:-deepseek-v4.1-flash:cloud}}"
@@ -490,7 +492,11 @@ services:
       JOBBOT_MCP_TOKEN: "${JOBBOT_MCP_TOKEN:-}"
       # Chosen by the env-llm-tuner skill; Ollama Cloud ids end in :cloud.
       JOBBOT_MODEL: "${JOBBOT_MODEL:-deepseek-v4.1-flash:cloud}"
-      API_SERVER_ENABLED: "false"
+      # Hermes' API, for jobbot-mcp only (no published port; the `jobbot` network holds just these two services). It is on
+      # only when a key of 16+ characters is set; blank leaves it off and applications cannot be filled.
+      API_SERVER_KEY: "${JOBBOT_HERMES_API_KEY:-}"
+      API_SERVER_HOST: "0.0.0.0"
+      API_SERVER_PORT: "8642"
       HERMES_DASHBOARD: "0"
     volumes:
       # Hermes home: sessions, memory, logs. Config, persona and plugins are re-seeded from the

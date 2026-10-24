@@ -12,7 +12,7 @@ import com.jd.jobbot.apply.CargoStatusListener
 import com.jd.jobbot.apply.Credentials
 import com.jd.jobbot.apply.Element
 import com.jd.jobbot.apply.FakePage
-import com.jd.jobbot.apply.FillAgent
+import com.jd.jobbot.apply.FillExecutor
 import com.jd.jobbot.apply.FillResult
 import com.jd.jobbot.apply.JobContext
 import com.jd.jobbot.apply.Snapshot
@@ -68,7 +68,7 @@ class CargoToolsTest {
         val outbox = Outbox(tmp.resolve("o.db").toString(), tmp.resolve("shots"), clock)
         val page = FakePage(readyForm).also { p -> p.onClick = { if (it == "e3") p.snap = p.snap.copy(url = p.snap.url + "/done", text = "Thank you for applying!") } }
         val jobs = mutableListOf<JobContext>()
-        var outcome: (com.jd.jobbot.apply.ApplyPage) -> FillResult = { p -> FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
+        var outcome: (com.jd.jobbot.apply.ApplyPage) -> FillResult = { p -> FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
         val lookup = JobLookup(BridgeReadClient("http://unused"))
         val service = ApplyService(
             browser = { _ -> page }, fill = { p, job, _ -> jobs += job; outcome(p) }, lookup = lookup,

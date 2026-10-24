@@ -40,6 +40,8 @@ fun Application.jobbotModule(
     approvals: ((Long) -> com.jd.jobbot.actions.TapResponse?)? = null,
     outbox: com.jd.jobbot.actions.Outbox? = null,
     accounts: (() -> String)? = null,
+    /** The fill tools, served apart from the chat's tools at /mcp-fill. */
+    fills: com.jd.jobbot.mcp.FillTools? = null,
 ) {
     intercept(ApplicationCallPipeline.Plugins) {
         val path = call.request.path()
@@ -52,6 +54,7 @@ fun Application.jobbotModule(
     }
 
     mcpStatelessStreamableHttp(path = "/mcp", allowedHosts = allowedHosts) { tools.server() }
+    fills?.let { f -> mcpStatelessStreamableHttp(path = "/mcp-fill", allowedHosts = allowedHosts) { f.server() } }
 
     routing {
         get("/health") {

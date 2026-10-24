@@ -26,7 +26,11 @@ fallback_providers:
 # session recall, and the read-only JFAA MCP tools. No shell, files, browser, code execution,
 # subagents, cron or skill editing.
 platform_toolsets:
-  telegram: [web, memory, clarify, session_search, mcp-jfaa]
+  # MCP servers are listed by their NAME here (jfaa, fill), and the names listed form an allowlist for the platform; a
+  # name that is not a server (mcp-jfaa) is ignored and every server is included, which is how a fill once saw the mail tools.
+  telegram: [web, memory, clarify, session_search, jfaa]
+  # Application fills run through Hermes' API with the fill server only: no web, no memory, no mail, nothing else to reach for.
+  api_server: [fill]
 agent:
   disabled_toolsets: [terminal, file, code_execution, browser, delegation, cronjob, skills, computer_use, kanban, homeassistant, image_gen, video_gen, tts, connections, todo]
 
@@ -39,6 +43,17 @@ mcp_servers:
     connect_timeout: 15
     tools:
       include: [get_job, list_high_fit, read_job_file, list_tracks, get_profile, get_track_timeline, add_track_note, set_track_status, get_job_email, get_reply_draft, write_reply_draft, request_send_approval, get_alert_template, preview_alert_template, update_alert_template, revert_alert_template, cargo_list, cargo_get_packet, cargo_files, cargo_read_file, cargo_search, cargo_send_resume, cargo_send_file, cargo_append_status, cargo_apply, cargo_apply_ready]
+
+  # The fill tools are a server of their own: the planner of an application fill reads untrusted page text, so it
+  # gets these four tools and none of the chat's (mail, drafts, tracks, the cargo repo), and the chat is not offered them.
+  fill:
+    url: ${JOBBOT_MCP_URL}/mcp-fill
+    headers:
+      Authorization: "Bearer ${JOBBOT_MCP_TOKEN}"
+    timeout: 180
+    connect_timeout: 15
+    tools:
+      include: [fill_context, fill_snapshot, fill_act, fill_finish]
 
 approvals:
   mode: manual
@@ -67,6 +82,3 @@ display:
     telegram:
       streaming: true
 
-platforms:
-  api_server:
-    enabled: false

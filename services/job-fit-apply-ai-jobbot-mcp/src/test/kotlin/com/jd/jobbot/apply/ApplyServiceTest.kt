@@ -55,7 +55,7 @@ class ApplyServiceTest {
     )
 
     private inner class Rig(
-        var outcome: (ApplyPage) -> FillResult = { p -> FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(9), "") },
+        var outcome: (ApplyPage) -> FillResult = { p -> FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(9), "") },
         trackStatus: String = "backlog",
     ) {
         val clock = Moving(Instant.parse("2026-10-01T12:00:00Z"))
@@ -147,7 +147,7 @@ class ApplyServiceTest {
     @Test
     fun `a hand-off posts Continue, and Continue resumes the same tab`() {
         var calls = 0
-        val rig = Rig(outcome = { p -> if (calls++ == 0) FillResult.NeedsHuman("There's a CAPTCHA.", null) else FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(1), "") })
+        val rig = Rig(outcome = { p -> if (calls++ == 0) FillResult.NeedsHuman("There's a CAPTCHA.", null) else FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(1), "") })
         rig.tap("apply")
         val handoff = rig.review()
         assertTrue(handoff.text.contains("CAPTCHA") && handoff.text.contains("https://viewer.tailnet/"))
@@ -160,7 +160,7 @@ class ApplyServiceTest {
     @Test
     fun `a hand-off left by a restarted JobBot is restarted by the next Apply tap`() {
         var calls = 0
-        val rig = Rig(outcome = { p -> if (calls++ == 0) FillResult.NeedsHuman("No saved password.", null) else FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(1), "") })
+        val rig = Rig(outcome = { p -> if (calls++ == 0) FillResult.NeedsHuman("No saved password.", null) else FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(1), "") })
         rig.tap("apply")
         val stale = rig.fillId()
         rig.restart()
@@ -262,7 +262,7 @@ class ApplyServiceTest {
             // Richard taps Discard while the fill is still running.
             val id = rig.store.recent().first { it.verb == "fill" }.id
             rig.service.discard(id, TapRequest("discard", id, user, user, 5, rig.clock.now.epochSecond))
-            FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(1), "")
+            FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(1), "")
         })
         rig.tap("apply")
         assertTrue(rig.outbox.pending().none { it.buttons.any { b -> b.text == "✅ Submit" } }, "no review for a discarded fill")

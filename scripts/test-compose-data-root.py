@@ -392,6 +392,46 @@ def test_jobbot_fill_model_is_its_own_knob() -> None:
     assert blank["jobbot-mcp"]["environment"]["JOBBOT_FILL_MODEL"] == "deepseek-v4.1-flash:cloud", "an empty value falls back, not to an empty model"
 
 
+def test_jobbot_hermes_plans_fills_without_giving_anything_new_away() -> None:
+    """Hermes plans application fills over its API; jobbot-mcp keeps the browser, the guards and the key.
+
+    The API listens inside the `jobbot` network only (jobbot and jobbot-mcp), is on only when a key of 16+ characters
+    is set, and the shared key reaches no other service. jobbot-mcp no longer calls a model, so it has no route to the
+    host; Hermes still cannot reach the browser's DevTools.
+    """
+    key = "k" * 32
+    base = {"COMPOSE_PROFILES": "jobbot,jobbot-browser", "JFAA_DATA_ROOT": "/tmp/jfaa hermes root"}
+    with_key = compose_config(BASE, environment={**base, "JOBBOT_HERMES_API_KEY": key})["services"]
+    agent_env, mcp_env = with_key["jobbot"]["environment"], with_key["jobbot-mcp"]["environment"]
+    assert agent_env["API_SERVER_KEY"] == key and mcp_env["JOBBOT_HERMES_API_KEY"] == key, "one shared key, on both ends"
+    assert (agent_env["API_SERVER_HOST"], agent_env["API_SERVER_PORT"]) == ("0.0.0.0", "8642")
+    assert mcp_env["JOBBOT_HERMES_URL"] == "http://jobbot:8642", mcp_env["JOBBOT_HERMES_URL"]
+
+    # Blank key: Hermes' API stays off (it only starts with a usable key) and nothing is half-configured.
+    blank = compose_config(BASE, environment=base)["services"]
+    assert blank["jobbot"]["environment"]["API_SERVER_KEY"] == "" and blank["jobbot-mcp"]["environment"]["JOBBOT_HERMES_API_KEY"] == ""
+
+    # The key goes to those two services and nowhere else.
+    for name, svc in with_key.items():
+        if name in ("jobbot", "jobbot-mcp"):
+            continue
+        leaked = [k for k, v in (svc.get("environment") or {}).items() if v == key]
+        assert not leaked, f"{name} must not receive the Hermes API key: {leaked}"
+
+    # jobbot-mcp has no route to the host: it no longer calls a model.
+    assert not with_key["jobbot-mcp"].get("extra_hosts"), with_key["jobbot-mcp"].get("extra_hosts")
+    assert "JOBBOT_LLM_URL" not in mcp_env
+    assert not [k for k, v in mcp_env.items() if "host.docker.internal" in str(v)], "nothing in jobbot-mcp points at the host"
+
+    # The boundaries that matter are unchanged: no published ports, the agent on its own network only, never beside the browser.
+    for name in ("jobbot", "jobbot-mcp"):
+        assert not with_key[name].get("ports"), f"{name} must not publish ports"
+    assert set(with_key["jobbot"]["networks"]) == {"jobbot"}
+    assert "jobbot-browser" not in with_key["jobbot"]["networks"], "Hermes never reaches the browser's DevTools"
+    assert set(with_key["jobbot-mcp"]["networks"]) == {"default", "jobbot", "jobbot-browser"}
+    assert set(mounts(compose_config(BASE, environment={**base, "JOBBOT_HERMES_API_KEY": key}), "jobbot")) == {"/opt/data"}
+
+
 def test_jobbot_cargo_is_isolated() -> None:
     """jobbot-cargo: the checkout and the GitHub token belong to jobbot-mcp alone.
 
@@ -515,6 +555,7 @@ def main() -> None:
         test_e2e_overlay_replaces_production_sources,
         test_jobbot_profile_is_isolated,
         test_jobbot_fill_model_is_its_own_knob,
+        test_jobbot_hermes_plans_fills_without_giving_anything_new_away,
         test_jobbot_cargo_is_isolated,
         test_pipeline_env_file_override,
         test_instance_identity_parameterization,

@@ -71,9 +71,18 @@ object Config {
     /** The identity every site account uses. */
     val ACCOUNT_EMAIL: String = get("JOBBOT_ACCOUNT_EMAIL", "dkkytech@gmail.com")
     val CREDENTIALS_FILE: String = get("JOBBOT_CREDENTIALS_FILE", "/secrets/site-credentials.json")
-    /** The fill loop's model: the same Ollama route and model family as the agent. */
-    val LLM_URL: String = get("JOBBOT_LLM_URL", "http://host.docker.internal:11434/v1")
+    /**
+     * Hermes plans application fills: jobbot-mcp starts a run on Hermes' API (its own session, off the chat) whose only
+     * tools are the guarded fill_* ones. The key is the same kind of shared secret as JOBBOT_MCP_TOKEN.
+     */
+    val HERMES_URL: String = get("JOBBOT_HERMES_URL", "http://jobbot:8642")
+    val HERMES_API_KEY: String = get("JOBBOT_HERMES_API_KEY", "")
+    /** The model Hermes uses for a fill run. Blank leaves the run on Hermes' own configured model. */
     val FILL_MODEL: String = get("JOBBOT_FILL_MODEL", get("JOBBOT_MODEL", "deepseek-v4.1-flash:cloud"))
+    /** A fill that has not finished in this long is stopped and handed to Richard. */
+    val FILL_MAX_MINUTES: Long = get("JOBBOT_FILL_MAX_MINUTES", "25").toLong()
+    /** fill_act calls a fill may make before it hands off. */
+    val FILL_MAX_ACT_CALLS: Int = get("JOBBOT_FILL_MAX_ACT_CALLS", "30").toInt()
 
     // ── jobbot-cargo (application packets in a private GitHub repo) ─────────────────────────────
     /** The GitHub token file, mounted from jobbot-secrets. Blank turns the cargo tools off. */
