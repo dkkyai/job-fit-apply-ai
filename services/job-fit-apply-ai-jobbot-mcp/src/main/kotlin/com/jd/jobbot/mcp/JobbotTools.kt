@@ -475,6 +475,7 @@ class JobbotTools(
 
         fun ok(json: JsonElement) = CallToolResult(content = listOf(TextContent(PRETTY.encodeToString(JsonElement.serializer(), json))))
         fun err(message: String) = CallToolResult(content = listOf(TextContent(message)), isError = true)
+        fun errorJson(message: String): String = buildJsonObject { put("status", "continue"); put("error", message) }.toString()
 
         fun schema(vararg required: Pair<String, String>) = ToolSchema(
             properties = buildJsonObject {

@@ -220,24 +220,52 @@ async def _post_outbox_item(bot, chat_id, item):
         return
     if item.get("has_photo"):
         photo = await asyncio.to_thread(_client.outbox_photo, item["id"])
-        if core.caption_fits(text):
-            await bot.send_photo(chat_id=chat_id, photo=photo, caption=text, reply_markup=markup)
+        try:
+            if core.caption_fits(text):
+                await bot.send_photo(chat_id=chat_id, photo=photo, caption=text, reply_markup=markup)
+                return
+            await bot.send_photo(chat_id=chat_id, photo=photo)
+        except Exception as e:
+            # Telegram refuses some pictures (Photo_invalid_dimensions on a long form, too heavy a file). The text and
+            # its buttons are what Richard acts on, so they go out regardless; the screenshot follows as a file.
+            logger.warning("jobbot_actions: photo for outbox item %s refused (%s); sending the message without it", item.get("id"), e)
+            await bot.send_message(chat_id=chat_id, text=text[:4096], reply_markup=markup)
+            try:
+                await bot.send_document(chat_id=chat_id, document=photo, filename="screenshot.png")
+            except Exception as doc_error:
+                logger.warning("jobbot_actions: screenshot for outbox item %s not sent as a file either: %s", item.get("id"), doc_error)
             return
-        await bot.send_photo(chat_id=chat_id, photo=photo)
     await bot.send_message(chat_id=chat_id, text=text[:4096], reply_markup=markup)
 
 
+# How many times an item is tried before it is given up on, and the attempts so far (reset when the plugin restarts).
+MAX_POST_ATTEMPTS = 10
+_attempts = {}
+
+
 async def _pump_outbox(bot, interval=5.0):
-    """Deliver jobbot-mcp's outbox to the home chat, forever. One bad item never blocks the rest."""
+    """Deliver jobbot-mcp's outbox to the home chat, forever.
+
+    An item is acknowledged only once it was posted, so a Telegram outage or a refused message is retried on the next
+    poll rather than lost. After MAX_POST_ATTEMPTS it is given up on (and logged loudly), so one item that can never
+    be posted cannot stall the queue. A failing item never blocks the ones behind it.
+    """
     while True:
         try:
             items = await asyncio.to_thread(_client.outbox)
             for item in items:
+                item_id = item["id"]
                 try:
                     await _post_outbox_item(bot, int(_home_chat), item)
                 except Exception as e:
-                    logger.warning("jobbot_actions: outbox item %s not posted: %s", item.get("id"), e)
-                await asyncio.to_thread(_client.outbox_delivered, item["id"])
+                    attempts = _attempts[item_id] = _attempts.get(item_id, 0) + 1
+                    if attempts < MAX_POST_ATTEMPTS:
+                        logger.warning("jobbot_actions: outbox item %s not posted (attempt %s/%s, will retry): %s",
+                                       item_id, attempts, MAX_POST_ATTEMPTS, e)
+                        continue
+                    logger.error("jobbot_actions: giving up on outbox item %s after %s attempts: %s", item_id, attempts, e)
+                _attempts.pop(item_id, None)
+                await asyncio.to_thread(_client.outbox_delivered, item_id)
         except Exception as e:
             logger.debug("jobbot_actions: outbox poll failed: %s", e)
         await asyncio.sleep(interval)

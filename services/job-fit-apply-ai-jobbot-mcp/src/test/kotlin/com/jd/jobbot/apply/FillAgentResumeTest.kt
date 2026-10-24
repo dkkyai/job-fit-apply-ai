@@ -122,7 +122,7 @@ class FillAgentResumeTest {
     fun `the system prompt makes a cover letter optional and answers profile-first`() {
         val llm = Script("""{"status":"ready"}""")
         agent(llm).run(FakePage(form), tailored)
-        val system = llm.systems.single()
+        val system = llm.systems.single().replace(Regex("\\s+"), " ")
         assertTrue(system.contains("the resume file into a file input"), system)
         assertTrue(system.contains("A cover letter is optional"), system)
         assertTrue(system.contains("candidate_profile_yaml, application_answers, tailored_resume_yaml and cover_letter (each when present)"), system)
@@ -155,7 +155,7 @@ class FillAgentResumeTest {
     fun `the system prompt takes the application's questions from the answers and the rest from the profile`() {
         val llm = Script("""{"status":"ready"}""")
         agent(llm).run(FakePage(form), tailored)
-        val system = llm.systems.single()
+        val system = llm.systems.single().replace(Regex("\\s+"), " ")
         assertTrue(system.contains("take the application's own questions from it"), system)
         assertTrue(system.contains("demographics, EEO answers, pay and preferences from candidate_profile_yaml"), system)
         assertTrue(system.contains("""Where application_answers says "ask", treat the answer as missing."""), system)

@@ -12,8 +12,9 @@ Processor ──► Bridge (completed feed: completed_seq, job_url, message_id, 
                 │                                  getUpdates (the ONLY reader)
                 │                                     jobbot  (Hermes, network `jobbot` only)
                 │                                      ├─ jobbot_actions plugin: taps → /plugin/tap
-                │                                      └─ agent: JFAA MCP tools (mcp__jfaa__*)
-                │                                               │ Bearer JOBBOT_MCP_TOKEN
+                │                                      ├─ agent: JFAA MCP tools (mcp__jfaa__*)
+                │                                      └─ API :8642 (jobbot-mcp only): fill runs, tools = fill_* only
+                │                                               │ Bearer JOBBOT_MCP_TOKEN   ▲ Bearer JOBBOT_HERMES_API_KEY
                 └──── GET (route allowlist) ───────── jobbot-mcp  (networks default + jobbot + jobbot-browser)
                       POST only tracks/{id}/events|status,  ├─ pipeline-output (ro), resume/profile YAML (ro)
                       jobs/{id}/tailor                 ├─ poller-secrets (ro): Gmail token, refreshed in memory
@@ -71,14 +72,16 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 
 **How it works**
 - **Tap Apply.** `jobbot-mcp` queues a fill. Fills run one at a time.
-- **Model-planned, code-executed.** The fill loop (`FillAgent`) asks the model (`JOBBOT_FILL_MODEL`, which defaults to `JOBBOT_MODEL`) for symbolic steps on element ids, and executes them in **JobBot's browser**: the `jobbot-browser` container, a headed Chromium 154 with a persistent profile.
-- **Review card.** When the form is ready, JobBot posts a screenshot and every filled field (passwords masked) under ✅ Submit / ✖ Discard.
+- **Hermes plans, code executes.** `jobbot-mcp` starts a Hermes **run** (`POST /v1/runs` on Hermes' API, its own session, so a long fill never blocks or is interrupted by the chat) whose only tools are `fill_context`, `fill_snapshot`, `fill_act` and `fill_finish`, and gives it a one-time session token for that tab. Hermes decides what to do next; every action it names goes through `FillExecutor`, which runs it in **JobBot's browser**: the `jobbot-browser` container, a headed Chromium 154 with a persistent profile. Hermes never connects to the browser or sees its DevTools (the agent container is not on the `jobbot-browser` network). The run uses `JOBBOT_FILL_MODEL` (defaults to `JOBBOT_MODEL`); if Hermes refuses the name, it retries on Hermes' own configured model.
+- **The tools.** `fill_act` takes up to 15 actions per call, in the vocabulary the old model loop had, no more and no fewer: `fill`, `select`, `check`, `upload_resume`, `upload_cover_letter`, `click`, `goto`, `password`, `email`, `google_sign_in`, `verification_code`, `open_verification_link` (a test pins that the executor, the tool schema and the run instructions all list exactly these). A fill gets 30 `fill_act` calls (and four times as many calls of any kind, since Hermes does not cap a run's iterations) and 25 minutes (`JOBBOT_FILL_MAX_ACT_CALLS`, `JOBBOT_FILL_MAX_MINUTES`) before it hands off. The token is the only way into a tab; when the fill ends, it dies.
+- **What a fill run can reach.** The fill tools are a separate MCP server (`/mcp-fill`, named `fill` in Hermes' config) and the API platform lists only that server, so a run sees `fill_*` and none of the chat's tools: no mail, drafts, tracks or cargo repo, which matters because a fill reads untrusted page text. The chat's server (`jfaa`, `/mcp`) does not offer `fill_*`. In `platform_toolsets` MCP servers are listed **by server name** (`fill`, `jfaa`), and the names listed form an allowlist; a name that is not a server (such as `mcp-fill`) is ignored and Hermes then includes every server, which is exactly how a fill once saw the mail tools. Terminal, file, code execution, browser, web and delegation are disabled for API runs too (`GET /v1/toolsets` with the API key shows every toolset `enabled: false`), and a direct `tool_call` to `mcp__jfaa__get_profile` from a run answers "not available in this session". Hermes warns at startup that its API is network-accessible while the terminal backend is `local`; that only matters if the terminal toolset were on, and it is not.
+- **Review card.** When the form is ready, JobBot posts a screenshot and every filled field (passwords masked) under ✅ Submit / ✖ Discard. The screenshot is the whole page, so it is fitted to Telegram's photo limits first (width + height ≤ 9,000, sides within 15:1, file ≤ 9 MB; a very tall page keeps its top). If Telegram refuses the photo anyway, the message and its buttons go out without it and the screenshot follows as a file, so a hand-off or review is never lost for want of a picture.
 - **Submit.** ✅ Submit clicks the site's submit button **only** if the form still matches what the card showed (field fingerprint) and exactly one submit control exists. It then sets the track to `applied` and adds an `application_submitted` event.
 - **Review window.** A filled form waits **4 h** (`JOBBOT_APPLY_REVIEW_TTL_HOURS`), with a reminder at 3 h. After that it expires and nothing is submitted.
 - **Hand-offs.** A CAPTCHA, phone or ID check, a sign-in Google won't auto-complete, or a question the profile can't answer is posted with the viewer link and **▶ Continue**.
 - **No mouse fights.** The loop doesn't touch the page while Richard works in the viewer.
 
-**Hard limits, in code (`SitePolicy`, `FillAgent`)**
+**Hard limits, in code (`SitePolicy`, `FillExecutor`, `FillSession`)**
 - **Never submits.** A click on any submit-type control is refused.
 - **Navigation is limited.** The page may only go to:
   - the job's own domain
@@ -94,7 +97,7 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 - **Google consent.** Approved automatically only for basic sign-in scopes (name, email, profile). The account's own address on the screen doesn't count as a Gmail scope. Anything else is handed to Richard.
 - **After a restart.** A fill waiting on a hand-off or review loses its tab when jobbot-mcp restarts. ▶ Continue then expires it, and the card's Apply button starts a fresh fill.
 - **Verification email.** Codes and links come only from the site's (or its ATS's) own sender, and links must point back at the site.
-- **CAPTCHAs** are never solved. They are handed off.
+- **CAPTCHAs** are never solved. One a person would have to solve (a visible "I'm not a robot" checkbox, an open image challenge, Turnstile, hCaptcha) is handed off. An **invisible** reCAPTCHA is not: it scores the visitor in the background and asks nothing, and Ashby, Greenhouse and Lever forms all carry one. The page script reports each widget's address, size and whether it is on screen, and `CaptchaPolicy` decides, ignoring `size=invisible` badges, frames parked off-screen, 1-pixel trackers and submit buttons that merely carry a site key.
 
 **JobBot's browser** (`docker/jobbot-browser`, profile `jobbot-browser`; called `apply-browser` before 2026-10-02)
 - **Image:** `linuxserver/chromium`, pinned by digest. Its Selkies web viewer streams over WebRTC/websockets.
@@ -121,7 +124,7 @@ Send JobBot a resume from your machine and it applies with that file instead of 
 
 If you reply to a card *and* put a link in the caption, the card wins. Without "apply" in the caption the file goes to the agent as usual.
 
-**How it runs.** The `jobbot_actions` plugin catches the document before Hermes does and posts it to `jobbot-mcp` (`POST /plugin/apply-resume`). From there it is the same fill as the Apply button: `FillAgent` in JobBot's browser, a review card, and nothing submitted until **✅ Submit**. The model never sees the file and the agent never sees the message.
+**How it runs.** The `jobbot_actions` plugin catches the document before Hermes does and posts it to `jobbot-mcp` (`POST /plugin/apply-resume`). From there it is the same fill as the Apply button: Hermes planning through the `fill_*` tools in JobBot's browser, a review card, and nothing submitted until **✅ Submit**. The model never sees the file and the agent never sees the message.
 
 **What is different from the Apply button**
 - **Your file is uploaded as-is**, under its own name (`Richard Hatcher - Senior SDET.pdf`, or `.docx` with the Word content type).
@@ -142,6 +145,8 @@ With `JOBBOT_DRY_RUN=true` it runs these checks and stops.
 **Same job twice.** A second file for a job that is already being filled, waiting on you, or waiting for review is not used, and JobBot says so (Discard the open one, then send again). Identity is the posting URL, so a link and a card for the same posting count as one job.
 
 **Link applications have no JFAA track.** Submitting one posts `Submitted: Job at <site>` but does not touch a track, because none exists. `/jdstatus` lists them as `(not a JFAA job)`.
+
+**Delivery.** The plugin acknowledges an outbox item only once it has been posted. A failure (Telegram down, a refused message) is retried on the next poll, up to 10 attempts, then logged as an error and dropped so one bad item cannot stall the queue. A failing item never holds up the ones behind it.
 
 **Not supported:** sending the file and the link in two separate messages; a `.doc`, `.pages` or `.rtf`; a second attachment in the same message.
 
@@ -245,6 +250,8 @@ The model has **no send tool**.
 | `JOBBOT_TELEGRAM_ALLOWED_USERS` | Your Telegram user id. |
 | `JOBBOT_TELEGRAM_HOME_CHANNEL` | Your chat id. |
 | `JOBBOT_MCP_TOKEN` | Shared secret between `jobbot` and `jobbot-mcp` (`openssl rand -hex 32`). |
+| `JOBBOT_HERMES_API_KEY` | Shared secret (16+ characters, `openssl rand -hex 32`) between `jobbot-mcp` and Hermes' API. Hermes' API is on only when this is set; blank means Apply cannot fill forms. Goes to those two services only. |
+| `JOBBOT_FILL_MAX_ACT_CALLS` / `JOBBOT_FILL_MAX_MINUTES` | How many `fill_act` calls (default 30; a fill may make four times as many calls of any kind) and how long (default 25 min) one fill gets before it is handed to you. |
 | `JOBBOT_FILL_MODEL` | The model that plans application fills. Defaults to `JOBBOT_MODEL`; set it to pin the fill model separately, so tuning the chat model never changes how applications are filled. Currently `deepseek-v4.1-flash:cloud`. |
 | `JOBBOT_MODEL` | Chosen by the env-llm-tuner skill. Default `deepseek-v4.1-flash:cloud`. Ollama Cloud ids end in `:cloud`; the bare name 404s. The fallback is oMLX `Qwen3.6-35B-A3B-OptiQ-4bit`. |
 | `JOBBOT_ACTIONS` | Verbs JobBot acts on. `NOTIFIER_TELEGRAM_ACTIONS` must be a subset. |
@@ -295,9 +302,15 @@ Then set `NOTIFIER_TELEGRAM_ACTIONS=` (blank) and recreate the notifier, so card
 | **jobbot-cargo**: packet parsing and eligibility, `CargoRepo` against a real local git remote (clone, pull, append, push, conflicts, token handling), the tools | `services/job-fit-apply-ai-jobbot-mcp`: `PacketsTest`, `CargoRepoTest`, `CargoToolsTest`, `ApplyServiceCargoTest` |
 | **End to end**: a real MCP client over HTTP, the real server, a git remote and `ApplyService` with a fake browser, from "apply to the ready packets" to the pushed STATUS trail | `CargoEndToEndTest` |
 | Tool allowlist matches the tools jobbot-mcp registers; the skill files name only real tools | `docker/jobbot/tests/test_seed.py` |
-| **Live jobbot-browser** (opt-in): real Chromium over CDP + a fixture job site + a scripted model | `JOBBOT_BROWSER_CDP_URL=http://127.0.0.1:19223 FIXTURE_HOST=host.docker.internal ./gradlew test --tests '*ApplyBrowserLiveTest*'` |
+| **Hermes-planned fill, end to end**: a stand-in Hermes API starts a "planner" that calls the real `fill_*` tools through a real MCP client over HTTP, against the real server, session, executor and review flow | `HermesFillEndToEndTest` |
+| Fill session, tools and parity (every action offered, every guard standing), Hermes client and driver | `FillSessionTest`, `FillToolsTest`, `HermesRunsTest`, `HermesFillDriverTest` |
+| **Live jobbot-browser** (opt-in): real Chromium over CDP + a fixture job site + a scripted planner | `JOBBOT_BROWSER_CDP_URL=http://127.0.0.1:19223 FIXTURE_HOST=host.docker.internal ./gradlew test --tests '*ApplyBrowserLiveTest*'` |
 | Compose isolation (networks, mounts, ports, profile) | `make compose-data-root-test` |
 | Buttons at the wire (Bridge → Processor → Notifier) | `make e2e` |
+
+## Rehearsing a change to fills
+
+Anything that touches how fills are planned or run should be rehearsed against the real Hermes and a real browser before it goes near the live containers. A rehearsal is a second compose project with its own images, containers, networks, data root and ports, so it cannot touch production: set `COMPOSE_PROJECT_NAME`, `CONTAINER_PREFIX` and `IMAGE_PREFIX` (for example `rehearsal`), `JFAA_DATA_ROOT` (a scratch folder), `JOBBOT_BROWSER_VIEWER_PORT` (not 3200), a fresh `JOBBOT_MCP_TOKEN` and `JOBBOT_HERMES_API_KEY`, and `JOBBOT_APPLY_ENABLED=true`; add an override that gives the scratch browser `extra_hosts: ["fixture.test:host-gateway"]` and publishes its DevTools on `127.0.0.1:19223`. Serve a fixture job form on the host (include an invisible reCAPTCHA lookalike, a question the profile cannot answer, a visible CAPTCHA and a page that tells the AI to submit), `POST /plugin/apply-resume` to the rehearsal `jobbot-mcp` with a `fixture.test` link, and read the outbox. The opt-in live suite runs against the same scratch browser: `JOBBOT_BROWSER_CDP_URL=http://127.0.0.1:19223 FIXTURE_HOST=fixture.test ./gradlew test --tests '*ApplyBrowserLiveTest*'`. Tear it all down afterwards (`down -v`, remove the `rehearsal-*` images and the dummy personal files).
 
 ## Known gaps
 

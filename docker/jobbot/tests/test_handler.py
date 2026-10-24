@@ -82,20 +82,31 @@ class FakeClient:
         return self.result
 
 
+class TelegramRefused(Exception):
+    """What python-telegram-bot raises when Telegram says no, e.g. Photo_invalid_dimensions."""
+
+
 class FakeBot:
-    def __init__(self):
+    def __init__(self, fail_photo=None, fail_message=None, fail_document=None):
         self.sent = []
         self.photos = []
         self.documents = []
-
-    async def send_document(self, **kw):
-        self.documents.append(kw)
+        self.fail_photo, self.fail_message, self.fail_document = fail_photo, fail_message, fail_document
 
     async def send_message(self, **kw):
+        if self.fail_message:
+            raise self.fail_message
         self.sent.append(kw)
 
     async def send_photo(self, **kw):
+        if self.fail_photo:
+            raise self.fail_photo
         self.photos.append(kw)
+
+    async def send_document(self, **kw):
+        if self.fail_document:
+            raise self.fail_document
+        self.documents.append(kw)
 
 
 class FakeAdapter:
@@ -125,6 +136,7 @@ def wire(monkeypatch, client, allowed="8679792351"):
             registered["hook:" + name] = fn
 
     plugin.register(Ctx())
+    plugin._attempts.clear()
     plugin._client = client
     handlers = []
 
@@ -619,35 +631,137 @@ def test_a_document_that_cannot_be_fetched_does_not_send_a_broken_message(monkey
     assert bot.documents == [] and bot.sent == []
 
 
-def test_a_failed_item_does_not_block_the_next_one_in_the_pump(monkeypatch):
-    """_pump_outbox catches per-item errors and still acknowledges, so one bad document cannot stall the outbox."""
+class StatefulOutbox(OutboxClient):
+    """Like the real outbox: an acknowledged item is not served again."""
+
+    def outbox(self):
+        return [i for i in self.items if i["id"] not in self.acked]
+
+    def outbox_delivered(self, item_id):
+        self.acked.append(item_id)
+
+
+def run_pump(plugin, bot, seconds=0.3):
+    async def go():
+        task = asyncio.ensure_future(plugin._pump_outbox(bot, interval=0.005))
+        await asyncio.sleep(seconds)
+        task.cancel()
+    asyncio.run(go())
+
+
+PHOTO_ITEM = {"id": 6, "text": "Job at jobs.ashbyhq.com needs you: There's a CAPTCHA.", "has_photo": True,
+              "buttons": [{"text": "▶ Continue", "callback_data": "resume:6"}, {"text": "✖ Discard", "callback_data": "discard:6"}]}
+
+
+def test_a_refused_photo_still_delivers_the_message_with_its_buttons(monkeypatch):
+    """The production failure: a full-page screenshot of a long form is Photo_invalid_dimensions, and the CAPTCHA hand-off with its Continue button vanished."""
     import jobbot_actions as plugin
     wire(monkeypatch, FakeClient({}))
+    plugin._client = OutboxClient([])
+    bot = FakeBot(fail_photo=TelegramRefused("Photo_invalid_dimensions"))
+    asyncio.run(plugin._post_outbox_item(bot, 8679792351, PHOTO_ITEM))
+    (msg,) = bot.sent
+    assert msg["text"] == PHOTO_ITEM["text"] and msg["chat_id"] == 8679792351
+    assert [b.callback_data for b in msg["reply_markup"].inline_keyboard[0]] == ["resume:6", "discard:6"]
+    (doc,) = bot.documents
+    assert doc["document"] == b"PNG6" and doc["filename"] == "screenshot.png", "the screenshot follows as a file"
+    assert bot.photos == []
 
-    class Pump(OutboxClient):
-        def outbox(self):
-            plugin._pumping = False
-            return self.items
 
-        def outbox_delivered(self, item_id):
-            self.acked.append(item_id)
+def test_a_refused_photo_with_a_long_text_sends_the_message_once(monkeypatch):
+    import jobbot_actions as plugin
+    wire(monkeypatch, FakeClient({}))
+    plugin._client = OutboxClient([])
+    bot = FakeBot(fail_photo=TelegramRefused("Photo_invalid_dimensions"))
+    item = dict(PHOTO_ITEM, text="x" * 2000)
+    asyncio.run(plugin._post_outbox_item(bot, 1, item))
+    assert [m["text"] for m in bot.sent] == ["x" * 2000]
+    assert bot.sent[0]["reply_markup"] is not None
 
-    client = Pump([
-        {"id": 1, "text": "bad", "has_document": True, "document_name": "a.pdf", "buttons": []},
-        {"id": 2, "text": "good", "has_document": False, "buttons": []},
+
+def test_the_message_is_delivered_even_if_the_screenshot_file_is_refused_too(monkeypatch):
+    import jobbot_actions as plugin
+    wire(monkeypatch, FakeClient({}))
+    plugin._client = OutboxClient([])
+    bot = FakeBot(fail_photo=TelegramRefused("Photo_invalid_dimensions"), fail_document=TelegramRefused("file too big"))
+    asyncio.run(plugin._post_outbox_item(bot, 1, PHOTO_ITEM))
+    assert len(bot.sent) == 1 and bot.documents == []
+
+
+def test_an_item_whose_message_cannot_be_sent_either_is_an_error_so_it_is_retried(monkeypatch):
+    import jobbot_actions as plugin
+    wire(monkeypatch, FakeClient({}))
+    plugin._client = OutboxClient([])
+    bot = FakeBot(fail_photo=TelegramRefused("Photo_invalid_dimensions"), fail_message=OSError("telegram down"))
+    with pytest.raises(OSError):
+        asyncio.run(plugin._post_outbox_item(bot, 1, PHOTO_ITEM))
+
+
+def test_a_photo_that_telegram_accepts_is_sent_exactly_as_before(monkeypatch):
+    import jobbot_actions as plugin
+    wire(monkeypatch, FakeClient({}))
+    plugin._client = OutboxClient([])
+    bot = FakeBot()
+    asyncio.run(plugin._post_outbox_item(bot, 1, PHOTO_ITEM))
+    assert len(bot.photos) == 1 and bot.sent == [] and bot.documents == []
+    assert bot.photos[0]["caption"] == PHOTO_ITEM["text"]
+
+
+def test_a_transient_failure_is_retried_and_delivered_once(monkeypatch):
+    import jobbot_actions as plugin
+    wire(monkeypatch, FakeClient({}))
+    client = StatefulOutbox([{"id": 1, "text": "hello", "has_photo": False, "buttons": []}])
+    plugin._client = client
+    calls = {"n": 0}
+
+    class Flaky(FakeBot):
+        async def send_message(self, **kw):
+            calls["n"] += 1
+            if calls["n"] <= 2:
+                raise OSError("telegram hiccup")
+            await super().send_message(**kw)
+
+    bot = Flaky()
+    run_pump(plugin, bot)
+    assert [m["text"] for m in bot.sent] == ["hello"], "delivered exactly once, after two failures"
+    assert client.acked == [1]
+    assert calls["n"] == 3, "and not resent on later polls once it was acknowledged"
+
+
+def test_a_failing_item_is_not_acknowledged_while_it_can_still_be_retried(monkeypatch):
+    import jobbot_actions as plugin
+    wire(monkeypatch, FakeClient({}))
+    monkeypatch.setattr(plugin, "MAX_POST_ATTEMPTS", 1000)
+    client = StatefulOutbox([{"id": 1, "text": "x", "has_photo": False, "buttons": []}])
+    plugin._client = client
+    run_pump(plugin, FakeBot(fail_message=OSError("down")), seconds=0.1)
+    assert client.acked == [], "a message that was never posted must not be marked delivered"
+
+
+def test_an_item_that_can_never_be_posted_is_given_up_on_without_stalling_the_queue(monkeypatch, caplog):
+    import logging
+    import jobbot_actions as plugin
+    wire(monkeypatch, FakeClient({}))
+    monkeypatch.setattr(plugin, "MAX_POST_ATTEMPTS", 3)
+    client = StatefulOutbox([
+        {"id": 1, "text": "never", "has_photo": True, "buttons": []},
+        {"id": 2, "text": "fine", "has_photo": False, "buttons": []},
     ])
-    client.doc_error = OSError("gone")
+    client.photo_error = None
+    original = client.outbox_photo
+
+    def broken_photo(item_id):
+        raise OSError("photo gone")
+
+    client.outbox_photo = broken_photo
     plugin._client = client
     bot = FakeBot()
-
-    async def run_once():
-        task = asyncio.ensure_future(plugin._pump_outbox(bot, interval=0.01))
-        await asyncio.sleep(0.15)
-        task.cancel()
-
-    asyncio.run(run_once())
-    assert 1 in client.acked and 2 in client.acked
-    assert [m["text"] for m in bot.sent][:1] == ["good"]
+    with caplog.at_level(logging.ERROR):
+        run_pump(plugin, bot)
+    assert sorted(client.acked) == [1, 2]
+    assert [m["text"] for m in bot.sent] == ["fine"], "the second item was delivered on the first poll, not held up"
+    assert any("giving up on outbox item 1 after 3 attempts" in r.message for r in caplog.records)
+    assert plugin._attempts == {}, "the attempt counter is cleared once an item is settled"
 
 
 # ── the wire contract shared with jobbot-mcp's Kotlin tests ────────────────────────────────────────────

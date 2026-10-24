@@ -43,7 +43,7 @@ import java.util.concurrent.Executors
  */
 class ApplyService(
     private val browser: ApplyBrowser,
-    /** FillAgent.run: fill the page for the job; `false` continues a page already in progress. */
+    /** FillExecutor.run: fill the page for the job; `false` continues a page already in progress. */
     private val fill: (ApplyPage, JobContext, Boolean) -> FillResult,
     private val lookup: JobLookup,
     private val contextFor: (Long) -> JobContext?,
@@ -180,9 +180,9 @@ class ApplyService(
 
         val snap = page.snapshot()
         val approved = JSON.parseToJsonElement(fill.details ?: "{}").jsonObject["fingerprint"]?.jsonPrimitive?.content
-        if (approved != fingerprint(FillAgent.fieldsOf(snap))) {
+        if (approved != fingerprint(FillExecutor.fieldsOf(snap))) {
             // Someone (Richard in the viewer, or the site) changed the form since the review card.
-            val ready = FillResult.Ready(FillAgent.fieldsOf(snap), page.screenshot(), "The form changed since the last review.")
+            val ready = FillResult.Ready(FillExecutor.fieldsOf(snap), page.screenshot(), "The form changed since the last review.")
             store.update(id, SUPERSEDED)
             postReview(store.insert(FILL, fill.jobKey, fill.seq, Outcomes.AWAITING_APPROVAL, fill.chatId, null, reviewDetails(ready, fill.details)).also { pages[it.id] = page; pages.remove(id) }.id, label(fill), ready)
             return TapResponse(Outcomes.REFUSED, toast = "The form changed — nothing submitted. A fresh review is below.", actionRow = emptyList())

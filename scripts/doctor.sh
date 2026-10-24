@@ -244,6 +244,15 @@ else
   if [ "${JOBBOT_APPLY_ENABLED:-false}" = "true" ]; then
     case ",${COMPOSE_PROFILES-}," in *,jobbot-browser,*|*,apply,*) ;; *) bad "JOBBOT_APPLY_ENABLED=true but COMPOSE_PROFILES has no 'jobbot-browser' (no browser to fill in)";; esac
     [ -n "${JOBBOT_BROWSER_PASSWORD:-${APPLY_BROWSER_PASSWORD:-}}" ] && ok "JOBBOT_BROWSER_PASSWORD set" || bad "JOBBOT_BROWSER_PASSWORD blank — jobbot-browser refuses to start"
+    # Hermes plans application fills over its API; it only starts with a key of 16+ characters.
+    hermes_key="${JOBBOT_HERMES_API_KEY:-}"
+    if [ "${#hermes_key}" -ge 16 ]; then ok "JOBBOT_HERMES_API_KEY set (Hermes plans application fills)"
+    else bad "JOBBOT_HERMES_API_KEY missing or under 16 characters — Hermes' API stays off, so Apply cannot fill forms  →  openssl rand -hex 32"; fi
+    if running "$P-jobbot-mcp"; then
+      docker exec "$P-jobbot-mcp" curl -fsS -m 5 http://jobbot:8642/health >/dev/null 2>&1 \
+        && ok "Hermes API answers from jobbot-mcp" \
+        || warn "Hermes API does not answer from jobbot-mcp (http://jobbot:8642/health)  →  docker logs $P-jobbot | grep -i api_server"
+    fi
     [ -n "${APPLY_BROWSER_PASSWORD:-}${APPLY_BROWSER_USER:-}${JOBBOT_APPLY_VIEWER_URL:-}" ] && warn "old APPLY_BROWSER_* / JOBBOT_APPLY_VIEWER_URL names in .env — rename to JOBBOT_BROWSER_*"
     if running "$P-jobbot-browser"; then
       if [ "$(docker inspect -f '{{.State.Health.Status}}' "$P-jobbot-browser" 2>/dev/null)" = "healthy" ]; then

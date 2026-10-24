@@ -11,13 +11,16 @@ import com.jd.jobbot.cargo.ProcessGit
 import com.jd.jobbot.mcp.CargoTools
 import java.nio.file.Files
 import com.jd.jobbot.apply.Credentials
-import com.jd.jobbot.apply.FillAgent
+import com.jd.jobbot.apply.FillExecutor
+import com.jd.jobbot.apply.FillSessions
+import com.jd.jobbot.hermes.HermesFillDriver
+import com.jd.jobbot.hermes.HermesRuns
+import com.jd.jobbot.mcp.FillTools
 import com.jd.jobbot.apply.JobContext
 import com.jd.jobbot.apply.PlaywrightApplyBrowser
 import com.jd.jobbot.apply.Verifier
 import com.jd.jobbot.bridge.str
 import com.jd.jobbot.jobs.JobRef
-import com.jd.jobbot.llm.OpenAiCompatibleLlm
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import com.jd.jobbot.actions.ArchiveSupport
@@ -76,10 +79,20 @@ fun main() {
     }
     // STATUS.md lines are written and pushed off the request path: a git push must never hold up a tap.
     val cargoWriter = Executors.newSingleThreadExecutor { r -> Thread(r, "cargo-status").apply { isDaemon = true } }
+    if (Config.APPLY_ENABLED && Config.HERMES_API_KEY.isBlank()) log.error("JOBBOT_HERMES_API_KEY is blank — Hermes cannot be asked to plan application fills")
+    val fillSessions = FillSessions()
     val applyService = if (Config.APPLY_ENABLED) {
+        val fillDriver = HermesFillDriver(
+            runs = HermesRuns(Config.HERMES_URL, Config.HERMES_API_KEY),
+            sessions = fillSessions,
+            executor = FillExecutor(credentials, gmail?.let { Verifier(it) }),
+            model = Config.FILL_MODEL,
+            maxWait = Duration.ofMinutes(Config.FILL_MAX_MINUTES),
+            maxActCalls = Config.FILL_MAX_ACT_CALLS,
+        )
         ApplyService(
             browser = PlaywrightApplyBrowser(Config.BROWSER_CDP_URL),
-            fill = FillAgent(OpenAiCompatibleLlm(Config.LLM_URL, Config.FILL_MODEL), credentials, gmail?.let { Verifier(it) })::run,
+            fill = fillDriver::run,
             lookup = lookup,
             contextFor = { seq -> if (seq == AD_HOC_SEQ) adHocJobContext(profile) else jobContext(seq, lookup, bridge, files, profile) },
             store = store,
@@ -157,6 +170,8 @@ fun main() {
             approvals = { id -> replies?.approvalPrompt(id) },
             outbox = outbox,
             accounts = if (Config.APPLY_ENABLED) ({ accountsText(credentials) }) else null,
+            // Always served (its tools need the token of a live fill, so with Apply off it does nothing): Hermes is configured for it.
+            fills = FillTools(fillSessions),
         )
     }.start(wait = true)
 }

@@ -73,7 +73,7 @@ class ApplyServiceResumeTest {
         val lookup = Lookup(event)
         /** Every JobContext the fill loop was handed, in order. */
         val jobs = mutableListOf<JobContext>()
-        var outcome: (ApplyPage) -> FillResult = { p -> FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
+        var outcome: (ApplyPage) -> FillResult = { p -> FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
 
         val service = ApplyService(
             browser = { _ -> page },
@@ -223,7 +223,7 @@ class ApplyServiceResumeTest {
     fun `a Continue after a hand-off keeps using the same file`() {
         val rig = Rig()
         var first = true
-        rig.outcome = { p -> if (first) { first = false; FillResult.NeedsHuman("CAPTCHA", null) } else FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
+        rig.outcome = { p -> if (first) { first = false; FillResult.NeedsHuman("CAPTCHA", null) } else FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
         rig.upload(name = "mine.pdf")
         assertEquals(Outcomes.DONE, rig.tap("resume", rig.fillId()).outcome)
         assertEquals(listOf("mine.pdf", "mine.pdf"), rig.jobs.map { it.resumeFileName })
@@ -254,7 +254,7 @@ class ApplyServiceResumeTest {
         rig.upload()
         assertTrue(rig.outbox.pending().last().text.contains("boom"))
         // A new file can start straight away: the failed fill does not block the job.
-        rig.outcome = { p -> FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
+        rig.outcome = { p -> FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
         assertEquals(Outcomes.DONE, rig.upload(name = "again.pdf").outcome)
         assertEquals("again.pdf", rig.jobs.last().resumeFileName)
     }
@@ -303,7 +303,7 @@ class ApplyServiceResumeTest {
     fun `a link application survives the hand-off and the review with its label`() {
         val rig = Rig()
         var first = true
-        rig.outcome = { p -> if (first) { first = false; FillResult.NeedsHuman("CAPTCHA", null) } else FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
+        rig.outcome = { p -> if (first) { first = false; FillResult.NeedsHuman("CAPTCHA", null) } else FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
         rig.upload(seq = null, url = linkUrl)
         assertTrue(rig.outbox.pending().last().text.startsWith("Job at jobs.lever.co needs you"), rig.outbox.pending().last().text)
         rig.tap("resume", rig.fillId())

@@ -11,7 +11,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /** A page held in memory: elements by id, every action recorded, optional scripted transitions. */
-class FakePage(var snap: Snapshot) : ApplyPage {
+open class FakePage(var snap: Snapshot) : ApplyPage {
     val actions = mutableListOf<String>()
     val values = mutableMapOf<String, String>()
     var onClick: (String) -> Unit = {}
@@ -206,7 +206,7 @@ class FillAgentTest {
 
     @Test
     fun `the review fields mask passwords and skip empty ones`() {
-        val fields = FillAgent.fieldsOf(
+        val fields = FillExecutor.fieldsOf(
             Snapshot("u", elements = listOf(
                 Element("a", "input", "text", "Email", value = "dkkytech@gmail.com"),
                 Element("b", "input", "password", "Password", value = "[set]"),

@@ -11,7 +11,7 @@ import com.jd.jobbot.apply.CargoStatusListener
 import com.jd.jobbot.apply.Credentials
 import com.jd.jobbot.apply.Element
 import com.jd.jobbot.apply.FakePage
-import com.jd.jobbot.apply.FillAgent
+import com.jd.jobbot.apply.FillExecutor
 import com.jd.jobbot.apply.FillResult
 import com.jd.jobbot.apply.JobContext
 import com.jd.jobbot.apply.Snapshot
@@ -111,7 +111,7 @@ class CargoEndToEndTest {
         val page = FakePage(form).also { p -> p.onClick = { if (it == "e3") p.snap = p.snap.copy(url = p.snap.url + "/done", text = "Thank you for applying!") } }
         val service = ApplyService(
             browser = { _ -> page },
-            fill = { p, job, _ -> jobs += job; FillResult.Ready(FillAgent.fieldsOf(p.snapshot()), byteArrayOf(9), "") },
+            fill = { p, job, _ -> jobs += job; FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(9), "") },
             lookup = lookup,
             contextFor = { JobContext("", null, null, "", "dkkytech@gmail.com", "years: 15+", null, null, null) },
             store = store, outbox = outbox, tracks = null, viewerUrl = null,

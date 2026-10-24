@@ -67,7 +67,8 @@ class Outbox(dbPath: String, private val shotsDir: Path, private val clock: Cloc
     fun post(text: String, buttons: List<InlineButton> = emptyList(), photo: ByteArray? = null): Long {
         val photoPath = photo?.let { bytes ->
             val p = shotsDir.resolve("shot-${clock.millis()}-${(0..9999).random()}.png")
-            Files.write(p, bytes)
+            // Telegram refuses photos over its size limits, and a long form's full-page capture is one.
+            Files.write(p, TelegramPhoto.fit(bytes))
             p.toString()
         }
         conn.prepareStatement("INSERT INTO outbox(text, buttons, photo, created_at) VALUES (?,?,?,?)").use { ps ->
