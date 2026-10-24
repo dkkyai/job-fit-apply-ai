@@ -54,6 +54,7 @@ class ApplyServiceCargoTest {
         val store = ActionStore(":memory:", clock)
         val outbox = Outbox(dir.resolve("o.db").toString(), dir.resolve("shots"), clock)
         val events = mutableListOf<Triple<String, String, String>>()
+        val restores = mutableListOf<Pair<String, String>>()
         val jobs = mutableListOf<JobContext>()
         val page = FakePage(form).also { p -> p.onClick = { if (it == "e3") p.snap = p.snap.copy(url = p.snap.url + "/done", text = "Thank you for applying!") } }
         var outcome: (ApplyPage) -> FillResult = { p -> FillResult.Ready(FillExecutor.fieldsOf(p.snapshot()), byteArrayOf(9), "") }
@@ -63,7 +64,10 @@ class ApplyServiceCargoTest {
             fill = { p, job, _ -> jobs += job; outcome(p) }, lookup = lookup,
             contextFor = { JobContext("", null, null, "", "dkkytech@gmail.com", "years: 15+", null, null, null) },
             store = store, outbox = outbox, tracks = null, viewerUrl = "https://viewer/",
-            cargoStatus = CargoStatusListener { f, s, n -> events += Triple(f, s, n); listener?.invoke(f, s, n) },
+            cargoStatus = object : CargoStatusListener {
+                override fun record(folder: String, state: String, note: String) { events += Triple(folder, state, note); listener?.invoke(folder, state, note) }
+                override fun restore(folder: String, note: String) { restores += folder to note }
+            },
             clock = clock, worker = MoreExecutors.newDirectExecutorService(),
         )
         val taps = TapService(
@@ -299,5 +303,37 @@ class ApplyServiceCargoTest {
         assertEquals(Outcomes.DONE, rig.service.applyPacket(packet(), "mcp").outcome)
         assertEquals(listOf("in_progress", "parked_at_review"), rig.states())
         assertEquals(1, rig.jobs.size)
+    }
+
+    @Test
+    fun `a packet application a crash left open is handed back to its packet, a pasted link is not`() {
+        val rig = Rig()
+        rig.store.insert(ApplyService.FILL, "cargo-job", 0, ApplyService.FILLING, user, null, """{"cargo_folder":"$folder"}""")
+        rig.store.insert(ApplyService.FILL, "link-job", 0, ApplyService.FILLING, user, null, """{"job_url":"https://jobs.example.com/x"}""")
+        assertEquals(2, rig.service.recoverInterrupted())
+        assertEquals(1, rig.restores.size, "only the packet's STATUS.md is touched")
+        assertEquals(folder, rig.restores.single().first)
+        assertTrue(rig.restores.single().second.contains("nothing was submitted"), rig.restores.single().second)
+        assertEquals(emptyList(), rig.events, "restoring is not recording a new state")
+    }
+
+    @Test
+    fun `a restore that fails never stops the others, and is recorded`() {
+        val rig = Rig()
+        val failing = ApplyService(
+            browser = { _ -> rig.page }, fill = { p, _, _ -> rig.outcome(p) }, lookup = rig.lookup,
+            contextFor = { null }, store = rig.store, outbox = rig.outbox, tracks = null, viewerUrl = null,
+            cargoStatus = object : CargoStatusListener {
+                override fun record(folder: String, state: String, note: String) {}
+                override fun restore(folder: String, note: String) = error("git is down")
+            },
+            clock = rig.clock, worker = MoreExecutors.newDirectExecutorService(),
+        )
+        val a = rig.store.insert(ApplyService.FILL, "a", 0, ApplyService.FILLING, user, null, """{"cargo_folder":"$folder"}""").id
+        val b = rig.store.insert(ApplyService.FILL, "b", 0, ApplyService.QUEUED, user, null, """{"cargo_folder":"applications/x/y/v00"}""").id
+        assertEquals(2, failing.recoverInterrupted())
+        assertEquals(ApplyService.EXPIRED, rig.store.byId(a)?.status)
+        assertEquals(ApplyService.EXPIRED, rig.store.byId(b)?.status)
+        assertTrue(rig.store.recentErrors(10).any { it.context.startsWith("cargo restore") && it.message.contains("git is down") })
     }
 }

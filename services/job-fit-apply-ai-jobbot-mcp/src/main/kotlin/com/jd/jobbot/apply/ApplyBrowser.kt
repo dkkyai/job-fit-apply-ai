@@ -4,11 +4,13 @@ import com.google.gson.JsonObject
 import com.microsoft.playwright.Browser
 import com.microsoft.playwright.BrowserContext
 import com.microsoft.playwright.CDPSession
+import com.microsoft.playwright.Locator
 import com.microsoft.playwright.Page
 import com.microsoft.playwright.Playwright
 import com.microsoft.playwright.PlaywrightException
 import com.microsoft.playwright.options.FilePayload
 import com.microsoft.playwright.options.LoadState
+import com.microsoft.playwright.options.ScreenshotScale
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
@@ -36,7 +38,15 @@ data class Element(
     val formFilled: Boolean = false,
     /** A "Sign in with Google" control: the site's own button, or Google's embedded button iframe. */
     val google: Boolean = false,
+    /**
+     * A dropdown or search-as-you-type list that is not a native `<select>` (react-select on Greenhouse). Its [kind] is
+     * `select`, its [value] is the chosen text, and its options only exist while it is open: use `choose`.
+     */
+    val combobox: Boolean = false,
 )
+
+/** What choosing an option of a combobox did: the text now chosen, or (when nothing matched) the options it offered. */
+data class Choice(val chosen: String?, val options: List<String> = emptyList())
 
 @Serializable
 data class Snapshot(
@@ -67,6 +77,8 @@ interface ApplyPage {
     fun goto(url: String)
     fun fill(id: String, value: String)
     fun select(id: String, option: String)
+    /** Picks the option of a combobox that matches [text]. A page without comboboxes can leave the default. */
+    fun choose(id: String, text: String): Choice { select(id, text); return Choice(text) }
     fun check(id: String, checked: Boolean)
     fun upload(id: String, name: String, mime: String, bytes: ByteArray)
     fun click(id: String)
@@ -173,6 +185,51 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
         override fun goto(url: String) { page.navigate(url); settle() }
         override fun fill(id: String, value: String) { el(id).fill(value) }
         override fun select(id: String, option: String) { el(id).selectOption(option) }
+
+        override fun choose(id: String, text: String): Choice {
+            val input = el(id)
+            val wanted = text.trim()
+            input.click()
+            var options = waitForOptions(id, 1_500)
+            if (wanted.isNotEmpty()) {
+                // Typing narrows a long list and starts a search-as-you-type (a city, a school).
+                runCatching { input.pressSequentially(wanted, Locator.PressSequentiallyOptions().setDelay(25.0)) }
+                options = waitForOptions(id, 3_000)
+            }
+            var pick = bestOption(options, wanted)
+            if (pick == null && wanted.isNotEmpty()) {
+                // The words typed may have hidden the right option (the site words it differently): show the whole list.
+                runCatching { input.press("Control+a"); input.press("Backspace") }
+                options = waitForOptions(id, 1_500)
+                pick = bestOption(options, wanted)
+            }
+            if (pick == null) {
+                runCatching { input.press("Escape") }
+                return Choice(null, options.take(MAX_OPTIONS_LISTED))
+            }
+            page.locator("[data-jobbot-opt=\"$pick\"]").first().click()
+            page.waitForTimeout(250.0)
+            val shown = (page.evaluate(CHOSEN_JS, id) as? String)?.takeIf { it.isNotBlank() }
+            // A control may show only part of what it chose (a phone country shows "+1" for "United States +1"): say the whole.
+            val option = options[pick]
+            return Choice(if (shown != null && !option.contains(shown, ignoreCase = true)) shown else option)
+        }
+
+        /** The visible options of [id]'s open list, once they have stopped changing (or after [millis]). */
+        private fun waitForOptions(id: String, millis: Long): List<String> {
+            var last = readOptions(id)
+            val deadline = System.currentTimeMillis() + millis
+            while (System.currentTimeMillis() < deadline) {
+                page.waitForTimeout(150.0)
+                val now = readOptions(id)
+                if (now.isNotEmpty() && now == last) return now
+                last = now
+            }
+            return last
+        }
+
+        private fun readOptions(id: String): List<String> =
+            runCatching { (page.evaluate(OPTIONS_JS, id) as? List<*>)?.map { it.toString() } }.getOrNull().orEmpty()
         override fun check(id: String, checked: Boolean) { el(id).setChecked(checked) }
         override fun upload(id: String, name: String, mime: String, bytes: ByteArray) {
             el(id).setInputFiles(FilePayload(name, mime, bytes))
@@ -234,7 +291,26 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
 
         override fun pause(millis: Long) { runCatching { page.waitForTimeout(millis.toDouble()) } }
 
-        override fun screenshot(): ByteArray = page.screenshot(Page.ScreenshotOptions().setFullPage(true))
+        /**
+         * The picture Richard reviews, small enough for Telegram as it is: at CSS scale (a 2x display would double each side)
+         * and only the application form, not the whole page. A Greenhouse page carries the entire job description above
+         * its form, which made a 2834 x 16384 capture that Telegram refuses and that took the JVM's whole heap to resize.
+         * Telegram shows a photo at most 1280 px on its longer side, so a form taller than [SHOT_MAX_HEIGHT] shows its top
+         * (the review card lists every field in text anyway).
+         */
+        override fun screenshot(): ByteArray {
+            val region = runCatching { page.evaluate(SHOT_REGION_JS) as? Map<*, *> }.getOrNull()
+            val options = Page.ScreenshotOptions().setScale(ScreenshotScale.CSS)
+            if (region != null) {
+                fun n(key: String) = (region[key] as? Number)?.toDouble()
+                val x = n("x"); val y = n("y"); val w = n("width"); val h = n("height")
+                if (x != null && y != null && w != null && h != null && w >= 1 && h >= 1) {
+                    return runCatching { page.screenshot(options.setFullPage(true).setClip(x, y, w, h)) }
+                        .getOrElse { log.warn("form screenshot failed ({}); taking the visible part instead", it.message); page.screenshot(Page.ScreenshotOptions().setScale(ScreenshotScale.CSS)) }
+                }
+            }
+            return page.screenshot(options)
+        }
         override fun close() { runCatching { page.close() } }
 
         private fun el(id: String): com.microsoft.playwright.Locator {
@@ -251,6 +327,109 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
         /** The page script's JSON as a [Snapshot], with the CAPTCHA verdict taken from what the page actually shows. */
         internal fun decodeSnapshot(json: String): Snapshot =
             JSON.decodeFromString(Snapshot.serializer(), json).let { it.copy(captcha = it.captcha || CaptchaPolicy.blocks(it.captchaWidgets)) }
+        private const val MAX_OPTIONS_LISTED = 60
+
+        /**
+         * Which option of a combobox's list answers [wanted]: an exact match, else the shortest that starts with it, else
+         * the shortest that contains it. Case, punctuation and a trailing dial code ("United States +1") do not matter.
+         * Returns the index into [options], or null.
+         */
+        internal fun bestOption(options: List<String>, wanted: String): Int? {
+            fun norm(t: String) = t.lowercase().replace(Regex("[^\\p{L}\\p{N} ]"), " ").replace(Regex("\\s+"), " ").trim()
+            val w = norm(wanted)
+            if (w.isEmpty()) return null
+            val n = options.map { norm(it) }
+            n.indexOfFirst { it == w }.takeIf { it >= 0 }?.let { return it }
+            // "United States +1" normalises to "united states 1": drop a trailing run of digits before comparing.
+            val bare = n.map { it.replace(Regex(" ?\\d+$"), "") }
+            bare.indexOfFirst { it == w }.takeIf { it >= 0 }?.let { return it }
+            return listOf(bare.indices.filter { bare[it].startsWith(w) }, bare.indices.filter { w in bare[it] })
+                .firstNotNullOfOrNull { hits -> hits.minByOrNull { bare[it].length } }
+        }
+
+        /** Reads the text a combobox shows as chosen (react-select keeps it in a sibling of the input, never in the input). */
+        private const val CHOSEN_FN = """
+            const chosenOf = el => {
+              let n = el;
+              for (let i = 0; i < 5 && n.parentElement; i++) {
+                n = n.parentElement;
+                // Climbing past the control into a container of several fields would read another field's choice.
+                if (n.querySelectorAll('[role=combobox]').length > 1) break;
+                const sv = n.querySelector('[class*="single-value" i], [class*="singlevalue" i]');
+                if (sv) return (sv.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+              }
+              return '';
+            };
+        """
+
+        val CHOSEN_JS = """
+            (id) => {
+              $CHOSEN_FN
+              const el = document.querySelector('[data-jobbot-id="' + id + '"]');
+              return el ? (chosenOf(el) || el.value || '') : '';
+            }
+        """.trimIndent()
+
+        /**
+         * The visible options of the list [id] opened, tagged `data-jobbot-opt=<index>` so one can be clicked. Scoped to that
+         * control: by aria-controls, else by react-select's option ids, so a hidden or unrelated list elsewhere on the page
+         * (Greenhouse's phone country picker has 248 role=option items) is never chosen from.
+         */
+        val OPTIONS_JS = """
+            (id) => {
+              document.querySelectorAll('[data-jobbot-opt]').forEach(o => o.removeAttribute('data-jobbot-opt'));
+              const el = document.querySelector('[data-jobbot-id="' + id + '"]');
+              if (!el) return [];
+              const shown = o => { const r = o.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(o).visibility !== 'hidden'; };
+              let opts = Array.from(document.querySelectorAll('[role=option]')).filter(shown);
+              const ctl = el.getAttribute('aria-controls');
+              const box = ctl && document.getElementById(ctl);
+              if (box) opts = opts.filter(o => box.contains(o));
+              else {
+                const mine = opts.filter(o => o.id.startsWith('react-select-' + el.id + '-option'));
+                if (mine.length) opts = mine;
+              }
+              return opts.slice(0, 300).map((o, i) => {
+                o.setAttribute('data-jobbot-opt', i);
+                return (o.innerText || o.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+              });
+            }
+        """.trimIndent()
+
+        /** The tallest part of a form shown in one review photo, in CSS pixels. */
+        const val SHOT_MAX_HEIGHT = 2_000
+
+        /**
+         * The page rectangle (document coordinates) worth photographing: the box around the visible form controls the
+         * snapshot tagged, with room for the heading above and the button below; the top of the page when there is
+         * no form. Never taller than [SHOT_MAX_HEIGHT].
+         */
+        val SHOT_REGION_JS = """
+            () => {
+              const MAX_H = $SHOT_MAX_HEIGHT, PAD = 24, HEAD = 90, MIN_W = 640, MIN_H = 320;
+              const doc = document.documentElement;
+              const pageW = Math.max(doc.scrollWidth, doc.clientWidth), pageH = Math.max(doc.scrollHeight, doc.clientHeight);
+              const sx = window.scrollX, sy = window.scrollY;
+              let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+              for (const el of document.querySelectorAll('[data-jobbot-id]')) {
+                if (!(el.form || el.closest('form'))) continue;
+                const rect = el.getBoundingClientRect();
+                if (rect.width < 1 || rect.height < 1 || getComputedStyle(el).visibility === 'hidden') continue;
+                l = Math.min(l, rect.left + sx); t = Math.min(t, rect.top + sy);
+                r = Math.max(r, rect.right + sx); b = Math.max(b, rect.bottom + sy);
+              }
+              let x, y, w, h;
+              if (l === Infinity) { x = 0; y = 0; w = Math.min(pageW, doc.clientWidth); h = Math.min(pageH, MAX_H); }
+              else {
+                x = Math.max(0, l - PAD); y = Math.max(0, t - HEAD);
+                w = Math.max(MIN_W, r + PAD - x); h = Math.max(MIN_H, b + PAD - y);
+                if (x + w > pageW) { x = Math.max(0, pageW - w); w = Math.min(w, pageW - x); }
+                h = Math.min(h, pageH - y, MAX_H);
+              }
+              return { x: Math.floor(x), y: Math.floor(y), width: Math.ceil(w), height: Math.ceil(h) };
+            }
+        """.trimIndent()
+
         /** How long a Google click is watched for a popup or FedCM dialog: 32 × 250 ms. */
         private const val POPUP_POLLS = 32
         private const val SNAPSHOT_TRIES = 3
@@ -296,6 +475,7 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
               };
               const filled = form => !!form && Array.from(form.querySelectorAll('input,textarea,select')).some(i =>
                 !['hidden','submit','button','checkbox','radio','file'].includes((i.type||'').toLowerCase()) && i.value && i.value.trim());
+              $CHOSEN_FN
               const bodyText = document.body ? document.body.innerText : '';
               const nodes = Array.from(document.querySelectorAll(
                 'input,select,textarea,button,a[href],[role=button],[role=link],[role=checkbox],[role=radio],[role=combobox],[data-identifier],' +
@@ -314,15 +494,18 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
               for (const el of nodes) {
                 const type = (el.getAttribute('type') || '').toLowerCase();
                 if (type === 'hidden' || !vis(el) && type !== 'file') continue;
+                // react-select's invisible "required" shim: a see-through, unfocusable text input that is not a field.
+                if (el.tagName === 'INPUT' && ['', 'text'].includes(type) && el.tabIndex === -1 && el.required && parseFloat(getComputedStyle(el).opacity) === 0) continue;
                 if (!el.dataset.jobbotId) el.dataset.jobbotId = 'e' + (++window.__jobbotSeq);
                 const tag = el.tagName.toLowerCase();
                 const role = el.getAttribute('role');
                 const iframe = tag === 'iframe';
+                const combo = tag === 'input' && role === 'combobox';
                 const form = el.form || el.closest('form');
                 const kind = iframe || extras.has(el) ? 'button'
                   : tag === 'a' || role === 'link' || el.hasAttribute('data-identifier') ? 'link'
                   : tag === 'button' || role === 'button' || ['submit','button','reset'].includes(type) ? 'button'
-                  : tag === 'select' ? 'select' : tag === 'textarea' ? 'textarea' : type === 'file' ? 'file'
+                  : tag === 'select' || combo ? 'select' : tag === 'textarea' ? 'textarea' : type === 'file' ? 'file'
                   : ['checkbox','radio'].includes(type) || ['checkbox','radio'].includes(role) ? type || role : 'input';
                 // An input's value is user data (or a secret), never its label: only button-like inputs use it as text.
                 const text = iframe ? 'Sign in with Google'
@@ -330,7 +513,8 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
                 out.push({
                   id: el.dataset.jobbotId, kind, type: type || null, label: clean(labelOf(el)), name: el.name || null,
                   required: !!el.required || el.getAttribute('aria-required') === 'true',
-                  value: type === 'password' ? (el.value ? '[set]' : '') : (kind === 'input' || kind === 'textarea' || kind === 'select') ? clean(el.value) : null,
+                  value: type === 'password' ? (el.value ? '[set]' : '') : combo ? clean(chosenOf(el) || el.value)
+                    : (kind === 'input' || kind === 'textarea' || kind === 'select') ? clean(el.value) : null,
                   options: tag === 'select' ? Array.from(el.options).map(o => clean(o.text)).slice(0, 60) : [],
                   checked: ['checkbox','radio'].includes(type) ? !!el.checked : null,
                   text,
@@ -338,6 +522,7 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
                   inForm: !!form, formFilled: filled(form),
                   // Only a control's own words count: a field's fallback label is its container's text.
                   google: iframe || ((kind === 'button' || kind === 'link') && GOOGLE.test(text + ' ' + (el.getAttribute('aria-label') || ''))),
+                  combobox: combo,
                 });
                 if (out.length >= 200) break;
               }

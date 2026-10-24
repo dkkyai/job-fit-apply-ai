@@ -202,7 +202,26 @@ class CargoRepo(
         return Appended(pushed, line, if (pushed) "committed and pushed" else "committed locally; $syncNote$detail")
     }
 
+    /**
+     * After a restart cut an application off with nothing submitted: appends the state the packet had before the attempt
+     * (`blocked` if Richard had blocked it, `not_started` if it was untouched), so the attempt's `in_progress` line does
+     * not lock the packet for two hours. Null, and nothing written, when the packet is not mid-attempt (its last line is
+     * not `in_progress` or `parked_at_review`): some other state has been recorded since and is not ours to undo.
+     */
+    @Synchronized
+    fun restoreAfterInterruption(folder: String, note: String): Appended? {
+        val rel = folder.trim().trim('/')
+        if (!FOLDER.matches(rel)) throw CargoException("Not a packet folder: $folder")
+        sync(force = true)
+        val lines = Packets.statusLines(dir.toRealPath().resolve(rel))
+        if (lines.lastOrNull()?.state !in ATTEMPT_STATES) return null
+        val before = lines.dropLastWhile { it.state in ATTEMPT_STATES }.lastOrNull()?.state ?: "not_started"
+        return appendStatus(rel, before, "$note (back to $before)")
+    }
+
     companion object {
+        /** The states one application attempt writes: the packet is mid-attempt while its last line is one of them. */
+        private val ATTEMPT_STATES = setOf("in_progress", "parked_at_review")
         private val FOLDER = Regex("""^applications/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/v\d+$""")
         private const val MAX_NOTE = 600
         private const val MAX_SEARCH_BYTES = 1_000_000L

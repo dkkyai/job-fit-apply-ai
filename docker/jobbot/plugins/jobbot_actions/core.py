@@ -5,6 +5,7 @@ The rules themselves (eligibility, expiry, idempotency, what each verb does) liv
 this side only recognises our callbacks, refuses strangers fast, forwards the tap, and turns the
 answer back into Telegram calls.
 """
+from pathlib import Path
 import base64
 import json
 import re
@@ -208,3 +209,37 @@ def safe_status(client):
         return client.status_text()
     except (urllib.error.URLError, OSError, ValueError) as e:
         return f"{UNAVAILABLE} ({e.__class__.__name__})"
+
+
+# ── telling Richard to send /new when the persona or tools changed ─────────────────────────────
+# A Hermes chat keeps the system prompt it started with, so after an update the chat does not know about new workflows
+# or tools until /new. seed.py writes a fingerprint of the persona and tool list on every start; this remembers the one
+# Richard was last told about.
+
+def _read(path):
+    try:
+        text = Path(path).read_text().strip()
+    except OSError:
+        return None
+    return text or None
+
+
+def persona_change_pending(home):
+    """True when the persona changed since Richard was last told. The first run only records it (nothing was stale)."""
+    home = Path(home)
+    current = _read(home / ".persona-fingerprint")
+    if current is None:
+        return False
+    seen = _read(home / ".persona-notified")
+    if seen is None:
+        (home / ".persona-notified").write_text(current + "\n")
+        return False
+    return seen != current
+
+
+def persona_change_posted(home):
+    home = Path(home)
+    current = _read(home / ".persona-fingerprint")
+    if current is not None:
+        (home / ".persona-notified").write_text(current + "\n")
+

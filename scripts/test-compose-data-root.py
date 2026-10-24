@@ -483,6 +483,44 @@ def test_jobbot_cargo_is_isolated() -> None:
     assert "jobbot-mcp" not in e2e, "the e2e slice must never reach the real cargo repo"
 
 
+def test_doctor_loads_the_env_file_whether_relative_or_absolute() -> None:
+    """An absolute ENV_FILE once became `.//Users/...`, failed silently and left every JobBot token blank in the report."""
+    loader = ROOT / "scripts" / "jfaa-load-env.sh"
+    assert loader.is_file(), "scripts/jfaa-load-env.sh is what doctor.sh sources to load ENV_FILE"
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        (tmp_path / "repo").mkdir()
+        (tmp_path / "other").mkdir()
+        absolute = tmp_path / "other" / "prod.env"
+        absolute.write_text("PROBE_TOKEN=from-absolute\n")
+        (tmp_path / "repo" / ".env.test").write_text("PROBE_TOKEN=from-relative\n")
+
+        def run(env_file: str | None) -> subprocess.CompletedProcess:
+            env = {k: v for k, v in os.environ.items() if k not in ("ENV_FILE", "PROBE_TOKEN")}
+            if env_file is not None:
+                env["ENV_FILE"] = env_file
+            script = f'ROOT="{tmp_path / "repo"}"; cd "$ROOT"; . "{loader}"; echo "token=${{PROBE_TOKEN:-}}"; echo "path=$JFAA_ENV_FILE"'
+            return subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, check=True)
+
+        a = run(str(absolute))
+        assert "token=from-absolute" in a.stdout and f"path={absolute}" in a.stdout, a.stdout + a.stderr
+        r = run(".env.test")
+        assert "token=from-relative" in r.stdout and f"path={tmp_path / 'repo' / '.env.test'}" in r.stdout, r.stdout + r.stderr
+        missing = run(str(tmp_path / "nope.env"))
+        assert "token=" in missing.stdout and "not found" in missing.stderr, "a named env file that is missing must be said, not skipped silently: " + missing.stderr
+        default = run(None)
+        assert default.stderr.strip() == "", "no ENV_FILE and no .env is the normal release-worktree case and stays quiet: " + default.stderr
+
+
+def test_doctor_checks_that_hermes_accepts_the_key() -> None:
+    """The unauthenticated /health answered while jobbot-mcp's key was being rejected (a key Hermes had generated into
+    its own .env won), so the doctor presented a broken Apply as healthy."""
+    text = (ROOT / "scripts" / "doctor.sh").read_text()
+    assert "Authorization: Bearer $JOBBOT_HERMES_API_KEY" in text and "/v1/runs/" in text, "doctor must probe the API with the key"
+    assert "401" in text, "a rejected key is reported as a failure"
+    assert 'jfaa-load-env.sh' in text, "doctor.sh loads ENV_FILE through the shared loader"
+
+
 def test_watchlist_state_follows_data_root() -> None:
     """The watchlist's last-run gate and health file live under the data root (prod: the
     /state volume doctor.sh reads), and JD_WATCHLIST_STATE_HOST overrides it on its own.
@@ -557,6 +595,8 @@ def main() -> None:
         test_jobbot_fill_model_is_its_own_knob,
         test_jobbot_hermes_plans_fills_without_giving_anything_new_away,
         test_jobbot_cargo_is_isolated,
+        test_doctor_loads_the_env_file_whether_relative_or_absolute,
+        test_doctor_checks_that_hermes_accepts_the_key,
         test_pipeline_env_file_override,
         test_instance_identity_parameterization,
         test_e2e_state_dir_moves_all_slice_state,

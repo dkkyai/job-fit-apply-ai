@@ -169,6 +169,7 @@ def _wire(application, adapter):
     application.add_handler(MessageHandler(filters.Document.ALL, on_resume), group=-1)
     if _home_chat and _loop is not None:
         _loop.create_task(_pump_outbox(application.bot))
+        _loop.create_task(_announce_persona_change(application.bot, int(_home_chat)))
     logger.info("jobbot_actions: card-button handler registered")
 
 
@@ -236,6 +237,24 @@ async def _post_outbox_item(bot, chat_id, item):
                 logger.warning("jobbot_actions: screenshot for outbox item %s not sent as a file either: %s", item.get("id"), doc_error)
             return
     await bot.send_message(chat_id=chat_id, text=text[:4096], reply_markup=markup)
+
+
+PERSONA_NOTICE = (
+    "JobBot was updated: my instructions or tools changed. A chat keeps the instructions it started with, so send /new once "
+    "and I'll use the new ones (my memory stays)."
+)
+
+
+async def _announce_persona_change(bot, chat_id, home=None):
+    """Once per change of persona or tools, ask Richard to send /new. Marked as told only after the message went."""
+    home = home or os.environ.get("HERMES_HOME") or "/opt/data"
+    try:
+        if not core.persona_change_pending(home):
+            return
+        await bot.send_message(chat_id=chat_id, text=PERSONA_NOTICE)
+        core.persona_change_posted(home)
+    except Exception as e:
+        logger.warning("jobbot_actions: persona-change notice not sent (will retry at the next start): %s", e)
 
 
 # How many times an item is tried before it is given up on, and the attempts so far (reset when the plugin restarts).

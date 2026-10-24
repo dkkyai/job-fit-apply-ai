@@ -108,6 +108,14 @@ class ActionStore(dbPath: String, private val clock: Clock = Clock.systemUTC()) 
             ps.executeQuery().use { rs -> generateSequence { if (rs.next()) rs.toAction() else null }.toList() }
         }
 
+    /** Every [verb] action still open: queued, filling, waiting on Richard, or awaiting his review. */
+    @Synchronized
+    fun open(verb: String): List<Action> =
+        conn.prepareStatement("SELECT * FROM actions WHERE verb = ? AND status IN ('queued','filling','needs_human','awaiting_approval') ORDER BY id").use { ps ->
+            ps.setString(1, verb)
+            ps.executeQuery().use { rs -> generateSequence { if (rs.next()) rs.toAction() else null }.toList() }
+        }
+
     /** How many [verb] actions reached [status] since [sinceMillis] (the daily send cap). */
     @Synchronized
     fun countSince(verb: String, status: String, sinceMillis: Long): Int =

@@ -101,17 +101,29 @@ fun main() {
             viewerUrl = Config.BROWSER_VIEWER_URL.ifBlank { null },
             credentials = credentials,
             cargoStatus = cargoRepo?.let { repo ->
-                CargoStatusListener { folder, state, note ->
-                    cargoWriter.submit {
-                        runCatching { repo.appendStatus(folder, state, note) }
-                            .onSuccess { if (!it.pushed) store.recordError("cargo status $folder", it.message) }
-                            .onFailure { store.recordError("cargo status $folder", it.message ?: it.javaClass.simpleName) }
+                object : CargoStatusListener {
+                    override fun record(folder: String, state: String, note: String) {
+                        cargoWriter.submit {
+                            runCatching { repo.appendStatus(folder, state, note) }
+                                .onSuccess { if (!it.pushed) store.recordError("cargo status $folder", it.message) }
+                                .onFailure { store.recordError("cargo status $folder", it.message ?: it.javaClass.simpleName) }
+                        }
+                    }
+
+                    override fun restore(folder: String, note: String) {
+                        cargoWriter.submit {
+                            runCatching { repo.restoreAfterInterruption(folder, note) }
+                                .onSuccess { if (it != null && !it.pushed) store.recordError("cargo restore $folder", it.message) }
+                                .onFailure { store.recordError("cargo restore $folder", it.message ?: it.javaClass.simpleName) }
+                        }
                     }
                 }
             },
             reviewTtl = Duration.ofHours(Config.APPLY_REVIEW_TTL_HOURS),
             reminderAfter = Duration.ofHours(Config.APPLY_REMINDER_HOURS),
         ).also { svc ->
+            // Fills an earlier process left open can never finish: close them before any new one starts.
+            runCatching { svc.recoverInterrupted() }.onFailure { log.warn("recovering interrupted fills failed: {}", it.message) }
             Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "apply-sweep").apply { isDaemon = true } }
                 .scheduleAtFixedRate({ runCatching { svc.sweep() }.onFailure { log.warn("apply sweep failed: {}", it.message) } }, 1, 1, TimeUnit.MINUTES)
         }

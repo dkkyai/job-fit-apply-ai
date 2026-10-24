@@ -268,4 +268,40 @@ class ApplyServiceTest {
         assertTrue(rig.outbox.pending().none { it.buttons.any { b -> b.text == "✅ Submit" } }, "no review for a discarded fill")
         assertEquals(ApplyService.CANCELLED, rig.store.recent().first { it.verb == "fill" }.status)
     }
+
+    @Test
+    fun `fills an earlier process left open are closed at startup and Richard is told`() {
+        val rig = Rig()
+        val ids = listOf(ApplyService.QUEUED, ApplyService.FILLING, Outcomes.AWAITING_APPROVAL, ApplyService.NEEDS_HUMAN)
+            .mapIndexed { i, status -> status to rig.store.insert(ApplyService.FILL, "k$i", 9, status, user, null).id }
+        val finished = rig.store.insert(ApplyService.FILL, "k9", 9, Outcomes.DONE, user, null).id
+        assertEquals(4, rig.service.recoverInterrupted())
+        ids.forEach { (_, id) -> assertEquals(ApplyService.EXPIRED, rig.store.byId(id)?.status) }
+        assertEquals(Outcomes.DONE, rig.store.byId(finished)?.status, "a finished application is never touched")
+        val told = rig.outbox.pending()
+        assertEquals(4, told.size)
+        assertTrue(told.all { it.text.contains("restarted") && it.text.contains("Nothing was submitted") }, told.first().text)
+        assertEquals(0, rig.service.recoverInterrupted(), "nothing is left to recover the second time")
+    }
+
+    @Test
+    fun `an old leftover is closed quietly, not announced again`() {
+        val rig = Rig()
+        val id = rig.store.insert(ApplyService.FILL, "old", 9, ApplyService.NEEDS_HUMAN, user, null).id
+        rig.clock.now = rig.clock.now.plus(Duration.ofHours(5))
+        assertEquals(1, rig.service.recoverInterrupted())
+        assertEquals(ApplyService.EXPIRED, rig.store.byId(id)?.status)
+        assertEquals(0, rig.outbox.pending().size, "older than the review window: no message")
+    }
+
+    @Test
+    fun `after recovery the job can be applied to again`() {
+        val rig = Rig()
+        rig.tap("apply")
+        val first = rig.fillId()
+        rig.restart()
+        rig.service.recoverInterrupted()
+        assertEquals(ApplyService.EXPIRED, rig.store.byId(first)?.status)
+        assertEquals(Outcomes.DONE, rig.tap("apply").outcome)
+    }
 }
