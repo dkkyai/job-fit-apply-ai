@@ -74,6 +74,15 @@ class FillExecutor(
 ) {
     private val log = LoggerFactory.getLogger(FillExecutor::class.java)
 
+    /** Choose an option of a combobox, and tell the planner what was picked, or (a miss) the options that exist. */
+    private fun choose(page: ApplyPage, el: Element, text: String): String {
+        val c = page.choose(el.id, text)
+        c.chosen?.let { return "ok: chose '$it'" }
+        val shown = c.options.take(40)
+        return if (shown.isEmpty()) "error: no option matching '$text', and the list offered none. Try other words, or finish need_human."
+        else "error: no option matching '$text'. The options are: ${shown.joinToString(" | ")}${if (c.options.size > shown.size) " | …" else ""}. Choose one of these exactly, or finish need_human if none is a true answer."
+    }
+
     /** Runs one action. The result is what the planner is told: "ok", "error: …", "refused: …" or "handoff: …". */
     internal fun execute(
         a: JsonObject, page: ApplyPage, snap: Snapshot, job: JobContext, started: Long,
@@ -87,9 +96,15 @@ class FillExecutor(
             "fill" -> {
                 el ?: return "error: no element $id"
                 if (el.type == "password") return "refused: use the password action for password fields"
+                // Text typed into a combobox is never committed: only choosing one of its options sets the answer.
+                if (el.combobox) return choose(page, el, a.text("value").orEmpty())
                 page.fill(el.id, a.text("value").orEmpty()); "ok"
             }
-            "select" -> { el ?: return "error: no element $id"; page.select(el.id, a.text("option").orEmpty()); "ok" }
+            "select" -> {
+                el ?: return "error: no element $id"
+                if (el.combobox) return choose(page, el, a.text("option").orEmpty())
+                page.select(el.id, a.text("option").orEmpty()); "ok"
+            }
             "check" -> {
                 el ?: return "error: no element $id"
                 page.check(el.id, a["checked"]?.jsonPrimitive?.booleanOrNull ?: true); "ok"

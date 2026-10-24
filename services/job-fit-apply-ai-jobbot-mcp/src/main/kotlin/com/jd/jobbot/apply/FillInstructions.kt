@@ -21,7 +21,9 @@ object FillInstructions {
 
         Actions for fill_act (the `do` field), each on an element id from the current page unless noted:
           fill (id, value)         type into a text field
-          select (id, option)      choose a dropdown option (use the option's text)
+          select (id, option)      choose a dropdown option (use the option's text). Also for an element marked
+                                   "combobox": true (a dropdown or search box with no fixed list): it opens it, types your
+                                   words, picks the matching option and tells you which. On no match it lists the real options.
           check (id, checked)      tick or untick a box
           upload_resume (id)       the resume file into a file input
           upload_cover_letter (id) the cover letter into a file input

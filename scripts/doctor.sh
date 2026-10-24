@@ -13,14 +13,8 @@ cd "$ROOT"
 # JFAA_DATA_ROOT layout and legacy per-service overrides. ENV_FILE selects the instance
 # (Makefile passes .env.test for `make doctor INSTANCE=test`); default is the prod .env.
 # These files are user-owned/gitignored.
-ENV_FILE="${ENV_FILE:-.env}"
-if [ -f "$ENV_FILE" ]; then
-  set -a
-  # shellcheck disable=SC1090,SC1091
-  . "./$ENV_FILE"
-  set +a
-fi
-export JFAA_ENV_FILE="$ROOT/$ENV_FILE"
+# shellcheck disable=SC1091
+. "$ROOT/scripts/jfaa-load-env.sh"
 # shellcheck disable=SC1091
 . "$ROOT/scripts/jfaa-data-root.sh"
 
@@ -252,6 +246,13 @@ else
       docker exec "$P-jobbot-mcp" curl -fsS -m 5 http://jobbot:8642/health >/dev/null 2>&1 \
         && ok "Hermes API answers from jobbot-mcp" \
         || warn "Hermes API does not answer from jobbot-mcp (http://jobbot:8642/health)  →  docker logs $P-jobbot | grep -i api_server"
+      # /health needs no key. A real route does: 404 (no such run) means the key was accepted, 401 means it was not.
+      status="$(docker exec "$P-jobbot-mcp" sh -c 'curl -s -m 5 -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $JOBBOT_HERMES_API_KEY" http://jobbot:8642/v1/runs/doctor-probe' 2>/dev/null || true)"
+      case "$status" in
+        401|403) bad "Hermes rejects jobbot-mcp's API key (HTTP $status), so every fill would fail  →  an API_SERVER_KEY line in the agent's /opt/data/.env overrides the environment: delete it, then recreate $P-jobbot" ;;
+        "") : ;;
+        *) ok "Hermes accepts jobbot-mcp's API key" ;;
+      esac
     fi
     [ -n "${APPLY_BROWSER_PASSWORD:-}${APPLY_BROWSER_USER:-}${JOBBOT_APPLY_VIEWER_URL:-}" ] && warn "old APPLY_BROWSER_* / JOBBOT_APPLY_VIEWER_URL names in .env — rename to JOBBOT_BROWSER_*"
     if running "$P-jobbot-browser"; then

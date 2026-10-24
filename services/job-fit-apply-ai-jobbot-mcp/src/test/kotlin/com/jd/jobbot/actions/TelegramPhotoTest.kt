@@ -83,7 +83,8 @@ class TelegramPhotoTest {
         val (w, h) = size(TelegramPhoto.fit(png(page(6000, 6000))))
         assertEquals(w, h)
         assertTrue(w + h <= TelegramPhoto.MAX_SUM)
-        assertTrue(w > 4000, "scaled down only as far as needed: $w")
+        // 36 million pixels is over the decode budget, so it is read at every 2nd pixel: half the resolution at worst.
+        assertTrue(w >= 3000, "kept at least half the resolution: $w")
     }
 
     @Test
@@ -122,5 +123,31 @@ class TelegramPhotoTest {
             assertTrue(telegramAccepts(o.photo(tall)!!), "what the plugin downloads is postable")
             assertContentEquals(small, o.photo(ok))
         }
+    }
+
+    @Test
+    fun `a capture as tall as Chromium allows is fitted without decoding it all`() {
+        // 2834 x 16384 is 46 million pixels: about 180 MB decoded, and the old code held three such copies at once,
+        // which is more than the 384 MB heap jobbot-mcp runs with (the process died with OutOfMemoryError mid-fill).
+        val fitted = TelegramPhoto.fit(png(page(2834, 16_384)))
+        assertTrue(telegramAccepts(fitted), "fitted to ${size(fitted)}")
+        val (w, h) = size(fitted)
+        assertTrue(h <= TelegramPhoto.MAX_RATIO * w, "$w x $h")
+        // The top of the page survives: the first blue band (at y=20 of 16384) is still within the first few rows.
+        val img = ImageIO.read(ByteArrayInputStream(fitted))
+        val blue = (0 until h / 50).any { y -> Color(img.getRGB(w / 8, y)).let { it.blue > 150 && it.red < 120 } }
+        assertTrue(blue, "the top of the form was lost")
+    }
+
+    @Test
+    fun `the decode budget is bounded however large the capture is`() {
+        for ((w, h) in listOf(2834 to 16_384, 1280 to 16_384, 5000 to 5000, 20_000 to 800, 100 to 100_000)) {
+            val plan = TelegramPhoto.readPlan(w, h)
+            val pixels = (plan.regionWidth / plan.step).toLong() * (plan.regionHeight / plan.step)
+            assertTrue(pixels <= TelegramPhoto.MAX_DECODE_PIXELS, "$w x $h decodes $pixels pixels")
+            assertTrue(plan.regionWidth <= w && plan.regionHeight <= h && plan.step >= 1)
+        }
+        val small = TelegramPhoto.readPlan(1280, 4000)
+        assertEquals(1, small.step, "an image within budget is read at full size")
     }
 }

@@ -265,6 +265,43 @@ class ApplyService(
         }
     }
 
+    /**
+     * Run once at startup, before any new fill. A fill is a tab and a worker in this process, so every one still open
+     * in the database belongs to an earlier process that died (a restart, a crash): it can never finish or be
+     * submitted. Close each, hand a packet's application back to its STATUS.md, and tell Richard about the ones he
+     * may be waiting on. Returns how many were closed.
+     */
+    @Synchronized
+    fun recoverInterrupted(): Int {
+        val stale = store.open(FILL).filter { it.id !in running && pages[it.id] == null }
+        for (fill in stale) {
+            store.update(fill.id, EXPIRED)
+            releaseFiles(fill.id)
+            val folder = cargoFolder(fill.details)
+            if (folder != null) {
+                runCatching { cargoStatus?.restore(folder, "JobBot restarted during this application; nothing was submitted") }
+                    .onFailure { store.recordError("cargo restore $folder", it.message ?: it.javaClass.simpleName) }
+            }
+            // Anything older than the review window is a leftover nobody is waiting on any more.
+            if (Duration.ofMillis(clock.millis() - fill.updatedAt) <= reviewTtl) {
+                val was = when (fill.status) {
+                    QUEUED, FILLING -> "being filled"
+                    Outcomes.AWAITING_APPROVAL -> "waiting for your review (the filled form is gone)"
+                    else -> "waiting on you"
+                }
+                outbox.post(
+                    "JobBot restarted while the application for ${label(fill)} was $was. Nothing was submitted. " +
+                        "Tap Apply on the card, or ask me again, to start it over.",
+                )
+            }
+        }
+        if (stale.isNotEmpty()) log.warn("closed {} fill(s) left open by an earlier process", stale.size)
+        return stale.size
+    }
+
+    private fun cargoFolder(details: String?): String? =
+        runCatching { JSON.parseToJsonElement(details ?: "{}").jsonObject["cargo_folder"]?.jsonPrimitive?.content }.getOrNull()
+
     private fun start(id: Long, fresh: Boolean) {
         running += id
         worker.submit { try { runFill(id, fresh) } finally { running -= id } }
@@ -336,7 +373,7 @@ class ApplyService(
     /** Tell the listener about a jobbot-cargo application's progress; a failure there never disturbs the application. */
     private fun cargo(details: String?, state: String, note: String) {
         val listener = cargoStatus ?: return
-        val folder = runCatching { JSON.parseToJsonElement(details ?: "{}").jsonObject["cargo_folder"]?.jsonPrimitive?.content }.getOrNull() ?: return
+        val folder = cargoFolder(details) ?: return
         runCatching { listener.record(folder, state, note) }.onFailure { store.recordError("cargo status $folder", it.message ?: "") }
     }
 
@@ -434,8 +471,20 @@ class ApplyService(
 }
 
 /** Records a jobbot-cargo application's progress in the packet's STATUS.md. */
-fun interface CargoStatusListener {
+interface CargoStatusListener {
     fun record(folder: String, state: String, note: String)
+
+    /**
+     * An attempt was cut off by a restart, with nothing submitted: put the packet back in the state it had before the
+     * attempt (so it can be retried, or stays blocked if Richard had blocked it). A packet no longer mid-attempt is left alone.
+     */
+    fun restore(folder: String, note: String) {}
+
+    companion object {
+        /** A listener that only records, as the tests build them. */
+        operator fun invoke(record: (folder: String, state: String, note: String) -> Unit): CargoStatusListener =
+            object : CargoStatusListener { override fun record(folder: String, state: String, note: String) = record(folder, state, note) }
+    }
 }
 
 /** Everything to apply from one jobbot-cargo packet. [upload] is the packet's own résumé; [answers] its application-answers.md. */

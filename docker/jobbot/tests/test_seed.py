@@ -155,3 +155,32 @@ def test_platform_toolsets_name_real_mcp_servers():
         assert set(mcp_names) <= servers, f"{platform} lists {set(mcp_names) - servers}, which is not an MCP server (no 'mcp-' prefix)"
     assert set(cfg["platform_toolsets"]["telegram"]) & servers == {"jfaa"}
     assert set(cfg["platform_toolsets"]["api_server"]) & servers == {"fill"}
+
+
+def test_main_writes_a_persona_fingerprint_that_changes_with_the_persona_and_the_tools(tmp_path):
+    def fingerprint_after(edit=None):
+        src = tmp_path / "src"
+        shutil.rmtree(src, ignore_errors=True)
+        shutil.copytree(JOBBOT, src, ignore=shutil.ignore_patterns("tests", "__pycache__", "*.pyc"))
+        if edit:
+            edit(src)
+        home = tmp_path / f"home{len(list(tmp_path.glob('home*')))}"
+        seed.main({"JOBBOT_MCP_TOKEN": "tok"}, owner="no-such-user", src=src, home=home)
+        return (home / ".persona-fingerprint").read_text().strip()
+
+    base = fingerprint_after()
+    assert len(base) == 64
+    assert fingerprint_after() == base, "the same persona and tools always give the same fingerprint"
+    assert fingerprint_after(lambda s: (s / "SOUL.md").write_text((s / "SOUL.md").read_text() + "\nNew rule.\n")) != base
+    assert fingerprint_after(lambda s: (s / "skills" / "cargo.md").write_text((s / "skills" / "cargo.md").read_text() + "\nNew step.\n")) != base
+    assert fingerprint_after(lambda s: (s / "config.yaml.tmpl").write_text((s / "config.yaml.tmpl").read_text().replace("cargo_list,", "cargo_list, cargo_new,", 1))) != base, "a new tool changes it"
+
+
+def test_the_fingerprint_does_not_change_with_secrets_or_the_model(tmp_path):
+    def run(env):
+        home = tmp_path / f"h{len(list(tmp_path.glob('h*')))}"
+        seed.main(env, owner="no-such-user", src=JOBBOT, home=home)
+        return (home / ".persona-fingerprint").read_text()
+    a = run({"JOBBOT_MCP_TOKEN": "one", "JOBBOT_MODEL": "x:cloud"})
+    assert run({"JOBBOT_MCP_TOKEN": "two", "JOBBOT_MODEL": "y:cloud"}) == a, "rotating a token or switching model is not a reason to ask for /new"
+
