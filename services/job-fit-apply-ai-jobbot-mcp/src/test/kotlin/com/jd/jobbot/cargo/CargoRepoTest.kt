@@ -410,4 +410,57 @@ class CargoRepoTest {
         assertEquals("JobBot", CargoRemote.git(remote.freshClone(), "log", "-1", "--format=%an"))
         assertEquals("jobbot@users.noreply.github.com", CargoRemote.git(remote.freshClone(), "log", "-1", "--format=%ae"))
     }
+
+    // ── restoring a packet after a crashed attempt ───────────────────────────────────────────────
+
+    private fun lastLine(folder: String) = Files.readString(remote.freshClone("v").resolve("$folder/STATUS.md")).trim().lines().last()
+
+    @Test
+    fun `a crashed attempt on a blocked packet puts blocked back, so Richard's override was one-time`() {
+        val folder = remote.packet("acme", "sdet", statusLines = listOf(
+            "- 2026-10-23T04:04:00Z | blocked | Richard decided not to apply",
+            "- 2026-10-24T17:28:58Z | in_progress | draft approved: \"Apply anyway\" — opened the form",
+        ))
+        remote.publish()
+        val r = repo(); r.sync(force = true)
+        val done = r.restoreAfterInterruption(folder, "JobBot restarted mid-application; nothing was submitted")
+        assertTrue(done!!.pushed, done.message)
+        assertTrue(lastLine(folder).contains("| blocked | JobBot restarted mid-application; nothing was submitted"), lastLine(folder))
+        assertEquals("blocked", r.packetAt(folder)!!.application)
+    }
+
+    @Test
+    fun `a crashed attempt on an untouched packet makes it not_started again, so it can be retried at once`() {
+        val folder = remote.packet("acme", "sdet", statusLines = listOf("- 2026-10-24T17:28:58Z | in_progress | opened the form"))
+        remote.publish()
+        val r = repo(); r.sync(force = true)
+        assertTrue(r.restoreAfterInterruption(folder, "restarted")!!.pushed)
+        assertTrue(lastLine(folder).contains("| not_started |"), lastLine(folder))
+        assertEquals("not_started", r.packetAt(folder)!!.application)
+    }
+
+    @Test
+    fun `the whole attempt is skipped back over, not just its last line`() {
+        val folder = remote.packet("acme", "sdet", statusLines = listOf(
+            "- 2026-10-20T10:00:00Z | blocked | needs a CAPTCHA",
+            "- 2026-10-24T17:00:00Z | in_progress | opened the form",
+            "- 2026-10-24T17:05:00Z | parked_at_review | filled; awaiting Submit",
+        ))
+        remote.publish()
+        val r = repo(); r.sync(force = true)
+        r.restoreAfterInterruption(folder, "restarted")
+        assertTrue(lastLine(folder).contains("| blocked |"), lastLine(folder))
+    }
+
+    @Test
+    fun `a packet that is not mid-attempt is left alone`() {
+        for ((name, last) in listOf("done" to "completed", "stuck" to "blocked", "fresh" to null)) {
+            val folder = remote.packet(name, "sdet", statusLines = listOfNotNull(last?.let { "- 2026-10-24T17:00:00Z | $it | whatever" }))
+            remote.publish()
+            val r = repo(); r.sync(force = true)
+            assertEquals(null, r.restoreAfterInterruption(folder, "restarted"), "$name: nothing to restore")
+        }
+        val after = remote.freshClone("untouched")
+        assertEquals(1, Files.readString(after.resolve("applications/done/sdet/v00/STATUS.md")).lines().count { it.startsWith("- ") })
+    }
 }

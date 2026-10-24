@@ -242,3 +242,27 @@ def test_resume_payloads_match_the_contract(case):
     built = core.apply_resume_payload(a.pop("user_id"), a.pop("chat_id"), a.pop("file_name"), data, **a)
     assert built == case["payload"]
     assert json.loads(json.dumps(built)) == case["payload"], "the payload survives JSON unchanged"
+
+
+# ── telling Richard to send /new when the persona or tools changed ─────────────────────────────
+
+def test_the_first_run_records_the_fingerprint_without_a_message(tmp_path):
+    (tmp_path / ".persona-fingerprint").write_text("aaa\n")
+    assert core.persona_change_pending(tmp_path) is False
+    assert (tmp_path / ".persona-notified").read_text().strip() == "aaa"
+
+
+def test_a_changed_fingerprint_is_announced_once(tmp_path):
+    (tmp_path / ".persona-fingerprint").write_text("aaa\n")
+    core.persona_change_pending(tmp_path)
+    (tmp_path / ".persona-fingerprint").write_text("bbb\n")
+    assert core.persona_change_pending(tmp_path) is True, "changed since Richard was last told"
+    assert core.persona_change_pending(tmp_path) is True, "still pending until it has been posted"
+    core.persona_change_posted(tmp_path)
+    assert core.persona_change_pending(tmp_path) is False
+
+
+def test_no_fingerprint_means_nothing_to_say(tmp_path):
+    assert core.persona_change_pending(tmp_path) is False
+    assert not (tmp_path / ".persona-notified").exists()
+

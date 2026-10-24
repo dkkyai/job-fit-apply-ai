@@ -27,6 +27,9 @@ open class FakePage(var snap: Snapshot) : ApplyPage {
     override fun goto(url: String) { actions += "goto $url"; snap = snap.copy(url = url) }
     override fun fill(id: String, value: String) { actions += "fill $id"; values[id] = value }
     override fun select(id: String, option: String) { actions += "select $id $option"; values[id] = option }
+    /** What a combobox does with a choice; by default it takes whatever it is given. */
+    var chooser: (String, String) -> Choice = { _, text -> Choice(text) }
+    override fun choose(id: String, text: String): Choice { actions += "choose $id $text"; return chooser(id, text).also { c -> c.chosen?.let { values[id] = it } } }
     override fun check(id: String, checked: Boolean) { actions += "check $id $checked" }
     override fun upload(id: String, name: String, mime: String, bytes: ByteArray) { actions += "upload $id $name" }
     override fun click(id: String) { actions += "click $id"; onClick(id) }
@@ -441,5 +444,58 @@ class FillAgentTest {
         page.onClick = { if (it == "e108") page.snap = form() }
         assertIs<FillResult.Ready>(agent(Script("""{"status":"ready"}""")).run(page, job, startFresh = false))
         assertEquals(listOf("click e108"), page.actions)
+    }
+
+    // ── comboboxes: dropdowns that are not a native <select> (react-select on Greenhouse) ─────────
+
+    private val country = Element("e4", "select", null, "Country*", required = true, inForm = true, combobox = true)
+
+    @Test
+    fun `select on a combobox chooses by its text through the page, and says what was chosen`() {
+        val page = FakePage(form(country)).also { it.chooser = { _, _ -> Choice("United States +1") } }
+        val llm = Script(
+            """{"status":"continue","actions":[{"do":"select","id":"e4","option":"United States"}]}""",
+            """{"status":"ready","note":"done"}""",
+        )
+        val r = agent(llm).run(page, job)
+        assertIs<FillResult.Ready>(r)
+        assertTrue("choose e4 United States" in page.actions, page.actions.toString())
+        assertFalse(page.actions.any { it.startsWith("select e4") || it.startsWith("fill e4") }, "never typed into or natively selected")
+        assertTrue(llm.prompts.last().contains("chose 'United States +1'"), "the planner is told what was picked: ${llm.prompts.last().takeLast(300)}")
+        assertTrue(("Country*" to "United States +1") in r.fields, "the review card shows the chosen text")
+    }
+
+    @Test
+    fun `fill on a combobox is a choice too, because typed text alone is never committed`() {
+        val page = FakePage(form(country))
+        val llm = Script(
+            """{"status":"continue","actions":[{"do":"fill","id":"e4","value":"United States"}]}""",
+            """{"status":"ready","note":"done"}""",
+        )
+        agent(llm).run(page, job)
+        assertTrue("choose e4 United States" in page.actions, page.actions.toString())
+        assertFalse(page.actions.any { it.startsWith("fill e4") })
+    }
+
+    @Test
+    fun `a choice nothing matches tells the planner the real options, so it can pick one`() {
+        val page = FakePage(form(country)).also { it.chooser = { _, _ -> Choice(null, listOf("Recruiter contacted me on LinkedIn", "Job site (e.g., Indeed)", "Other")) } }
+        val llm = Script(
+            """{"status":"continue","actions":[{"do":"select","id":"e4","option":"Google search"}]}""",
+            """{"status":"need_human","reason":"unknown source"}""",
+        )
+        agent(llm).run(page, job)
+        val told = llm.prompts.last()
+        assertTrue(told.contains("no option matching 'Google search'"), told.takeLast(400))
+        assertTrue(told.contains("Recruiter contacted me on LinkedIn") && told.contains("Job site (e.g., Indeed)") && told.contains("Other"), told.takeLast(400))
+    }
+
+    @Test
+    fun `a native select is still selected, not chosen`() {
+        val native = Element("e5", "select", null, "State", inForm = true, options = listOf("CA", "WA"))
+        val page = FakePage(form(native))
+        agent(Script("""{"status":"continue","actions":[{"do":"select","id":"e5","option":"WA"}]}""", """{"status":"ready","note":"done"}""")).run(page, job)
+        assertTrue("select e5 WA" in page.actions, page.actions.toString())
+        assertFalse(page.actions.any { it.startsWith("choose") })
     }
 }

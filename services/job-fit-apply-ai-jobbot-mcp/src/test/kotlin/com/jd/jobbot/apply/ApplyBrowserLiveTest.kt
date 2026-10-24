@@ -90,6 +90,42 @@ class ApplyBrowserLiveTest {
                 "/captcha-visible" -> 200 to page("""<h1>Apply</h1><label for="fn">First name</label><input id="fn">
                     <iframe src="/recaptcha/api2/anchor?ar=1&k=x&size=normal" title="reCAPTCHA" style="width:304px;height:78px;border:0"></iframe>""")
                 "/recaptcha/enterprise/anchor", "/recaptcha/api2/anchor", "/recaptcha/api2/bframe" -> 200 to page("<div>reCAPTCHA</div>")
+                // react-select as Greenhouse renders it: a combobox input that never holds the chosen value (it is shown in a
+                // sibling), options in a menu that exists only while open, a hidden "required" shim input, and, elsewhere
+                // on the page, a decoy list of [role=option] items (the phone country picker) that must never be picked from.
+                "/combobox" -> 200 to page("""<form method="post" action="/submit"><style>.menu{border:1px solid #999;width:260px}.menu div{padding:4px}</style>
+                    <label id="src-label" for="src">How did you find out about this job opening?*</label>
+                    <div class="select__control"><span class="select__single-value" id="src-value"></span>
+                      <input id="src" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="true" aria-required="true" autocomplete="off" type="text" value=""></div>
+                    <div class="menu" id="src-menu" style="display:none"></div>
+                    <input tabindex="-1" required style="opacity:0;position:absolute;pointer-events:none" value="">
+                    <label for="cty">Country*</label>
+                    <div class="select__control"><span class="select__single-value" id="cty-value"></span>
+                      <input id="cty" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="true" autocomplete="off" type="text" value=""></div>
+                    <div class="menu" id="cty-menu" style="display:none"></div>
+                    <ul id="iti" style="display:none"><li role="option">United States +1</li><li role="option">Canada +1</li></ul>
+                    <button type="submit">Submit application</button></form>
+                    <script>
+                    function combo(id, all, prefix) {
+                      const input = document.getElementById(id), menu = document.getElementById(id + '-menu'), shown = document.getElementById(id + '-value');
+                      const render = q => { menu.innerHTML = ''; all.filter(t => !q || t.toLowerCase().includes(q.toLowerCase())).forEach((t, i) => {
+                        const o = document.createElement('div'); o.setAttribute('role', 'option'); o.id = 'react-select-' + id + '-option-' + i; o.textContent = t;
+                        o.onclick = () => { shown.textContent = t; input.value = ''; menu.style.display = 'none'; input.setAttribute('aria-expanded', 'false'); };
+                        menu.appendChild(o); }); menu.style.display = 'block'; input.setAttribute('aria-expanded', 'true'); };
+                      input.addEventListener('click', () => render(input.value));
+                      input.addEventListener('input', () => render(input.value));
+                    }
+                    combo('src', ['Recruiter contacted me on LinkedIn', 'Job site (e.g., Indeed)', 'Skylight employee referred me', 'Other']);
+                    combo('cty', ['United Arab Emirates +971', 'United Kingdom +44', 'United States +1', 'Uruguay +598']);
+                    </script>""")
+                // A Greenhouse-shaped page: the whole job description (14,000 px of it) above a narrow application form.
+                "/long-form" -> 200 to page("""<div style="max-width:700px;margin:0 auto"><h1>Senior SDET</h1>
+                    <div style="height:14000px;background:#f4f4f4">The job description goes on and on.</div>
+                    <form method="post" action="/submit"><h2>Apply for this job</h2>
+                    <div style="background:#ff00ff;height:40px;width:200px">MARKER</div>
+                    <label for="a1">First name</label><input id="a1"><label for="a2">Last name</label><input id="a2">
+                    <label for="a3">Email</label><input id="a3"><label for="a4">Phone</label><input id="a4">
+                    <button type="submit">Submit application</button></form></div>""")
                 "/submit" -> {
                     submissions += ex.requestBody.readBytes().toString(Charsets.ISO_8859_1)
                     200 to page("<h1>Thank you for applying!</h1>")
@@ -293,6 +329,59 @@ class ApplyBrowserLiveTest {
             assertEquals(GoogleWindow.None, page.clickGoogle(gsi.id))
             val tabs = java.net.URI("$cdp/json/list").toURL().readText()
             assertFalse(tabs.contains("mail.google.com"), tabs)
+        } finally {
+            page.close()
+        }
+    }
+
+    private fun hasMagenta(img: java.awt.image.BufferedImage): Boolean =
+        (0 until img.height step 3).any { y -> (0 until img.width step 3).any { x -> img.getRGB(x, y).let { (it shr 16 and 255) > 240 && (it shr 8 and 255) < 20 && (it and 255) > 240 } } }
+
+    @Test
+    fun `a very long page is captured as its form, small enough for Telegram as it is`() {
+        val page = PlaywrightApplyBrowser(System.getenv("JOBBOT_BROWSER_CDP_URL")).open { true }
+        try {
+            page.goto("$base/long-form")
+            page.snapshot() // tags the elements, which is how the capture finds the form
+            val png = page.screenshot()
+            val img = javax.imageio.ImageIO.read(png.inputStream())
+            // The whole page is ~15,000 px tall (and twice that on a 2x display). The photo is just the form.
+            assertTrue(com.jd.jobbot.actions.TelegramPhoto.withinLimits(img.width, img.height), "${img.width} x ${img.height} is not sendable as it is")
+            assertTrue(img.height <= 2_000, "${img.height} px tall")
+            assertTrue(img.width <= 900, "${img.width} px wide: the form column, not the whole window")
+            assertTrue(png.size < 1_500_000, "${png.size} bytes")
+            assertTrue(hasMagenta(img), "the form is in the picture")
+        } finally {
+            page.close()
+        }
+    }
+
+    @Test
+    fun `a react-select style dropdown is seen as a dropdown, chosen by text, and shows what was chosen`() {
+        val page = PlaywrightApplyBrowser(System.getenv("JOBBOT_BROWSER_CDP_URL")).open { true }
+        try {
+            page.goto("$base/combobox")
+            val before = page.snapshot()
+            val src = before.elements.single { it.label.startsWith("How did you find out") }
+            assertEquals("select", src.kind, "a dropdown, not a text box")
+            assertTrue(src.combobox)
+            assertEquals("", src.value.orEmpty())
+            assertFalse(before.elements.any { it.kind == "input" && it.label.isBlank() }, "the hidden required shim is not offered as a field")
+
+            val chosen = page.choose(src.id, "Recruiter contacted me on LinkedIn")
+            assertEquals("Recruiter contacted me on LinkedIn", chosen.chosen)
+            assertEquals("Recruiter contacted me on LinkedIn", page.snapshot().elements.single { it.id == src.id }.value, "the snapshot now shows the chosen text")
+
+            // Typing narrows the list; "United States" must come from this control's menu, not the decoy phone list.
+            val country = page.snapshot().elements.single { it.label.startsWith("Country") }
+            assertEquals("United States +1", page.choose(country.id, "United States").chosen)
+            assertEquals("United States +1", page.snapshot().elements.single { it.id == country.id }.value)
+
+            // No such option: nothing is picked, and the real options come back.
+            val miss = page.choose(src.id, "Billboard")
+            assertEquals(null, miss.chosen)
+            assertTrue(miss.options.containsAll(listOf("Job site (e.g., Indeed)", "Other")), miss.options.toString())
+            assertEquals("Recruiter contacted me on LinkedIn", page.snapshot().elements.single { it.id == src.id }.value, "a miss leaves the old choice alone")
         } finally {
             page.close()
         }

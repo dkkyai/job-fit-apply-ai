@@ -901,3 +901,23 @@ def test_a_slow_backend_is_reported_and_does_not_hang_the_user(monkeypatch):
         assert replies(rec) == [core.UNAVAILABLE]
     finally:
         server.shutdown()
+
+
+def test_the_persona_notice_is_posted_once_and_only_marked_when_it_went(monkeypatch, tmp_path):
+    import jobbot_actions as plugin
+    wire(monkeypatch, FakeClient({}))
+    (tmp_path / ".persona-fingerprint").write_text("aaa\n")
+    bot = FakeBot()
+    asyncio.run(plugin._announce_persona_change(bot, 7, tmp_path))
+    assert bot.sent == [], "the first run only records the fingerprint"
+
+    (tmp_path / ".persona-fingerprint").write_text("bbb\n")
+    broken = FakeBot(fail_message=TelegramRefused("down"))
+    asyncio.run(plugin._announce_persona_change(broken, 7, tmp_path))
+    assert (tmp_path / ".persona-notified").read_text().strip() == "aaa", "a notice that was not sent is tried again next start"
+
+    asyncio.run(plugin._announce_persona_change(bot, 7, tmp_path))
+    assert len(bot.sent) == 1 and "/new" in bot.sent[0]["text"] and bot.sent[0]["chat_id"] == 7
+    asyncio.run(plugin._announce_persona_change(bot, 7, tmp_path))
+    assert len(bot.sent) == 1, "told once per change"
+
