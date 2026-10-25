@@ -507,7 +507,7 @@ services:
   # The browser JobBot fills applications in (profile: jobbot-browser). Headed Chromium with a persistent
   # profile (site logins + the dkkytech@ Google session); CDP is reachable only on the private
   # `jobbot-browser` network, from jobbot-mcp; the web viewer is published on host loopback for
-  # `tailscale serve`, behind JOBBOT_BROWSER_PASSWORD. See docs/jobbot.md (Apply).
+  # `tailscale serve`, behind JOBBOT_BROWSER_PASSWORD when one is set. See docs/jobbot.md (Apply).
   jobbot-browser:
     image: ${IMAGE_PREFIX:-job-fit-apply-ai}-jobbot-browser
     build: ./docker/jobbot-browser
@@ -525,7 +525,8 @@ services:
       TZ: "America/Los_Angeles"
       # The old APPLY_BROWSER_* names still work.
       CUSTOM_USER: "${JOBBOT_BROWSER_USER:-${APPLY_BROWSER_USER:-richard}}"
-      # Required: the container refuses to start without it (the viewer is a browser signed in to Google).
+      # Optional. Blank = no login on the viewer: anyone who can reach it (the tailnet, via `tailscale serve`) drives a browser
+      # signed in to Google. The image only turns the login on when this is non-empty.
       PASSWORD: "${JOBBOT_BROWSER_PASSWORD:-${APPLY_BROWSER_PASSWORD:-}}"
     volumes:
       - "${JD_JOBBOT_BROWSER_HOST:-${JD_APPLY_BROWSER_HOST:-${JFAA_DATA_ROOT:-${HOME}/.local/share/jfaa}/jobbot-browser}}:/config"

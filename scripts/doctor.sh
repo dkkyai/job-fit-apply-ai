@@ -237,7 +237,7 @@ else
   [ "${JOBBOT_DRY_RUN:-false}" = "true" ] && warn "JOBBOT_DRY_RUN=true — taps are only logged"
   if [ "${JOBBOT_APPLY_ENABLED:-false}" = "true" ]; then
     case ",${COMPOSE_PROFILES-}," in *,jobbot-browser,*|*,apply,*) ;; *) bad "JOBBOT_APPLY_ENABLED=true but COMPOSE_PROFILES has no 'jobbot-browser' (no browser to fill in)";; esac
-    [ -n "${JOBBOT_BROWSER_PASSWORD:-${APPLY_BROWSER_PASSWORD:-}}" ] && ok "JOBBOT_BROWSER_PASSWORD set" || bad "JOBBOT_BROWSER_PASSWORD blank — jobbot-browser refuses to start"
+    [ -n "${JOBBOT_BROWSER_PASSWORD:-${APPLY_BROWSER_PASSWORD:-}}" ] && ok "JOBBOT_BROWSER_PASSWORD set" || warn "JOBBOT_BROWSER_PASSWORD blank — the viewer has no login; anyone who can reach it (your tailnet) drives the browser signed in to Google"
     # Hermes plans application fills over its API; it only starts with a key of 16+ characters.
     hermes_key="${JOBBOT_HERMES_API_KEY:-}"
     if [ "${#hermes_key}" -ge 16 ]; then ok "JOBBOT_HERMES_API_KEY set (Hermes plans application fills)"
