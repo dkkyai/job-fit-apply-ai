@@ -221,10 +221,11 @@ class ApplyService(
      * What the page shows once the click has had time to act. A site that confirms slowly gets a few seconds before the
      * page is called unknown; a code prompt or a confirmation is taken as soon as it is there.
      */
-    private fun readAfterSubmit(page: ApplyPage): SubmitStep {
+    private fun readAfterSubmit(page: ApplyPage, codeEntered: Boolean = false): SubmitStep {
         var step = PostSubmit.classify(page.snapshot())
         repeat(SETTLE_LOOKS) {
-            if (step !is SubmitStep.Unknown) return step
+            // Right after the code went in the old prompt is still on screen until the site answers: only a prompt that stays is a refusal.
+            if (step !is SubmitStep.Unknown && !(codeEntered && step is SubmitStep.CodePrompt)) return step
             page.pause(SETTLE_PAUSE_MS)
             step = PostSubmit.classify(page.snapshot())
         }
@@ -324,7 +325,7 @@ class ApplyService(
         if (submits.size != 1) return handOffCode(fill, page, step, "I entered the code but can't find the one submit button.")
         runCatching { page.click(submits.single().id); page.settle() }
             .onFailure { return handOffCode(fill, page, step, "I entered the code but the submit button wouldn't click.") }
-        when (val next = readAfterSubmit(page)) {
+        when (val next = readAfterSubmit(page, codeEntered = true)) {
             is SubmitStep.Confirmed -> confirmed(fill, page, snap.url, next.words)
             is SubmitStep.CodePrompt -> handOffCode(fill, page, next, "The site didn't accept the code I entered.")
             is SubmitStep.Unknown -> unconfirmed(fill, page, next)

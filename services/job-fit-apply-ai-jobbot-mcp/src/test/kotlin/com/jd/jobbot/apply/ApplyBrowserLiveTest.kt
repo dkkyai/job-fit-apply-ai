@@ -130,7 +130,8 @@ class ApplyBrowserLiveTest {
                     <button type="submit">Submit application</button></form></div>""")
                 // Greenhouse after Submit: the form stays, an email-verification fieldset of 8 one-character boxes appears
                 // (focus moves on as you type), and the same Submit button sends it again with the code.
-                "/code-form" -> 200 to page("""<form id="f"><label for="fn">First name</label><input id="fn">
+                // Greenhouse puts the whole job description above the form: the code prompt is the last thing on a long page.
+                "/code-form" -> 200 to page("""${"<p>About the role. We build software for government agencies.</p>".repeat(300)}<form id="f"><label for="fn">First name</label><input id="fn">
                     <fieldset id="email-verification" style="display:none"><legend>A verification code was sent to dkkytech@gmail.com. To submit your application, enter the 8-character code to confirm you're a human.</legend>
                     <label id="email-verification-label" for="security-input-0">Security code</label><div id="boxes"></div></fieldset>
                     <button type="submit">Submit application</button></form>

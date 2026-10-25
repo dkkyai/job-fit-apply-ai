@@ -547,7 +547,7 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
                 if (captchaWidgets.length >= 20) break;
               }
               return JSON.stringify({ url: location.href, title: document.title, elements: out, captchaWidgets,
-                text: bodyText.slice(0, 4000) });
+                text: bodyText.length > 6000 ? bodyText.slice(0, 1500) + '\n…\n' + bodyText.slice(-4500) : bodyText });
             }
         """.trimIndent()
     }
