@@ -35,6 +35,10 @@ open class FakePage(var snap: Snapshot) : ApplyPage {
     override fun click(id: String) { actions += "click $id"; onClick(id) }
     override fun clickGoogle(id: String): GoogleWindow { click(id); return onClickGoogle(id) }
     override fun settle() {}
+    /** How many times a caller waited for the page to change by itself, and what happens at each wait. */
+    var pauses = 0
+    var onPause: (Int) -> Unit = {}
+    override fun pause(millis: Long) { pauses++; onPause(pauses) }
     override fun screenshot() = byteArrayOf(1, 2, 3)
     override fun close() { actions += "close" }
 }

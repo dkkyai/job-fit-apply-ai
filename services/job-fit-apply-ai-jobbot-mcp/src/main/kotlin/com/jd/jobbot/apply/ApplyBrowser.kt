@@ -43,6 +43,8 @@ data class Element(
      * `select`, its [value] is the chosen text, and its options only exist while it is open: use `choose`.
      */
     val combobox: Boolean = false,
+    /** The input's `maxlength`, when it has one: a code split over single-character boxes has 1 on each. */
+    val maxLength: Int? = null,
 )
 
 /** What choosing an option of a combobox did: the text now chosen, or (when nothing matched) the options it offered. */
@@ -523,6 +525,7 @@ class PlaywrightApplyBrowser(private val cdpUrl: String) : ApplyBrowser {
                   // Only a control's own words count: a field's fallback label is its container's text.
                   google: iframe || ((kind === 'button' || kind === 'link') && GOOGLE.test(text + ' ' + (el.getAttribute('aria-label') || ''))),
                   combobox: combo,
+                  maxLength: tag === 'input' && el.maxLength > 0 && el.maxLength < 1000 ? el.maxLength : null,
                 });
                 if (out.length >= 200) break;
               }

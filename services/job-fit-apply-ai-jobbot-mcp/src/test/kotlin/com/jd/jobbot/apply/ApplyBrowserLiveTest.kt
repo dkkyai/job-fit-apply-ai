@@ -46,6 +46,8 @@ class ApplyBrowserLiveTest {
     @TempDir lateinit var dir: Path
     private lateinit var site: HttpServer
     private val submissions = CopyOnWriteArrayList<String>()
+    /** What the Greenhouse-shaped code step was sent. */
+    private val codes = CopyOnWriteArrayList<String>()
     private val fixtureHost = System.getenv("FIXTURE_HOST") ?: "host.docker.internal"
     private val base get() = "http://$fixtureHost:${site.address.port}"
 
@@ -126,6 +128,29 @@ class ApplyBrowserLiveTest {
                     <label for="a1">First name</label><input id="a1"><label for="a2">Last name</label><input id="a2">
                     <label for="a3">Email</label><input id="a3"><label for="a4">Phone</label><input id="a4">
                     <button type="submit">Submit application</button></form></div>""")
+                // Greenhouse after Submit: the form stays, an email-verification fieldset of 8 one-character boxes appears
+                // (focus moves on as you type), and the same Submit button sends it again with the code.
+                "/code-form" -> 200 to page("""<form id="f"><label for="fn">First name</label><input id="fn">
+                    <fieldset id="email-verification" style="display:none"><legend>A verification code was sent to dkkytech@gmail.com. To submit your application, enter the 8-character code to confirm you're a human.</legend>
+                    <label id="email-verification-label" for="security-input-0">Security code</label><div id="boxes"></div></fieldset>
+                    <button type="submit">Submit application</button></form>
+                    <script>
+                    const boxes = document.getElementById('boxes');
+                    for (let i = 0; i < 8; i++) { const b = document.createElement('input'); b.id = 'security-input-' + i; b.type = 'text'; b.maxLength = 1;
+                      b.addEventListener('input', () => { if (b.value && boxes.children[i + 1]) boxes.children[i + 1].focus(); }); boxes.appendChild(b); }
+                    let asked = false;
+                    document.getElementById('f').addEventListener('submit', e => {
+                      e.preventDefault();
+                      if (!asked) { asked = true; document.getElementById('email-verification').style.display = 'block'; return; }
+                      const code = [...boxes.children].map(b => b.value).join('');
+                      fetch('/code-submit', { method: 'POST', body: code }).then(r => r.text()).then(t => { document.body.innerHTML = t; });
+                    });
+                    </script>""")
+                "/code-submit" -> {
+                    val code = ex.requestBody.readBytes().toString(Charsets.UTF_8)
+                    codes += code
+                    200 to page(if (code == "aB3dE5gH") "<h1>Thank you for applying!</h1>" else "<p>That code is not right.</p>")
+                }
                 "/submit" -> {
                     submissions += ex.requestBody.readBytes().toString(Charsets.ISO_8859_1)
                     200 to page("<h1>Thank you for applying!</h1>")
@@ -385,5 +410,43 @@ class ApplyBrowserLiveTest {
         } finally {
             page.close()
         }
+    }
+
+    @Test
+    fun `Submit on a page that then asks for an emailed code ends with the code typed in and the application confirmed`() {
+        val event = buildJsonObject { FakeBridge.event(9, company = "Acme", jobUrl = "$base/code-form").forEach { (k, v) -> put(k, v) } }
+        val lookup = object : JobLookup(BridgeReadClient("http://unused")) {
+            override fun event(seq: Long) = event.takeIf { seq == 9L }
+            override fun find(seq: Long) = event(seq)?.let { Found(it, null, null) }
+        }
+        val store = ActionStore(":memory:")
+        val outbox = Outbox(dir.resolve("o.db").toString(), dir.resolve("shots"))
+        val mail = object : Verifier(com.jd.jobbot.gmail.GmailClient(object : com.jd.jobbot.gmail.GmailAuth(dir, dir) {})) {
+            var length: Int? = null
+            override fun codeOfLength(site: String, sinceMillis: Long, length: Int?, wait: Duration): String? { this.length = length; return "aB3dE5gH" }
+        }
+        val service = ApplyService(
+            browser = PlaywrightApplyBrowser(System.getenv("JOBBOT_BROWSER_CDP_URL")),
+            fill = { page, _, _ ->
+                page.goto("$base/code-form")
+                page.fill(page.snapshot().elements.single { it.label == "First name" }.id, "Richard")
+                FillResult.Ready(FillExecutor.fieldsOf(page.snapshot()), page.screenshot(), "")
+            },
+            lookup = lookup,
+            contextFor = { JobContext("#J9", "Acme", "Staff SDET", "$base/code-form", "dkkytech@gmail.com", "years: 15+", null, null, "%PDF-1.4 fixture".toByteArray()) },
+            store = store, outbox = outbox, tracks = null, viewerUrl = null, verifier = mail,
+            worker = MoreExecutors.newDirectExecutorService(),
+        )
+        val taps = TapService(lookup, store, mapOf("apply" to service.apply), setOf("1"), setOf("apply"), false, Duration.ofDays(7),
+            idHandlers = mapOf("submit" to IdVerbHandler(service::submit), "discard" to IdVerbHandler(service::discard)))
+        fun tap(verb: String, n: Long) = taps.tap(TapRequest(verb, n, "1", "1", 1, java.time.Instant.now().epochSecond))
+
+        assertEquals(Outcomes.DONE, tap("apply", 9).outcome)
+        val id = outbox.pending().last().buttons.first().callbackData.substringAfter(':').toLong()
+        assertEquals(Outcomes.DONE, tap("submit", id).outcome)
+        assertEquals(listOf("aB3dE5gH"), codes.toList(), "the site received the code, one character per box")
+        assertEquals(8, mail.length, "the page's eight boxes told the inbox lookup how long the code is")
+        assertEquals(Outcomes.DONE, store.byId(id)?.status)
+        assertTrue(outbox.pending().last().text.startsWith("Submitted:"), outbox.pending().last().text)
     }
 }

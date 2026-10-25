@@ -5,6 +5,7 @@ import org.junit.jupiter.params.provider.CsvSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -104,5 +105,30 @@ class SitePolicyTest {
         assertEquals("AB12CD", SitePolicy.verificationCode("Code: AB12CD"))
         assertEquals("553201", SitePolicy.verificationCode("Use 553201 to sign in"))
         assertNull(SitePolicy.verificationCode("Welcome aboard"))
+    }
+
+    /** What Greenhouse emails after Submit, as GmailClient hands it over (HTML stripped). */
+    private val greenhouseMail = "Security code for your application to Skylight\nCopy and paste this code into the security code field on your application: aB3dE5gH " +
+        "After you enter the code, resubmit your application. © 2026 Greenhouse 18 West 18th Street, 11th Floor, New York, NY 10011, USA"
+
+    @Test
+    fun `the code in Greenhouse's email is the token after the colon, not a word around it`() {
+        assertEquals("aB3dE5gH", SitePolicy.verificationCode(greenhouseMail, length = 8))
+        assertEquals("aB3dE5gH", SitePolicy.verificationCode(greenhouseMail))
+        // "resubmit" is eight letters after the word "code": the earlier extractor typed it into the page.
+        assertNotEquals("resubmit", SitePolicy.verificationCode(greenhouseMail))
+    }
+
+    @Test
+    fun `a code of letters only is found after the colon, and a plain word after a colon is not a code`() {
+        assertEquals("kTbQpLmZ", SitePolicy.verificationCode("Paste this code on your application:\nkTbQpLmZ\nThanks", length = 8))
+        assertNull(SitePolicy.verificationCode("Your code is on the way. Please visit: https://example.com/jobs"))
+        assertNull(SitePolicy.verificationCode("To finish, enter the code, resubmit your application."))
+    }
+
+    @Test
+    fun `the length the page asked for rules out look-alikes`() {
+        assertNull(SitePolicy.verificationCode("Your verification code is 482913.", length = 8))
+        assertEquals("482913", SitePolicy.verificationCode("Your verification code is 482913.", length = 6))
     }
 }

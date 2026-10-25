@@ -18,6 +18,10 @@ open class Verifier(
     open fun code(site: String, sinceMillis: Long, wait: Duration = Duration.ofMinutes(2)): String? =
         poll(site, sinceMillis, wait) { SitePolicy.verificationCode(it.subject.orEmpty() + "\n" + it.body) }
 
+    /** The code of a page that asked for one [length] characters long (an exact length rules out look-alikes). */
+    open fun codeOfLength(site: String, sinceMillis: Long, length: Int?, wait: Duration = Duration.ofMinutes(2)): String? =
+        poll(site, sinceMillis, wait) { SitePolicy.verificationCode(it.subject.orEmpty() + "\n" + it.body, length) }
+
     open fun link(site: String, sinceMillis: Long, wait: Duration = Duration.ofMinutes(2)): String? =
         poll(site, sinceMillis, wait) { SitePolicy.verificationLink(it.body, site) }
 

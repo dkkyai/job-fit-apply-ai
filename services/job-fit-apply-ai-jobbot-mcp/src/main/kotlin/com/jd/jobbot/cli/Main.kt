@@ -81,11 +81,12 @@ fun main() {
     val cargoWriter = Executors.newSingleThreadExecutor { r -> Thread(r, "cargo-status").apply { isDaemon = true } }
     if (Config.APPLY_ENABLED && Config.HERMES_API_KEY.isBlank()) log.error("JOBBOT_HERMES_API_KEY is blank — Hermes cannot be asked to plan application fills")
     val fillSessions = FillSessions()
+    val verifier = gmail?.let { Verifier(it) }
     val applyService = if (Config.APPLY_ENABLED) {
         val fillDriver = HermesFillDriver(
             runs = HermesRuns(Config.HERMES_URL, Config.HERMES_API_KEY),
             sessions = fillSessions,
-            executor = FillExecutor(credentials, gmail?.let { Verifier(it) }),
+            executor = FillExecutor(credentials, verifier),
             model = Config.FILL_MODEL,
             maxWait = Duration.ofMinutes(Config.FILL_MAX_MINUTES),
             maxActCalls = Config.FILL_MAX_ACT_CALLS,
@@ -100,6 +101,8 @@ fun main() {
             tracks = tracks,
             viewerUrl = Config.BROWSER_VIEWER_URL.ifBlank { null },
             credentials = credentials,
+            verifier = verifier,
+            verifyWorker = Executors.newSingleThreadExecutor { r -> Thread(r, "apply-verify").apply { isDaemon = true } },
             cargoStatus = cargoRepo?.let { repo ->
                 object : CargoStatusListener {
                     override fun record(folder: String, state: String, note: String) {

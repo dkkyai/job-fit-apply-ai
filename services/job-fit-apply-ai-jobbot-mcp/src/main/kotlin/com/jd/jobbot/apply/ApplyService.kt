@@ -55,10 +55,14 @@ class ApplyService(
     private val credentials: Credentials? = null,
     /** Hears about every jobbot-cargo application's progress, to record it in the packet's STATUS.md. */
     private val cargoStatus: CargoStatusListener? = null,
+    /** Fetches the code a site emails after Submit (Greenhouse); without it a code prompt is handed to Richard. */
+    private val verifier: Verifier? = null,
     private val reviewTtl: Duration = Duration.ofHours(4),
     private val reminderAfter: Duration = Duration.ofHours(3),
     private val clock: Clock = Clock.systemUTC(),
     private val worker: ExecutorService = Executors.newSingleThreadExecutor { r -> Thread(r, "apply-fill").apply { isDaemon = true } },
+    /** Where the emailed-code step runs after a Submit click: not behind a fill that may be using the worker for 25 minutes. */
+    private val verifyWorker: ExecutorService = worker,
 ) {
     private val log = LoggerFactory.getLogger(ApplyService::class.java)
     private val pages = ConcurrentHashMap<Long, ApplyPage>()
@@ -131,6 +135,7 @@ class ApplyService(
             QUEUED, FILLING -> return TapResponse(Outcomes.ALREADY, toast = "Already filling this one.").forUpload(upload)
             Outcomes.AWAITING_APPROVAL -> return TapResponse(Outcomes.ALREADY, toast = "It's filled and waiting for your review above.").forUpload(upload, discardFirst = true)
             NEEDS_HUMAN -> return TapResponse(Outcomes.ALREADY, toast = "It's waiting on you — see the hand-off message above.").forUpload(upload, discardFirst = true)
+            VERIFYING, NEEDS_CODE -> return TapResponse(Outcomes.ALREADY, toast = "Submit was clicked — it's waiting for the site's emailed code (see above).").forUpload(upload)
             Outcomes.DONE -> return TapResponse(Outcomes.ALREADY, toast = "Already submitted ${fmt.format(Instant.ofEpochMilli(latest.updatedAt))}.").forUpload(upload)
         }
         val details = upload?.let {
@@ -172,6 +177,7 @@ class ApplyService(
         when (fill.status) {
             Outcomes.DONE -> return TapResponse(Outcomes.ALREADY, toast = "Already submitted.", actionRow = emptyList())
             UNCONFIRMED -> return TapResponse(Outcomes.ALREADY, toast = "Submit was already clicked — check the viewer.", actionRow = emptyList())
+            VERIFYING, NEEDS_CODE -> return TapResponse(Outcomes.ALREADY, toast = "Submit was already clicked — the site is waiting for its emailed code.", actionRow = emptyList())
             EXPIRED, CANCELLED, FAILED -> return gone("This application is no longer open. Tap Apply on the card to start again.")
         }
         if (fill.status != Outcomes.AWAITING_APPROVAL) return TapResponse(Outcomes.REFUSED, toast = "Not ready to submit yet.")
@@ -195,48 +201,189 @@ class ApplyService(
             )
         }
         store.update(id, SUBMITTING)
+        val clickedAt = clock.millis()
         page.click(submits.single().id)
         page.settle()
+        return when (val step = readAfterSubmit(page)) {
+            is SubmitStep.Confirmed -> confirmed(fill, page, snap.url, step.words)
+            is SubmitStep.CodePrompt -> {
+                // The click was only the start: the site emailed a code and wants it before it takes the application.
+                store.update(id, VERIFYING, withDetails(fill.details, "clicked_at" to JsonPrimitive(clickedAt)))
+                cargo(fill.details, "in_progress", "Submit clicked; the site wants an emailed security code — JobBot is fetching it")
+                runVerification(id, FIRST_CODE_WAIT)
+                TapResponse(Outcomes.DONE, toast = "Clicked Submit — the site wants the code it emailed. Fetching it…", actionRow = emptyList())
+            }
+            is SubmitStep.Unknown -> unconfirmed(fill, page, step)
+        }
+    }
+
+    /**
+     * What the page shows once the click has had time to act. A site that confirms slowly gets a few seconds before the
+     * page is called unknown; a code prompt or a confirmation is taken as soon as it is there.
+     */
+    private fun readAfterSubmit(page: ApplyPage): SubmitStep {
+        var step = PostSubmit.classify(page.snapshot())
+        repeat(SETTLE_LOOKS) {
+            if (step !is SubmitStep.Unknown) return step
+            page.pause(SETTLE_PAUSE_MS)
+            step = PostSubmit.classify(page.snapshot())
+        }
+        return step
+    }
+
+    /** Submitted for sure: the site said so. */
+    private fun confirmed(fill: ActionStore.Action, page: ApplyPage, urlBefore: String, words: String): TapResponse {
         val after = page.snapshot()
         val shot = runCatching { page.screenshot() }.getOrNull()
-        // Only a confirmation message counts. A URL change alone could be a login redirect or an
-        // error page, and marking the track "applied" on that would be a false record.
-        if (!CONFIRMATION.containsMatchIn(after.text)) {
-            store.update(id, UNCONFIRMED, buildJsonObject { put("submitted_url", after.url) }.toString())
-            cargo(fill.details, "blocked", "Submit clicked via JobBot, outcome UNCONFIRMED (no confirmation text seen) — check the site before applying again")
-            outbox.post(
-                "I clicked Submit for ${label(fill)} but didn't see a confirmation. The tab is still open — " +
-                    "check it${viewerUrl?.let { " in the viewer: $it" } ?: " in the viewer"}. The track was not changed.",
-                photo = shot,
-            )
-            return TapResponse(Outcomes.DONE, toast = "Clicked Submit — couldn't confirm. Check the viewer.", actionRow = emptyList())
-        }
-        store.update(id, Outcomes.DONE, buildJsonObject { put("submitted_url", after.url); put("confirmed", true) }.toString())
-        pages.remove(id)?.close()
+        store.update(fill.id, Outcomes.DONE, buildJsonObject { put("submitted_url", after.url); put("confirmed", true) }.toString())
+        pages.remove(fill.id)?.close()
         // A confirmed submission proves the account works: a password created for this site is now active.
-        listOfNotNull(Credentials.siteKey(snap.url), Credentials.siteKey(after.url)).distinct().forEach { site ->
+        listOfNotNull(Credentials.siteKey(urlBefore), Credentials.siteKey(after.url)).distinct().forEach { site ->
             if (credentials?.get(site)?.status == Credentials.PENDING) credentials.activate(site)
         }
         recordApplied(fill.seq)
-        cargo(fill.details, "completed", "submitted via JobBot on Richard's ✅ Submit tap — site confirmation: \"${CONFIRMATION.find(after.text)?.value ?: "seen"}\"")
+        cargo(fill.details, "completed", "submitted via JobBot on Richard's ✅ Submit tap — site confirmation: \"${words.ifBlank { "seen" }}\"")
         outbox.post("Submitted: ${label(fill)}.", photo = shot)
         return TapResponse(Outcomes.DONE, toast = "Submitted.", actionRow = emptyList())
     }
+
+    /** Submit was clicked and the page neither confirmed nor asked for something JobBot knows: Richard looks. */
+    private fun unconfirmed(fill: ActionStore.Action, page: ApplyPage, step: SubmitStep.Unknown): TapResponse {
+        val shot = runCatching { page.screenshot() }.getOrNull()
+        store.update(fill.id, UNCONFIRMED, buildJsonObject { put("submitted_url", page.url) }.toString())
+        cargo(
+            fill.details, "blocked",
+            "Submit clicked via JobBot, outcome UNCONFIRMED (no confirmation text seen${step.excerpt.takeIf { it.isNotBlank() }?.let { "; the page says: ${it.take(200)}" } ?: ""}) — check the site before applying again",
+        )
+        outbox.post(
+            "I clicked Submit for ${label(fill)} but didn't see a confirmation." +
+                (if (step.captcha) " A CAPTCHA is on the page." else "") +
+                (step.excerpt.takeIf { it.isNotBlank() }?.let { " The page says: \"$it\"." } ?: "") +
+                " The tab is still open — check it${viewerUrl?.let { " in the viewer: $it" } ?: " in the viewer"}. The track was not changed.",
+            photo = shot,
+        )
+        return TapResponse(Outcomes.DONE, toast = "Clicked Submit — couldn't confirm. Check the viewer.", actionRow = emptyList())
+    }
+
+    /** Runs the code step on the worker, so a mail poll never holds up a tap. */
+    private fun runVerification(id: Long, wait: Duration) {
+        running += id
+        verifyWorker.submit {
+            try { finishVerification(id, wait) }
+            catch (e: Exception) { store.recordError("verify $id", e.message ?: e.javaClass.simpleName) }
+            finally { running -= id }
+        }
+    }
+
+    /**
+     * The site asked for an emailed code after Submit. Fetch it from the inbox (only mail from the site or its ATS
+     * mailer), type it in, and click the site's submit control once more — the same application Richard approved, so the
+     * form is checked against the review card first. A code that never arrives, is refused, or a page that is not a code
+     * prompt (any more) goes back to Richard with the tab still open; nothing here loops.
+     */
+    private fun finishVerification(id: Long, wait: Duration) {
+        val fill = store.byId(id) ?: return
+        val page = pages[id]
+        if (page == null) {
+            store.update(id, UNCONFIRMED)
+            cargo(fill.details, "blocked", "Submit clicked via JobBot; the tab is gone, outcome UNCONFIRMED — check the site before applying again")
+            outbox.post("The browser tab for ${label(fill)} is gone after Submit was clicked, so I can't tell whether it went through. Check your email and the site before applying again.")
+            return
+        }
+        val snap = page.snapshot()
+        val step = when (val s = PostSubmit.classify(snap)) {
+            is SubmitStep.Confirmed -> { confirmed(fill, page, snap.url, s.words); return }
+            is SubmitStep.Unknown -> { unconfirmed(fill, page, s); return }
+            is SubmitStep.CodePrompt -> s
+        }
+        val details = runCatching { JSON.parseToJsonElement(fill.details ?: "{}").jsonObject }.getOrDefault(buildJsonObject {})
+        val clickedAt = details["clicked_at"]?.jsonPrimitive?.content?.toLongOrNull() ?: fill.updatedAt
+        val attempts = details["code_attempts"]?.jsonPrimitive?.content?.toIntOrNull() ?: 0
+        if (attempts >= MAX_CODE_ATTEMPTS) return handOffCode(fill, page, step, "The site didn't take the code I entered.")
+
+        // Only the site's own ATS mailer may supply it; a failure to read mail is a hand-off, not a crash.
+        val site = Credentials.siteKey(page.url)
+        val mail = verifier
+        val code = when {
+            mail == null -> return handOffCode(fill, page, step, "I can't read the inbox (Gmail isn't set up for JobBot).")
+            site == null -> return handOffCode(fill, page, step, "I can't tell which site is asking.")
+            else -> runCatching { mail.codeOfLength(site, clickedAt, step.length, wait) }
+                .getOrElse { return handOffCode(fill, page, step, "I couldn't read the inbox (${it.message?.take(100) ?: it.javaClass.simpleName}).") }
+        } ?: return handOffCode(fill, page, step, "No email with a code from $site has arrived yet.")
+
+        val approved = details["fingerprint"]?.jsonPrimitive?.content
+        val withoutCode = snap.copy(elements = snap.elements.filter { e -> step.boxes.none { it.id == e.id } })
+        if (approved != null && approved != fingerprint(FillExecutor.fieldsOf(withoutCode))) {
+            return handOffCode(fill, page, step, "The form no longer matches what you approved, so I did not enter the code.")
+        }
+        store.update(id, VERIFYING, withDetails(fill.details, "code_attempts" to JsonPrimitive(attempts + 1)))
+        if (step.boxes.size > 1) step.boxes.zip(code.toList()).forEach { (box, ch) -> page.fill(box.id, ch.toString()) } else page.fill(step.boxes.single().id, code)
+
+        val entered = page.snapshot()
+        val submits = entered.elements.filter { (it.kind == "button" || it.kind == "input") && SitePolicy.isSubmitControl(it.text.ifBlank { it.label }, it.type, it.formFilled) }
+        if (submits.size != 1) return handOffCode(fill, page, step, "I entered the code but can't find the one submit button.")
+        runCatching { page.click(submits.single().id); page.settle() }
+            .onFailure { return handOffCode(fill, page, step, "I entered the code but the submit button wouldn't click.") }
+        when (val next = readAfterSubmit(page)) {
+            is SubmitStep.Confirmed -> confirmed(fill, page, snap.url, next.words)
+            is SubmitStep.CodePrompt -> handOffCode(fill, page, next, "The site didn't accept the code I entered.")
+            is SubmitStep.Unknown -> unconfirmed(fill, page, next)
+        }
+    }
+
+    /** The code step needs Richard: the code is not in the inbox, was refused, or the page isn't as expected. */
+    private fun handOffCode(fill: ActionStore.Action, page: ApplyPage, step: SubmitStep.CodePrompt, why: String) {
+        store.update(fill.id, NEEDS_CODE, withDetails(fill.details, "code_attempts" to JsonPrimitive(0)))
+        cargo(fill.details, "in_progress", "Submit clicked; waiting for the site's emailed security code — ${why.take(160)}")
+        outbox.post(
+            "I clicked Submit for ${label(fill)} and the site wants the code it emailed" +
+                (step.prompt.takeIf { it.isNotBlank() }?.let { " (\"$it\")" } ?: "") + ". $why Nothing is confirmed yet." +
+                "\nType the code into the page in the viewer and tap ▶ Continue, or tap ▶ Continue and I'll look for the email again." +
+                (viewerUrl?.let { "\nViewer: $it" } ?: ""),
+            listOf(InlineButton("▶ Continue", "resume:${fill.id}"), InlineButton("✖ Discard", "discard:${fill.id}")),
+            runCatching { page.screenshot() }.getOrNull(),
+        )
+    }
+
+    /** [details] with [extra] merged in: the review's fingerprint and the application's identity must survive each step. */
+    private fun withDetails(details: String?, vararg extra: Pair<String, JsonPrimitive>): String = buildJsonObject {
+        runCatching { JSON.parseToJsonElement(details ?: "{}").jsonObject }.getOrNull()?.forEach { (k, v) -> if (k !in extra.map { it.first }) put(k, v) }
+        extra.forEach { (k, v) -> put(k, v) }
+    }.toString()
 
     /** ✖ Discard: close the tab; nothing was submitted. */
     fun discard(id: Long, req: TapRequest): TapResponse {
         val fill = store.byId(id)?.takeIf { it.verb == FILL } ?: return gone("Unknown application.")
         if (fill.status == Outcomes.DONE) return TapResponse(Outcomes.ALREADY, toast = "Already submitted.", actionRow = emptyList())
+        val clicked = fill.status in CLICKED
         store.update(id, CANCELLED)
         pages.remove(id)?.close()
         releaseFiles(id)
-        cargo(fill.details, "blocked", "discarded by Richard in Telegram before submitting; nothing was submitted")
-        return TapResponse(Outcomes.DONE, toast = "Discarded. Nothing was submitted.", actionRow = emptyList())
+        // After the click the site was waiting for its emailed code: it took nothing until it had one, but say only what is known.
+        cargo(
+            fill.details, "blocked",
+            if (clicked) "discarded by Richard after Submit was clicked; the site was still waiting for its emailed code, so it should not have gone through — check the site if unsure"
+            else "discarded by Richard in Telegram before submitting; nothing was submitted",
+        )
+        return TapResponse(
+            Outcomes.DONE,
+            toast = if (clicked) "Discarded. The site was still waiting for its code, so it shouldn't have gone through." else "Discarded. Nothing was submitted.",
+            actionRow = emptyList(),
+        )
     }
 
     /** ▶ Continue after Richard finished a hand-off step in the viewer. */
     fun resume(id: Long, req: TapRequest): TapResponse {
         val fill = store.byId(id)?.takeIf { it.verb == FILL } ?: return gone("Unknown application.")
+        if (fill.status == NEEDS_CODE) {
+            if (pages[id] == null) {
+                store.update(id, UNCONFIRMED)
+                return gone("The browser tab is gone, so I can't tell whether it went through. Check your email and the site before applying again.")
+            }
+            store.update(id, VERIFYING, withDetails(fill.details, "code_attempts" to JsonPrimitive(0)))
+            runVerification(id, RECHECK_CODE_WAIT)
+            return TapResponse(Outcomes.DONE, toast = "Checking…", actionRow = emptyList())
+        }
         if (fill.status != NEEDS_HUMAN) return TapResponse(Outcomes.REFUSED, toast = "Nothing to continue.")
         if (pages[id] == null) return expire(id, "The browser tab for this application is gone (JobBot restarted?).")
         store.update(id, QUEUED)
@@ -275,6 +422,15 @@ class ApplyService(
     fun recoverInterrupted(): Int {
         val stale = store.open(FILL).filter { it.id !in running && pages[it.id] == null }
         for (fill in stale) {
+            if (fill.status in CLICKED) {
+                // Submit had already been clicked, so "nothing was submitted" would be a guess: the outcome is unknown.
+                store.update(fill.id, UNCONFIRMED)
+                cargo(fill.details, "blocked", "JobBot restarted after Submit was clicked; the outcome is unconfirmed — check the site (it may be waiting for an emailed code) before applying again")
+                if (Duration.ofMillis(clock.millis() - fill.updatedAt) <= reviewTtl) {
+                    outbox.post("JobBot restarted after Submit was clicked for ${label(fill)}, so I can't tell whether it went through (the site may have been waiting for an emailed code). Check your email and the site before applying again.")
+                }
+                continue
+            }
             store.update(fill.id, EXPIRED)
             releaseFiles(fill.id)
             val folder = cargoFolder(fill.details)
@@ -310,7 +466,7 @@ class ApplyService(
     /** An open fill this process can no longer act on: no live worker, or no tab to continue or submit. */
     private fun isOrphan(fill: ActionStore.Action): Boolean = when (fill.status) {
         QUEUED, FILLING -> fill.id !in running
-        NEEDS_HUMAN, Outcomes.AWAITING_APPROVAL -> fill.id !in running && pages[fill.id] == null
+        NEEDS_HUMAN, Outcomes.AWAITING_APPROVAL, VERIFYING, NEEDS_CODE -> fill.id !in running && pages[fill.id] == null
         else -> false
     }
 
@@ -453,6 +609,10 @@ class ApplyService(
         const val FILLING = "filling"
         const val NEEDS_HUMAN = "needs_human"
         const val SUBMITTING = "submitting"
+        /** Submit was clicked and the site asked for an emailed code; JobBot is fetching and entering it. */
+        const val VERIFYING = "verifying"
+        /** The emailed code could not be entered by JobBot: Richard types it in the viewer (or taps Continue to try again). */
+        const val NEEDS_CODE = "needs_code"
         /** Submit was clicked but no confirmation appeared: Richard checks the tab. */
         const val UNCONFIRMED = "submitted_unconfirmed"
         const val EXPIRED = "expired"
@@ -460,9 +620,18 @@ class ApplyService(
         const val SUPERSEDED = "superseded"
         const val FAILED = "failed"
         private val JSON = Json { ignoreUnknownKeys = true }
+        /** Statuses after the site's submit control was clicked: an application that may already be in. */
+        private val CLICKED = setOf(SUBMITTING, VERIFYING, NEEDS_CODE)
         /** Details keys that survive the move from "filling" to "awaiting review". */
         private val CARRIED = setOf("resume_upload", "resume_bytes", "job_url", "label", "cargo_folder", "company", "title")
-        private val CONFIRMATION = Regex("""(?i)thank you|application (has been )?(received|submitted)|we('ve| have) received|successfully submitted""")
+        /** How long the first look for the emailed code waits, and each look after a Continue tap. */
+        private val FIRST_CODE_WAIT = Duration.ofMinutes(2)
+        private val RECHECK_CODE_WAIT = Duration.ofSeconds(45)
+        /** A code is entered automatically at most this many times per hand-off, so a wrong one cannot loop. */
+        private const val MAX_CODE_ATTEMPTS = 1
+        /** After a click an unrecognised page gets this many more looks, this far apart, before it is called unknown. */
+        private const val SETTLE_LOOKS = 3
+        private const val SETTLE_PAUSE_MS = 2_000L
 
         fun fingerprint(fields: List<Pair<String, String>>): String =
             MessageDigest.getInstance("SHA-256").digest(fields.joinToString("\u0000") { "${it.first}\u0001${it.second}" }.toByteArray())
