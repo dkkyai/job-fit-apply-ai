@@ -115,8 +115,23 @@ object SitePolicy {
         }
     }
 
-    /** A one-time code in a verification email, or null. */
-    fun verificationCode(body: String): String? =
-        Regex("""(?i)(?:code|passcode|pin)[^0-9A-Z]{0,20}([0-9]{4,8}|[A-Z0-9]{6,8})\b""").find(body)?.groupValues?.get(1)
-            ?: Regex("""\b([0-9]{6})\b""").find(body)?.groupValues?.get(1)
+    /**
+     * A one-time code in a verification email, or null. [length], when the page says how long the code is ("enter the
+     * 8-character code"), rules out every other token. Greenhouse words it "Copy and paste this code into the security
+     * code field on your application: aB3dE5gH After you enter the code, resubmit your application." — the code follows a
+     * colon, and the plain words around it ("resubmit" is eight letters too) must never be taken for it.
+     */
+    fun verificationCode(body: String, length: Int? = null): String? {
+        fun fits(t: String) = length == null || t.length == length
+        // A word is not a code: a code has a digit, or is all capitals, or mixes the cases past its first letter.
+        fun codeShaped(t: String) = t.any(Char::isDigit) || t.all(Char::isUpperCase) || (t.drop(1).any(Char::isUpperCase) && t.any(Char::isLowerCase))
+        fun digitOrCapitals(t: String) = t.any(Char::isDigit) || t.all(Char::isUpperCase)
+        CODE_AFTER_COLON.findAll(body).map { it.groupValues[1] }.firstOrNull { fits(it) && codeShaped(it) }?.let { return it }
+        CODE_NEAR_WORD.findAll(body).map { it.groupValues[1] }.firstOrNull { fits(it) && digitOrCapitals(it) }?.let { return it }
+        return SIX_DIGITS.findAll(body).map { it.groupValues[1] }.firstOrNull { fits(it) }
+    }
+
+    private val CODE_AFTER_COLON = Regex("""(?i)\bcode\b[^:\n.]{0,100}:\s*([A-Za-z0-9]{4,10})\b""")
+    private val CODE_NEAR_WORD = Regex("""(?i)(?:code|passcode|pin)[^0-9A-Z]{0,20}([0-9]{4,8}|[A-Z0-9]{6,8})\b""")
+    private val SIX_DIGITS = Regex("""\b([0-9]{6})\b""")
 }

@@ -108,10 +108,10 @@ class ActionStore(dbPath: String, private val clock: Clock = Clock.systemUTC()) 
             ps.executeQuery().use { rs -> generateSequence { if (rs.next()) rs.toAction() else null }.toList() }
         }
 
-    /** Every [verb] action still open: queued, filling, waiting on Richard, or awaiting his review. */
+    /** Every [verb] action still open: queued, filling, waiting on Richard, awaiting his review, or past the Submit click and not yet confirmed. */
     @Synchronized
     fun open(verb: String): List<Action> =
-        conn.prepareStatement("SELECT * FROM actions WHERE verb = ? AND status IN ('queued','filling','needs_human','awaiting_approval') ORDER BY id").use { ps ->
+        conn.prepareStatement("SELECT * FROM actions WHERE verb = ? AND status IN ('queued','filling','needs_human','awaiting_approval','submitting','verifying','needs_code') ORDER BY id").use { ps ->
             ps.setString(1, verb)
             ps.executeQuery().use { rs -> generateSequence { if (rs.next()) rs.toAction() else null }.toList() }
         }
