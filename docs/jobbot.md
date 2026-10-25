@@ -104,12 +104,12 @@ A job can score at or above `FIT_THRESHOLD` and still be skipped by a hard gate:
 - **Image:** `linuxserver/chromium`, pinned by digest. Its Selkies web viewer streams over WebRTC/websockets.
 - **CDP:** socat exposes Chromium's DevTools on `:9223`, reachable only on the private `jobbot-browser` network (jobbot-browser + jobbot-mcp). DevTools rejects non-IP Host headers, so jobbot-mcp resolves the address first.
 - **Google session:** a managed policy turns browser sign-in off (`BrowserSignin: 0`, `SyncDisabled`). Without it, this Chromium (no Google API keys) signed dkkytech@ out of Google on every restart: DICE failed to fetch a browser token after each web sign-in, and the startup reconcile then cleared the web session. Sign in on the web (accounts.google.com) only. Doctor checks the policy is present.
-- **Viewer:** published on `127.0.0.1:3200` behind `JOBBOT_BROWSER_PASSWORD` (user `JOBBOT_BROWSER_USER`, default `richard`). `scripts/setup-tailscale-serve.sh` serves it as `https://<tailnet-name>:3200`. The container **refuses to start** without the password.
+- **Viewer:** published on `127.0.0.1:3200` and asks for a login only when `JOBBOT_BROWSER_PASSWORD` is set (user `JOBBOT_BROWSER_USER`, default `richard`). `scripts/setup-tailscale-serve.sh` serves it as `https://<tailnet-name>:3200`, tailnet only (`serve`, not `funnel`). The password is optional: with it blank the viewer has no login, so anyone who can reach port 3200 on your tailnet can drive the browser, which holds the dkkytech@ Google session. Changing it means recreating the container, which closes open tabs.
 - **Profile lock:** cleared at init. A stale `SingletonLock` from a previous container made Chromium skip DevTools; this was caught in the spike.
 - **Accepted risk:** the image runs Chromium with `--no-sandbox`. The container is the boundary: it has its own network, no host mounts beyond its profile, and a 3 GB memory limit.
 
 **First-time setup (Richard)**
-1. Set `JOBBOT_BROWSER_PASSWORD` and `JOBBOT_BROWSER_VIEWER_URL` in the root `.env`, and add `jobbot-browser` to `COMPOSE_PROFILES`. The old names (`APPLY_BROWSER_*`, `JOBBOT_APPLY_VIEWER_URL`, profile `apply`) still work, and doctor warns about them.
+1. Set `JOBBOT_BROWSER_VIEWER_URL` (and, if you want a login on the viewer, `JOBBOT_BROWSER_PASSWORD`) in the root `.env`, and add `jobbot-browser` to `COMPOSE_PROFILES`. The old names (`APPLY_BROWSER_*`, `JOBBOT_APPLY_VIEWER_URL`, profile `apply`) still work, and doctor warns about them.
 2. Run `scripts/setup-tailscale-serve.sh`.
 3. Open the viewer and sign in to Google as dkkytech@ once. That also covers 2-step verification.
 4. Set `JOBBOT_APPLY_ENABLED=true`.
