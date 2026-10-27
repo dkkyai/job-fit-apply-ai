@@ -514,6 +514,12 @@
   careers_url: "https://www.seismic.com/careers/"
   qe_fit: "low"
   category: "Seattle Software / Internet"
+- company: "Hims & Hers"
+  ats: "ashby"
+  board: "hims-and-hers"
+  careers_url: "https://jobs.ashbyhq.com/hims-and-hers"
+  qe_fit: "high"
+  category: "Health Tech / Telehealth"
 - company: "Holland America Line"
   ats: "oracle_hcm"
   host: "eicl.fa.em5.oraclecloud.com"
@@ -1439,3 +1445,4 @@
   careers_url: "https://myjobs.adp.com/zumiezhomeoffice"
   qe_fit: "low"
   category: "Retail / Consumer"
+
