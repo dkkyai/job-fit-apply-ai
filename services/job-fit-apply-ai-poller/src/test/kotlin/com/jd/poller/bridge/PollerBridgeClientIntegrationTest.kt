@@ -76,6 +76,7 @@ class PollerBridgeClientIntegrationTest {
         val file = client.downloadArtifact("/api/jobs/j1/resume.pdf", ".pdf")
         assertNotNull(file)
         assertEquals("PDFDATA", file.readText())
+        assertTrue(file.delete())   // the caller owns the temp file (no deleteOnExit backstop)
 
         assertNull(client.downloadArtifact("/api/jobs/j1/missing.pdf", ".pdf"))
         assertNull(client.downloadArtifact("", ".pdf"))   // blank path short-circuits to null
