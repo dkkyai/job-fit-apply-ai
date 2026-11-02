@@ -483,11 +483,11 @@ class ScoreFitNode(
 
         /**
          * Posted max up to N% under the candidate's minimum → N points off the final score
-         * (applied after the 100 clamp, so a perfect job reads 95 a little short). Further under
+         * (applied after the 100 clamp, so a perfect job reads 90 a little short). Further under
          * than the last tier is a hard-gate skip.
          */
-        internal val COMP_SHORTFALL_TIERS = listOf(10 to 5, 20 to 15, 30 to 25, 40 to 35)
-        internal const val COMP_SKIP_SHORTFALL_PCT = 40
+        internal val COMP_SHORTFALL_TIERS = listOf(10 to 10, 20 to 30, 30 to 40)
+        internal const val COMP_SKIP_SHORTFALL_PCT = 30
         const val COMP_PENALTY_KEY = "comp_penalty"
 
         /** Posted amounts at or above this are annual, below it hourly (no hourly rate reaches $1,000). */
