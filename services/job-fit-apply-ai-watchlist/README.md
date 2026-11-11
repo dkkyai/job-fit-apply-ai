@@ -25,10 +25,10 @@ A sync test fails if the two disagree. `ats` picks the adapter in `adapters/` (G
 
 | Employers | Count |
 |---|---|
-| Polled | 185 |
+| Polled | 186 |
 | Feed did not verify (`enabled: false`) | 5 |
 | No adapter for their platform | 30 |
-| Total | 220 |
+| Total | 221 |
 
 The employers this service can't poll reach the pipeline, if at all, through their own job-alert emails, which the processor parses (see [Posting identity](#posting-identity-shared-with-employer-job-alert-emails)):
 
