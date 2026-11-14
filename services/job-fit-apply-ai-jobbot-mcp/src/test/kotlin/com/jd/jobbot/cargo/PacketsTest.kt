@@ -25,7 +25,7 @@ class PacketsTest {
         remote.packet("acme", "sdet", 2)
         remote.packet("acme", "lead", 0)
         val packets = scan()
-        assertEquals(listOf("applications/acme/lead/v00", "applications/acme/sdet/v02"), packets.map { it.folder })
+        assertEquals(listOf("application-packages/acme/lead/v00", "application-packages/acme/sdet/v02"), packets.map { it.folder })
         assertEquals(listOf("v00", "v01"), packets.last().olderVersions)
     }
 
@@ -37,7 +37,7 @@ class PacketsTest {
         assertEquals("Tools & Automation Engineer", p.title)
         assertEquals("READY", p.status)
         assertEquals("https://jobs.apple.com/x", p.applyUrl)
-        assertEquals("applications/apple/tools-engineer/v03/apply-2p/Richard-Hatcher-Resume.pdf", p.upload)
+        assertEquals("application-packages/apple/tools-engineer/v03/apply-2p/Richard-Hatcher-Resume.pdf", p.upload)
         assertEquals("attested NOTHING FABRICATED; no open questions", p.statusReason)
         assertEquals(3, p.version)
     }
@@ -89,8 +89,8 @@ class PacketsTest {
     @Test
     fun `folders without a packet file or a version name are skipped`() {
         remote.packet("acme", "sdet")
-        remote.write("applications/acme/other/notes/readme.md", "x")
-        remote.write("applications/acme/empty/v00/readme.md", "x")
+        remote.write("application-packages/acme/other/notes/readme.md", "x")
+        remote.write("application-packages/acme/empty/v00/readme.md", "x")
         assertEquals(1, scan().size)
     }
 
@@ -101,7 +101,7 @@ class PacketsTest {
 
     @Test
     fun `a missing status defaults to DRAFT, never READY`() {
-        remote.write("applications/acme/odd/v00/APPLICATION_PACKET.md", "---\ncompany: Acme\ntitle: Odd\n---\n")
+        remote.write("application-packages/acme/odd/v00/APPLICATION_PACKAGE.md", "---\ncompany: Acme\ntitle: Odd\n---\n")
         assertEquals("DRAFT", scan().single().status)
     }
 
@@ -173,7 +173,7 @@ class PacketsTest {
     private fun packet(
         status: String = "READY", application: String = "not_started", since: Instant? = null, older: Boolean = false,
         url: String? = "https://x.co/j", upload: String? = "a/b.pdf",
-    ) = Packet("Acme", "SDET", "applications/acme/sdet/v00", 0, status, null, url, upload, null, application, since, null, older, if (older) listOf("v00") else emptyList())
+    ) = Packet("Acme", "SDET", "application-packages/acme/sdet/v00", 0, status, null, url, upload, null, application, since, null, older, if (older) listOf("v00") else emptyList())
 
     @Test
     fun `a READY not-started packet can be applied to`() {
@@ -244,7 +244,7 @@ class PacketsTest {
     fun `windows line endings do not hide a packet's status, state or hash`() {
         val folder = remote.packet("acme", "sdet", statusLines = listOf("- 2026-10-16T17:30:00Z | completed | done"))
         val dir = remote.seed.resolve(folder)
-        for (f in listOf("APPLICATION_PACKET.md", "STATUS.md")) {
+        for (f in listOf("APPLICATION_PACKAGE.md", "STATUS.md")) {
             java.nio.file.Files.writeString(dir.resolve(f), java.nio.file.Files.readString(dir.resolve(f)).replace("\n", "\r\n"))
         }
         val p = scan().single()
@@ -252,12 +252,12 @@ class PacketsTest {
         assertEquals("completed", p.application)
         assertEquals("https://jobs.example.com/acme/sdet", p.applyUrl)
         assertEquals(0, p.statusUnparsed)
-        assertEquals(12, Packets.uploadHash(java.nio.file.Files.readString(dir.resolve("APPLICATION_PACKET.md")))?.length)
+        assertEquals(12, Packets.uploadHash(java.nio.file.Files.readString(dir.resolve("APPLICATION_PACKAGE.md")))?.length)
     }
 
     @Test
     fun `quoted front matter values are unquoted and a colon in a value is kept`() {
-        remote.write("applications/acme/odd/v00/APPLICATION_PACKET.md", "---\ncompany: \"Acme, Inc.\"\ntitle: \"Engineer: Quality\"\nstatus: ready\napply_url: https://x.co/j?a=1:2\nupload: a/b.pdf\n---\n")
+        remote.write("application-packages/acme/odd/v00/APPLICATION_PACKAGE.md", "---\ncompany: \"Acme, Inc.\"\ntitle: \"Engineer: Quality\"\nstatus: ready\napply_url: https://x.co/j?a=1:2\nupload: a/b.pdf\n---\n")
         val p = scan().single()
         assertEquals("Acme, Inc.", p.company)
         assertEquals("Engineer: Quality", p.title)
@@ -267,7 +267,7 @@ class PacketsTest {
 
     @Test
     fun `front matter without a closing line is not trusted`() {
-        remote.write("applications/acme/odd/v00/APPLICATION_PACKET.md", "---\ncompany: Acme\nstatus: READY\napply_url: https://x.co/j\nupload: a/b.pdf\n")
+        remote.write("application-packages/acme/odd/v00/APPLICATION_PACKAGE.md", "---\ncompany: Acme\nstatus: READY\napply_url: https://x.co/j\nupload: a/b.pdf\n")
         val p = scan().single()
         assertEquals("DRAFT", p.status, "an unterminated block must not make a packet READY")
         assertNull(p.applyUrl)
@@ -310,7 +310,7 @@ class PacketsTest {
         val bad = remote.packet("acme", "sdet", statusLines = listOf("- 2026-10-16T17:30:00Z | completed | caf\u00e9 done"))
         val ok = remote.packet("beta", "qa")
         java.nio.file.Files.write(remote.seed.resolve("$bad/STATUS.md"), "- 2026-10-16T17:30:00Z | completed | caf\u00e9 done\n".toByteArray(Charsets.ISO_8859_1))
-        val packetFile = remote.seed.resolve("$ok/APPLICATION_PACKET.md")
+        val packetFile = remote.seed.resolve("$ok/APPLICATION_PACKAGE.md")
         java.nio.file.Files.write(packetFile, java.nio.file.Files.readAllBytes(packetFile) + "\n caf\u00e9".toByteArray(Charsets.ISO_8859_1))
         val packets = scan().associateBy { it.company }
         assertEquals(2, packets.size)

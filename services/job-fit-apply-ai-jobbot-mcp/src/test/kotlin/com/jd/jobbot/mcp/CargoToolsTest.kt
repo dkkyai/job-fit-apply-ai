@@ -157,8 +157,8 @@ class CargoToolsTest {
     @Test
     fun `cargo_get_packet returns the packet, its status, answers and a marked posting`() {
         seedStandard()
-        val o = Rig().tools.getPacket(req("folder" to "applications/apple/tools/v03")).ok()
-        assertTrue(o["application_packet_md"]!!.jsonPrimitive.content.contains("UPLOAD"))
+        val o = Rig().tools.getPacket(req("folder" to "application-packages/apple/tools/v03")).ok()
+        assertTrue(o["application_package_md"]!!.jsonPrimitive.content.contains("UPLOAD"))
         assertTrue(o["application_answers_md"]!!.jsonPrimitive.content.contains("Sponsorship"))
         assertTrue(o["job_posting_md"]!!.jsonPrimitive.content.startsWith(CargoTools.UNTRUSTED))
         assertTrue(o["files"]!!.jsonArray.any { it.jsonPrimitive.content.endsWith("apply-2p/") })
@@ -172,20 +172,20 @@ class CargoToolsTest {
         assertTrue(t.getPacket(req("company" to "apple")).fails().contains("More than one role matches"))
         assertTrue(t.getPacket(req("company" to "apple", "role" to "tools")).ok()["packet"] != null)
         assertTrue(t.getPacket(req("company" to "nobody")).fails().contains("No packet"))
-        assertTrue(t.getPacket(req("folder" to "applications/becu/sdet/v00")).fails().contains("only the newest version"))
+        assertTrue(t.getPacket(req("folder" to "application-packages/becu/sdet/v00")).fails().contains("only the newest version"))
     }
 
     @Test
     fun `cargo_read_file reads text, marks postings, refuses binaries and escapes`() {
         seedStandard()
         val t = Rig().tools
-        val posting = t.readFile(req("path" to "applications/apple/tools/v03/job-posting.md")).ok()
+        val posting = t.readFile(req("path" to "application-packages/apple/tools/v03/job-posting.md")).ok()
         assertTrue(posting["content"]!!.jsonPrimitive.content.startsWith(CargoTools.UNTRUSTED))
-        assertTrue(t.readFile(req("path" to "applications/apple/tools/v03/apply-2p/Richard-Hatcher-Resume.pdf")).fails().contains("binary"))
+        assertTrue(t.readFile(req("path" to "application-packages/apple/tools/v03/apply-2p/Richard-Hatcher-Resume.pdf")).fails().contains("binary"))
         assertTrue(t.readFile(req("path" to "../../etc/passwd")).fails().isNotBlank())
         assertTrue(t.readFile(req("path" to ".git/config")).fails().contains("not available"))
         assertTrue(t.readFile(req("path" to "applications")).fails().contains("cargo_files"))
-        val short = t.readFile(req("path" to "applications/apple/tools/v03/APPLICATION_PACKET.md", "max_chars" to 500)).ok()
+        val short = t.readFile(req("path" to "application-packages/apple/tools/v03/APPLICATION_PACKAGE.md", "max_chars" to 500)).ok()
         assertEquals(500, short["content"]!!.jsonPrimitive.content.length)
         assertEquals("true", short["truncated"]!!.jsonPrimitive.content)
     }
@@ -194,8 +194,8 @@ class CargoToolsTest {
     fun `cargo_files and cargo_search answer random questions`() {
         seedStandard()
         val t = Rig().tools
-        assertTrue(t.files(req()).text().contains("applications/"))
-        assertTrue(t.files(req("path" to "applications/apple")).text().contains("applications/apple/tools/"))
+        assertTrue(t.files(req()).text().contains("application-packages/"))
+        assertTrue(t.files(req("path" to "application-packages/apple")).text().contains("application-packages/apple/tools/"))
         val hits = t.search(req("query" to "sponsorship")).ok()
         assertTrue(hits["matches"]!!.jsonPrimitive.int >= 6)
         assertTrue(t.search(req("query" to "")).fails().isNotBlank())
@@ -211,7 +211,7 @@ class CargoToolsTest {
         val item = rig.outbox.pending().single()
         assertTrue(item.hasDocument)
         assertEquals("Richard-Hatcher-Resume.pdf", item.documentName)
-        assertContentEquals(remote.resumes.getValue("applications/flex/sdet/v00"), rig.outbox.document(item.id))
+        assertContentEquals(remote.resumes.getValue("application-packages/flex/sdet/v00"), rig.outbox.document(item.id))
         assertTrue(item.text.contains("Flex"), item.text)
     }
 
@@ -220,7 +220,7 @@ class CargoToolsTest {
         remote.packet("acme", "sdet", 0); remote.packet("acme", "sdet", 4); remote.publish()
         val rig = Rig()
         rig.tools.sendResume(req("company" to "acme")).ok()
-        assertContentEquals(remote.resumes.getValue("applications/acme/sdet/v04"), rig.outbox.document(rig.outbox.pending().single().id))
+        assertContentEquals(remote.resumes.getValue("application-packages/acme/sdet/v04"), rig.outbox.document(rig.outbox.pending().single().id))
     }
 
     @Test
@@ -248,7 +248,7 @@ class CargoToolsTest {
     fun `cargo_send_file sends any repo file but nothing outside it`() {
         seedStandard()
         val rig = Rig()
-        rig.tools.sendFile(req("path" to "applications/apple/tools/v03/application-answers.md")).ok()
+        rig.tools.sendFile(req("path" to "application-packages/apple/tools/v03/application-answers.md")).ok()
         assertEquals("application-answers.md", rig.outbox.pending().single().documentName)
         assertTrue(rig.tools.sendFile(req("path" to "../checkout/../x")).fails().isNotBlank())
         assertTrue(rig.tools.sendFile(req("path" to ".git/config")).fails().isNotBlank())
@@ -262,9 +262,9 @@ class CargoToolsTest {
     fun `cargo_append_status records what Richard reports`() {
         seedStandard()
         val rig = Rig()
-        val o = rig.tools.appendStatus(req("folder" to "applications/apple/tools/v03", "state" to "blocked", "note" to "waiting on a phone code")).ok()
+        val o = rig.tools.appendStatus(req("folder" to "application-packages/apple/tools/v03", "state" to "blocked", "note" to "waiting on a phone code")).ok()
         assertEquals("true", o["pushed"]!!.jsonPrimitive.content)
-        assertTrue(rig.statusOnRemote("applications/apple/tools/v03").single().endsWith("| blocked | waiting on a phone code"))
+        assertTrue(rig.statusOnRemote("application-packages/apple/tools/v03").single().endsWith("| blocked | waiting on a phone code"))
     }
 
     @Test
@@ -272,7 +272,7 @@ class CargoToolsTest {
         seedStandard()
         val t = Rig().tools
         for (bad in listOf("done", "submitted", "COMPLETE", "")) {
-            assertTrue(t.appendStatus(req("folder" to "applications/apple/tools/v03", "state" to bad.ifEmpty { " " }, "note" to "x")).fails().isNotBlank(), bad)
+            assertTrue(t.appendStatus(req("folder" to "application-packages/apple/tools/v03", "state" to bad.ifEmpty { " " }, "note" to "x")).fails().isNotBlank(), bad)
         }
     }
 
@@ -280,7 +280,7 @@ class CargoToolsTest {
     fun `completed needs Richard's own words`() {
         seedStandard()
         val rig = Rig()
-        val f = "applications/apple/tools/v03"
+        val f = "application-packages/apple/tools/v03"
         assertTrue(rig.tools.appendStatus(req("folder" to f, "state" to "completed", "note" to "done")).fails().contains("Richard's own words"))
         rig.tools.appendStatus(req("folder" to f, "state" to "completed", "note" to "applied by hand", "approval_quote" to "I submitted Apple myself")).ok()
         assertTrue(rig.statusOnRemote(f).single().contains("per Richard: \"I submitted Apple myself\""))
@@ -290,14 +290,14 @@ class CargoToolsTest {
     fun `a completed packet takes no more lines`() {
         seedStandard()
         val t = Rig().tools
-        assertTrue(t.appendStatus(req("folder" to "applications/flex/sdet/v00", "state" to "in_progress", "note" to "x", "approval_quote" to "yes")).fails().contains("already completed"))
+        assertTrue(t.appendStatus(req("folder" to "application-packages/flex/sdet/v00", "state" to "in_progress", "note" to "x", "approval_quote" to "yes")).fails().contains("already completed"))
     }
 
     @Test
     fun `in_progress on a DRAFT needs approval and records the quote`() {
         seedStandard()
         val rig = Rig()
-        val f = "applications/tiktok/qa/v00"
+        val f = "application-packages/tiktok/qa/v00"
         assertTrue(rig.tools.appendStatus(req("folder" to f, "state" to "in_progress", "note" to "opened")).fails().contains("approval"))
         rig.tools.appendStatus(req("folder" to f, "state" to "in_progress", "note" to "opened", "approval_quote" to "go ahead with the tiktok draft")).ok()
         assertTrue(rig.statusOnRemote(f).single().contains("draft approved: \"go ahead with the tiktok draft\""))
@@ -307,7 +307,7 @@ class CargoToolsTest {
     fun `an older version of a role takes no status lines, with or without approval`() {
         seedStandard() // becu/sdet has v00 (completed) and v01 (newest)
         val rig = Rig()
-        val old = "applications/becu/sdet/v00"
+        val old = "application-packages/becu/sdet/v00"
         for (state in listOf("completed", "in_progress", "blocked", "parked_at_review")) {
             val msg = rig.tools.appendStatus(req("folder" to old, "state" to state, "note" to "x", "approval_quote" to "yes do it")).fails()
             assertTrue(msg.contains("newest version"), "$state: $msg")
@@ -321,8 +321,8 @@ class CargoToolsTest {
     fun `an older version is judged by the newest, not by its own history`() {
         remote.packet("acme", "sdet", 0); remote.packet("acme", "sdet", 1); remote.publish()
         val rig = Rig()
-        assertTrue(rig.tools.appendStatus(req("folder" to "applications/acme/sdet/v00", "state" to "completed", "note" to "x")).fails().contains("newest version"))
-        rig.tools.appendStatus(req("folder" to "applications/acme/sdet/v01", "state" to "blocked", "note" to "ok")).ok()
+        assertTrue(rig.tools.appendStatus(req("folder" to "application-packages/acme/sdet/v00", "state" to "completed", "note" to "x")).fails().contains("newest version"))
+        rig.tools.appendStatus(req("folder" to "application-packages/acme/sdet/v01", "state" to "blocked", "note" to "ok")).ok()
     }
 
     @Test
@@ -330,7 +330,7 @@ class CargoToolsTest {
         seedStandard()
         val t = Rig().tools
         assertTrue(t.appendStatus(req("folder" to "../x", "state" to "blocked", "note" to "x")).fails().isNotBlank())
-        assertTrue(t.appendStatus(req("folder" to "applications/nope/x/v00", "state" to "blocked", "note" to "x")).fails().contains("No packet"))
+        assertTrue(t.appendStatus(req("folder" to "application-packages/nope/x/v00", "state" to "blocked", "note" to "x")).fails().contains("No packet"))
     }
 
     // ── applying ─────────────────────────────────────────────────────────────────────────────
@@ -339,7 +339,7 @@ class CargoToolsTest {
     fun `cargo_apply fills from the packet and records its progress in STATUS_md`() {
         seedStandard()
         val rig = Rig()
-        val f = "applications/apple/tools/v03"
+        val f = "application-packages/apple/tools/v03"
         rig.tools.applyOne(req("folder" to f)).ok()
 
         val job = rig.jobs.single()
@@ -363,7 +363,7 @@ class CargoToolsTest {
     fun `the Submit tap records completed and the packet is never applied to again`() {
         seedStandard()
         val rig = Rig()
-        val f = "applications/apple/tools/v03"
+        val f = "application-packages/apple/tools/v03"
         rig.tools.applyOne(req("folder" to f)).ok()
         assertEquals("done", rig.tap("submit", rig.fillId()).outcome)
         val lines = rig.statusOnRemote(f)
@@ -377,7 +377,7 @@ class CargoToolsTest {
     fun `Discard records blocked and the packet then waits for Richard`() {
         seedStandard()
         val rig = Rig()
-        val f = "applications/apple/tools/v03"
+        val f = "application-packages/apple/tools/v03"
         rig.tools.applyOne(req("folder" to f)).ok()
         rig.tap("discard", rig.fillId())
         assertEquals("blocked", rig.statusOnRemote(f).last().split(" | ")[1])
@@ -392,8 +392,8 @@ class CargoToolsTest {
         seedStandard()
         val rig = Rig()
         rig.outcome = { FillResult.NeedsHuman("CAPTCHA on jobs.example.com", null) }
-        rig.tools.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
-        assertTrue(rig.statusOnRemote("applications/apple/tools/v03").last().endsWith("| blocked | needs Richard: CAPTCHA on jobs.example.com"))
+        rig.tools.applyOne(req("folder" to "application-packages/apple/tools/v03")).ok()
+        assertTrue(rig.statusOnRemote("application-packages/apple/tools/v03").last().endsWith("| blocked | needs Richard: CAPTCHA on jobs.example.com"))
     }
 
     @Test
@@ -401,15 +401,15 @@ class CargoToolsTest {
         seedStandard()
         val rig = Rig()
         rig.outcome = { FillResult.Failed("the model call failed", null) }
-        rig.tools.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
-        assertTrue(rig.statusOnRemote("applications/apple/tools/v03").last().contains("| blocked | JobBot's fill failed: the model call failed"))
+        rig.tools.applyOne(req("folder" to "application-packages/apple/tools/v03")).ok()
+        assertTrue(rig.statusOnRemote("application-packages/apple/tools/v03").last().contains("| blocked | JobBot's fill failed: the model call failed"))
     }
 
     @Test
     fun `the review window expiring is recorded`() {
         seedStandard()
         val rig = Rig()
-        rig.tools.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
+        rig.tools.applyOne(req("folder" to "application-packages/apple/tools/v03")).ok()
         val later = Clock.fixed(now.plus(Duration.ofHours(5)), ZoneOffset.UTC)
         val svc = ApplyService(
             browser = { _ -> rig.page }, fill = { p, _, _ -> rig.outcome(p) }, lookup = rig.lookup, contextFor = { null },
@@ -418,14 +418,14 @@ class CargoToolsTest {
             worker = MoreExecutors.newDirectExecutorService(),
         )
         svc.sweep()
-        assertTrue(rig.statusOnRemote("applications/apple/tools/v03").last().contains("| blocked | review window expired"))
+        assertTrue(rig.statusOnRemote("application-packages/apple/tools/v03").last().contains("| blocked | review window expired"))
     }
 
     @Test
     fun `a DRAFT needs approval, and with it the quote lands in STATUS`() {
         seedStandard()
         val rig = Rig()
-        val f = "applications/tiktok/qa/v00"
+        val f = "application-packages/tiktok/qa/v00"
         val refused = rig.tools.applyOne(req("folder" to f)).fails()
         assertTrue(refused.contains("needs Richard's approval") && refused.contains("DRAFT"), refused)
         assertEquals(0, rig.jobs.size)
@@ -444,7 +444,7 @@ class CargoToolsTest {
         remote.publish()
         val rig = Rig()
         bad.indices.forEach { i ->
-            val msg = rig.tools.applyOne(req("folder" to "applications/evil$i/sdet/v00", "approval_quote" to "yes")).fails()
+            val msg = rig.tools.applyOne(req("folder" to "application-packages/evil$i/sdet/v00", "approval_quote" to "yes")).fails()
             assertTrue(msg.contains("apply URL"), "${bad[i]}: $msg")
         }
         assertEquals(0, rig.jobs.size)
@@ -458,14 +458,14 @@ class CargoToolsTest {
     fun `the packet's own apply URL is cleaned before it is opened`() {
         remote.packet("acme", "sdet", url = "https://jobs.example.com/acme/1?gh_jid=7#apply"); remote.publish()
         val rig = Rig()
-        rig.tools.applyOne(req("folder" to "applications/acme/sdet/v00")).ok()
+        rig.tools.applyOne(req("folder" to "application-packages/acme/sdet/v00")).ok()
         assertEquals("https://jobs.example.com/acme/1?gh_jid=7", rig.jobs.single().jobUrl)
     }
 
     @Test
     fun `a packet with no apply URL can never be applied to`() {
         seedStandard()
-        val msg = Rig().tools.applyOne(req("folder" to "applications/capgemini/sdet/v00", "approval_quote" to "yes")).fails()
+        val msg = Rig().tools.applyOne(req("folder" to "application-packages/capgemini/sdet/v00", "approval_quote" to "yes")).fails()
         assertTrue(msg.contains("no apply URL"), msg)
     }
 
@@ -473,7 +473,7 @@ class CargoToolsTest {
     fun `a résumé that does not match the packet's hash is not uploaded`() {
         remote.packet("acme", "sdet", badHash = true); remote.publish()
         val rig = Rig()
-        assertTrue(rig.tools.applyOne(req("folder" to "applications/acme/sdet/v00")).fails().contains("hash"))
+        assertTrue(rig.tools.applyOne(req("folder" to "application-packages/acme/sdet/v00")).fails().contains("hash"))
         assertEquals(0, rig.jobs.size)
         assertEquals(0, rig.outbox.pending().size)
     }
@@ -481,21 +481,21 @@ class CargoToolsTest {
     @Test
     fun `a missing upload file is reported`() {
         remote.packet("acme", "sdet", writeUpload = false); remote.publish()
-        assertTrue(Rig().tools.applyOne(req("folder" to "applications/acme/sdet/v00")).fails().contains("missing"))
+        assertTrue(Rig().tools.applyOne(req("folder" to "application-packages/acme/sdet/v00")).fails().contains("missing"))
     }
 
     @Test
     fun `with Apply switched off nothing is started`() {
         seedStandard()
         val rig = Rig(applyEnabled = false)
-        assertTrue(rig.tools.applyOne(req("folder" to "applications/apple/tools/v03")).fails().contains("isn't switched on"))
+        assertTrue(rig.tools.applyOne(req("folder" to "application-packages/apple/tools/v03")).fails().contains("isn't switched on"))
         assertEquals(emptyList(), rig.outbox.pending())
     }
 
     @Test
     fun `a fresh in_progress line is left alone even with approval`() {
         remote.packet("acme", "sdet", statusLines = listOf("- ${now.minusSeconds(300)} | in_progress | another agent is filling it")); remote.publish()
-        val msg = Rig().tools.applyOne(req("folder" to "applications/acme/sdet/v00", "approval_quote" to "yes")).fails()
+        val msg = Rig().tools.applyOne(req("folder" to "application-packages/acme/sdet/v00", "approval_quote" to "yes")).fails()
         assertTrue(msg.contains("another agent"), msg)
     }
 
@@ -504,8 +504,8 @@ class CargoToolsTest {
         remote.packet("acme", "sdet", url = "https://jobs.example.com/same")
         remote.packet("acme", "sdet-copy", url = "https://jobs.example.com/same"); remote.publish()
         val rig = Rig()
-        rig.tools.applyOne(req("folder" to "applications/acme/sdet/v00")).ok()
-        val second = rig.tools.applyOne(req("folder" to "applications/acme/sdet-copy/v00")).fails()
+        rig.tools.applyOne(req("folder" to "application-packages/acme/sdet/v00")).ok()
+        val second = rig.tools.applyOne(req("folder" to "application-packages/acme/sdet-copy/v00")).fails()
         assertTrue(second.contains("waiting for your review") || second.contains("Already"), second)
         assertEquals(1, rig.jobs.size)
     }
@@ -518,10 +518,10 @@ class CargoToolsTest {
         val rig = Rig()
         val o = rig.tools.applyReady(req()).ok()
         val started = o["started"]!!.jsonArray.map { it.jsonObject["packet"]!!.jsonPrimitive.content }
-        assertEquals(listOf("applications/apple/sdet/v02", "applications/apple/tools/v03"), started)
+        assertEquals(listOf("application-packages/apple/sdet/v02", "application-packages/apple/tools/v03"), started)
         val skipped = o["skipped"]!!.jsonArray.associate { it.jsonObject["packet"]!!.jsonPrimitive.content to it.jsonObject["why"]!!.jsonPrimitive.content }
-        assertTrue(skipped.getValue("applications/becu/sdet/v01").contains("older version"), skipped.toString())
-        assertTrue(skipped.getValue("applications/capgemini/sdet/v00").contains("no apply URL"))
+        assertTrue(skipped.getValue("application-packages/becu/sdet/v01").contains("older version"), skipped.toString())
+        assertTrue(skipped.getValue("application-packages/capgemini/sdet/v00").contains("no apply URL"))
         assertEquals(2, rig.jobs.size)
         assertEquals(setOf("Apple"), rig.jobs.map { it.company }.toSet())
         assertTrue(o["note"]!!.jsonPrimitive.content.contains("Nothing is submitted"))
@@ -532,7 +532,7 @@ class CargoToolsTest {
         seedStandard()
         val rig = Rig()
         rig.tools.applyReady(req()).ok()
-        val statuses = remote.freshClone().let { c -> listOf("tiktok/qa/v00", "capgemini/sdet/v00", "flex/sdet/v00").map { Files.exists(c.resolve("applications/$it/STATUS.md")) && Files.readString(c.resolve("applications/$it/STATUS.md")).contains("JobBot") } }
+        val statuses = remote.freshClone().let { c -> listOf("tiktok/qa/v00", "capgemini/sdet/v00", "flex/sdet/v00").map { Files.exists(c.resolve("application-packages/$it/STATUS.md")) && Files.readString(c.resolve("application-packages/$it/STATUS.md")).contains("JobBot") } }
         assertEquals(listOf(false, false, false), statuses)
         assertFalse(rig.jobs.any { it.company in setOf("Tiktok", "Capgemini", "Flex") })
     }
@@ -587,7 +587,7 @@ class CargoToolsTest {
                     override fun awaitTermination(timeout: Long, unit: java.util.concurrent.TimeUnit) = true
                 },
             )
-            val packet = com.jd.jobbot.apply.PacketApply("applications/acme/sdet/v00", "Acme — SDET", "Acme", "SDET", "https://jobs.example.com/acme/1", upload, null)
+            val packet = com.jd.jobbot.apply.PacketApply("application-packages/acme/sdet/v00", "Acme — SDET", "Acme", "SDET", "https://jobs.example.com/acme/1", upload, null)
             val gate = java.util.concurrent.CyclicBarrier(8)
             val pool = java.util.concurrent.Executors.newFixedThreadPool(8)
             try {
@@ -596,7 +596,7 @@ class CargoToolsTest {
                     pool.submit<com.jd.jobbot.actions.TapResponse> {
                         gate.await()
                         if (n % 2 == 0) service.applyPacket(packet, "mcp")
-                        else service.applyPacket(com.jd.jobbot.apply.PacketApply("applications/acme/sdet/v00", "Acme — SDET", "Acme", "SDET", "https://jobs.example.com/acme/1", upload, null), "mcp")
+                        else service.applyPacket(com.jd.jobbot.apply.PacketApply("application-packages/acme/sdet/v00", "Acme — SDET", "Acme", "SDET", "https://jobs.example.com/acme/1", upload, null), "mcp")
                     }
                 }.map { it.get() }
                 assertEquals(1, results.count { it.outcome == com.jd.jobbot.actions.Outcomes.DONE }, "round $round: " + results.joinToString { "${it.outcome}:${it.reply?.take(30)}" })
@@ -613,16 +613,16 @@ class CargoToolsTest {
     fun `fills carry the ad hoc seq so they never touch a JFAA track`() {
         seedStandard()
         val rig = Rig()
-        rig.tools.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
+        rig.tools.applyOne(req("folder" to "application-packages/apple/tools/v03")).ok()
         assertEquals(AD_HOC_SEQ, rig.store.recent().first { it.verb == "fill" }.seq)
     }
 
     @Test
     fun `a non-UTF-8 text file is readable, not an error`() {
         remote.packet("acme", "sdet"); remote.publish()
-        java.nio.file.Files.write(remote.seed.resolve("applications/acme/sdet/v00/latin1.txt"), "caf\u00e9 notes".toByteArray(Charsets.ISO_8859_1))
+        java.nio.file.Files.write(remote.seed.resolve("application-packages/acme/sdet/v00/latin1.txt"), "caf\u00e9 notes".toByteArray(Charsets.ISO_8859_1))
         remote.publish("latin1")
-        val o = Rig().tools.readFile(req("path" to "applications/acme/sdet/v00/latin1.txt")).ok()
+        val o = Rig().tools.readFile(req("path" to "application-packages/acme/sdet/v00/latin1.txt")).ok()
         assertTrue(o["content"]!!.jsonPrimitive.content.contains("notes"))
     }
 
@@ -658,7 +658,7 @@ class CargoToolsTest {
     @Test
     fun `a packet without STATUS or posting files still opens`() {
         remote.packet("acme", "sdet", posting = null, answers = null); remote.publish()
-        val o = Rig().tools.getPacket(req("folder" to "applications/acme/sdet/v00")).ok()
+        val o = Rig().tools.getPacket(req("folder" to "application-packages/acme/sdet/v00")).ok()
         assertTrue(o["status_md"] is kotlinx.serialization.json.JsonNull)
         assertTrue(o["job_posting_md"] is kotlinx.serialization.json.JsonNull)
         assertTrue(o["application_answers_md"] is kotlinx.serialization.json.JsonNull)
@@ -668,7 +668,7 @@ class CargoToolsTest {
     fun `a packet applied without answers still fills, from the profile alone`() {
         remote.packet("acme", "sdet", answers = null); remote.publish()
         val rig = Rig()
-        rig.tools.applyOne(req("folder" to "applications/acme/sdet/v00")).ok()
+        rig.tools.applyOne(req("folder" to "application-packages/acme/sdet/v00")).ok()
         assertEquals(null, rig.jobs.single().answers)
         assertEquals("years: 15+", rig.jobs.single().profileYaml)
     }
@@ -679,7 +679,7 @@ class CargoToolsTest {
         remote.freshClone().let { }
         val rig = Rig()
         rig.tools.list(req())
-        Files.delete(tmp.resolve("checkout/applications/acme/sdet/v00/apply-2p/Richard-Hatcher-Resume.docx"))
+        Files.delete(tmp.resolve("checkout/application-packages/acme/sdet/v00/apply-2p/Richard-Hatcher-Resume.docx"))
         assertTrue(rig.tools.sendResume(req("company" to "acme", "format" to "docx")).fails().contains("no .docx"))
     }
 
@@ -691,7 +691,7 @@ class CargoToolsTest {
         assertTrue(t.applyOne(req()).fails().isNotBlank())
         assertTrue(t.sendResume(req("company" to " ")).fails().isNotBlank())
         assertTrue(t.readFile(req()).fails().isNotBlank())
-        assertTrue(t.appendStatus(req("folder" to "applications/apple/tools/v03")).fails().isNotBlank())
+        assertTrue(t.appendStatus(req("folder" to "application-packages/apple/tools/v03")).fails().isNotBlank())
     }
 
     @Test
@@ -708,16 +708,16 @@ class CargoToolsTest {
         val o = rig.tools.applyReady(req()).ok()
         val started = o["started"]!!.jsonArray.map { it.jsonObject["packet"]!!.jsonPrimitive.content }
         val skipped = o["skipped"]!!.jsonArray.associate { it.jsonObject["packet"]!!.jsonPrimitive.content to it.jsonObject["why"]!!.jsonPrimitive.content }
-        assertEquals(listOf("applications/ready/sdet/v00"), started)
+        assertEquals(listOf("application-packages/ready/sdet/v00"), started)
         assertEquals(1, o["already_completed"]!!.jsonPrimitive.int)
         assertEquals(
-            setOf("draftblocked", "draftparked", "draftprogress", "readyblocked", "draftnew").map { "applications/$it/sdet/v00" }.toSet(),
+            setOf("draftblocked", "draftparked", "draftprogress", "readyblocked", "draftnew").map { "application-packages/$it/sdet/v00" }.toSet(),
             skipped.keys, "no packet is silently dropped",
         )
-        assertTrue(skipped.getValue("applications/draftblocked/sdet/v00").contains("blocked"), skipped.toString())
-        assertTrue(skipped.getValue("applications/draftparked/sdet/v00").contains("parked_at_review"))
-        assertTrue(skipped.getValue("applications/draftprogress/sdet/v00").contains("another agent"))
-        assertTrue(skipped.getValue("applications/draftnew/sdet/v00").contains("DRAFT"))
+        assertTrue(skipped.getValue("application-packages/draftblocked/sdet/v00").contains("blocked"), skipped.toString())
+        assertTrue(skipped.getValue("application-packages/draftparked/sdet/v00").contains("parked_at_review"))
+        assertTrue(skipped.getValue("application-packages/draftprogress/sdet/v00").contains("another agent"))
+        assertTrue(skipped.getValue("application-packages/draftnew/sdet/v00").contains("DRAFT"))
         assertEquals(7, started.size + skipped.size + o["already_completed"]!!.jsonPrimitive.int, "every packet is accounted for")
     }
 
@@ -730,19 +730,19 @@ class CargoToolsTest {
         seedStandard()
         val rig = Rig(dryRun = true)
         val before = remoteCommits()
-        val o = rig.tools.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
+        val o = rig.tools.applyOne(req("folder" to "application-packages/apple/tools/v03")).ok()
         assertEquals("true", o["dry_run"]!!.jsonPrimitive.content)
         assertEquals("[dry run] Would apply to Apple — Tools Engineer with Richard-Hatcher-Resume.pdf.", o["result"]!!.jsonPrimitive.content)
         assertEquals(0, rig.jobs.size, "no fill ran")
         assertEquals(emptyList(), rig.page.actions, "no browser was touched")
         assertEquals(emptyList(), rig.outbox.pending(), "no review card was posted")
         assertEquals(before, remoteCommits(), "nothing was pushed to the cargo repo")
-        assertFalse(Files.exists(remote.freshClone().resolve("applications/apple/tools/v03/STATUS.md")), "STATUS.md was not created")
+        assertFalse(Files.exists(remote.freshClone().resolve("application-packages/apple/tools/v03/STATUS.md")), "STATUS.md was not created")
         val row = rig.store.recent(5).single()
         assertEquals("dry_run", row.status)
         assertEquals("apply", row.verb)
         assertEquals(AD_HOC_SEQ, row.seq)
-        assertTrue(row.details!!.contains("applications/apple/tools/v03"))
+        assertTrue(row.details!!.contains("application-packages/apple/tools/v03"))
     }
 
     @Test
@@ -752,13 +752,13 @@ class CargoToolsTest {
         remote.packet("badurl", "sdet", url = "http://127.1/x")
         remote.publish()
         val t = Rig(dryRun = true).tools
-        assertTrue(t.applyOne(req("folder" to "applications/tiktok/qa/v00")).fails().contains("needs Richard's approval"))
-        assertTrue(t.applyOne(req("folder" to "applications/flex/sdet/v00", "approval_quote" to "yes")).fails().contains("already completed"))
-        assertTrue(t.applyOne(req("folder" to "applications/capgemini/sdet/v00", "approval_quote" to "yes")).fails().contains("no apply URL"))
-        assertTrue(t.applyOne(req("folder" to "applications/becu/sdet/v01")).fails().contains("older version"))
-        assertTrue(t.applyOne(req("folder" to "applications/badhash/sdet/v00")).fails().contains("hash"))
-        assertTrue(t.applyOne(req("folder" to "applications/badurl/sdet/v00")).fails().contains("apply URL"))
-        assertTrue(t.applyOne(req("folder" to "applications/nope/x/v00")).fails().contains("No current packet"))
+        assertTrue(t.applyOne(req("folder" to "application-packages/tiktok/qa/v00")).fails().contains("needs Richard's approval"))
+        assertTrue(t.applyOne(req("folder" to "application-packages/flex/sdet/v00", "approval_quote" to "yes")).fails().contains("already completed"))
+        assertTrue(t.applyOne(req("folder" to "application-packages/capgemini/sdet/v00", "approval_quote" to "yes")).fails().contains("no apply URL"))
+        assertTrue(t.applyOne(req("folder" to "application-packages/becu/sdet/v01")).fails().contains("older version"))
+        assertTrue(t.applyOne(req("folder" to "application-packages/badhash/sdet/v00")).fails().contains("hash"))
+        assertTrue(t.applyOne(req("folder" to "application-packages/badurl/sdet/v00")).fails().contains("apply URL"))
+        assertTrue(t.applyOne(req("folder" to "application-packages/nope/x/v00")).fails().contains("No current packet"))
     }
 
     @Test
@@ -766,7 +766,7 @@ class CargoToolsTest {
         seedStandard()
         val rig = Rig(dryRun = true)
         val before = remoteCommits()
-        rig.tools.applyOne(req("folder" to "applications/tiktok/qa/v00", "approval_quote" to "apply to the tiktok draft")).ok()
+        rig.tools.applyOne(req("folder" to "application-packages/tiktok/qa/v00", "approval_quote" to "apply to the tiktok draft")).ok()
         assertEquals(before, remoteCommits())
         assertEquals(0, rig.jobs.size)
     }
@@ -779,12 +779,12 @@ class CargoToolsTest {
         val o = rig.tools.applyReady(req()).ok()
         assertEquals("true", o["dry_run"]!!.jsonPrimitive.content)
         assertTrue("started" !in o, "a dry run never claims to have started anything")
-        assertEquals(listOf("applications/apple/sdet/v02", "applications/apple/tools/v03"), o["would_start"]!!.jsonArray.map { it.jsonObject["packet"]!!.jsonPrimitive.content })
+        assertEquals(listOf("application-packages/apple/sdet/v02", "application-packages/apple/tools/v03"), o["would_start"]!!.jsonArray.map { it.jsonObject["packet"]!!.jsonPrimitive.content })
         assertTrue(o["would_start"]!!.jsonArray.all { it.jsonObject["result"]!!.jsonPrimitive.content.startsWith("[dry run] Would apply") })
         assertTrue(o["note"]!!.jsonPrimitive.content.contains("nothing was started"))
         // The same packets are skipped for the same reasons as in a live run.
         val skipped = o["skipped"]!!.jsonArray.map { it.jsonObject["packet"]!!.jsonPrimitive.content }.toSet()
-        assertTrue("applications/becu/sdet/v01" in skipped && "applications/tiktok/qa/v00" in skipped && "applications/capgemini/sdet/v00" in skipped)
+        assertTrue("application-packages/becu/sdet/v01" in skipped && "application-packages/tiktok/qa/v00" in skipped && "application-packages/capgemini/sdet/v00" in skipped)
         assertEquals(0, rig.jobs.size)
         assertEquals(emptyList(), rig.outbox.pending())
         assertEquals(before, remoteCommits())
@@ -804,13 +804,13 @@ class CargoToolsTest {
         seedStandard()
         val rig = Rig(dryRun = true)
         val before = remoteCommits()
-        val o = rig.tools.appendStatus(req("folder" to "applications/apple/tools/v03", "state" to "blocked", "note" to "needs a code")).ok()
+        val o = rig.tools.appendStatus(req("folder" to "application-packages/apple/tools/v03", "state" to "blocked", "note" to "needs a code")).ok()
         assertEquals("true", o["dry_run"]!!.jsonPrimitive.content)
         assertTrue(o["would_append"]!!.jsonPrimitive.content.endsWith("| blocked | needs a code"), o.toString())
         assertEquals(before, remoteCommits())
-        assertTrue(rig.tools.appendStatus(req("folder" to "applications/becu/sdet/v00", "state" to "completed", "note" to "x")).fails().contains("newest version"))
-        assertTrue(rig.tools.appendStatus(req("folder" to "applications/apple/tools/v03", "state" to "completed", "note" to "x")).fails().contains("Richard's own words"))
-        assertTrue(rig.tools.appendStatus(req("folder" to "applications/flex/sdet/v00", "state" to "blocked", "note" to "x")).fails().contains("already completed"))
+        assertTrue(rig.tools.appendStatus(req("folder" to "application-packages/becu/sdet/v00", "state" to "completed", "note" to "x")).fails().contains("newest version"))
+        assertTrue(rig.tools.appendStatus(req("folder" to "application-packages/apple/tools/v03", "state" to "completed", "note" to "x")).fails().contains("Richard's own words"))
+        assertTrue(rig.tools.appendStatus(req("folder" to "application-packages/flex/sdet/v00", "state" to "blocked", "note" to "x")).fails().contains("already completed"))
     }
 
     @Test
@@ -825,19 +825,19 @@ class CargoToolsTest {
     @Test
     fun `dry run with Apply off gives the same answer as live`() {
         seedStandard()
-        assertTrue(Rig(applyEnabled = false, dryRun = true).tools.applyOne(req("folder" to "applications/apple/tools/v03")).fails().contains("isn't switched on"))
+        assertTrue(Rig(applyEnabled = false, dryRun = true).tools.applyOne(req("folder" to "application-packages/apple/tools/v03")).fails().contains("isn't switched on"))
     }
 
     @Test
     fun `a dry run does not block the real application that follows`() {
         seedStandard()
         val dry = Rig(dryRun = true)
-        dry.tools.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
-        dry.tools.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
+        dry.tools.applyOne(req("folder" to "application-packages/apple/tools/v03")).ok()
+        dry.tools.applyOne(req("folder" to "application-packages/apple/tools/v03")).ok()
         // Same store, dry run off: the real application starts normally.
         val live = CargoTools(dry.repo, dry.outbox, dry.service, clock, dryRun = false)
-        live.applyOne(req("folder" to "applications/apple/tools/v03")).ok()
+        live.applyOne(req("folder" to "application-packages/apple/tools/v03")).ok()
         assertEquals(1, dry.jobs.size)
-        assertEquals(listOf("in_progress", "parked_at_review"), dry.statusOnRemote("applications/apple/tools/v03").map { it.split(" | ")[1] })
+        assertEquals(listOf("in_progress", "parked_at_review"), dry.statusOnRemote("application-packages/apple/tools/v03").map { it.split(" | ")[1] })
     }
 }

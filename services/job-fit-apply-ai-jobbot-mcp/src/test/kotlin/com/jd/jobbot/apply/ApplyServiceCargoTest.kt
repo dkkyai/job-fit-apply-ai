@@ -27,7 +27,7 @@ import kotlin.test.assertTrue
 class ApplyServiceCargoTest {
     @TempDir lateinit var dir: Path
     private val user = "8679792351"
-    private val folder = "applications/acme/sdet/v00"
+    private val folder = "application-packages/acme/sdet/v00"
 
     private class Moving(var now: Instant) : Clock() {
         override fun getZone(): ZoneId = ZoneId.of("UTC")
@@ -330,7 +330,7 @@ class ApplyServiceCargoTest {
             clock = rig.clock, worker = MoreExecutors.newDirectExecutorService(),
         )
         val a = rig.store.insert(ApplyService.FILL, "a", 0, ApplyService.FILLING, user, null, """{"cargo_folder":"$folder"}""").id
-        val b = rig.store.insert(ApplyService.FILL, "b", 0, ApplyService.QUEUED, user, null, """{"cargo_folder":"applications/x/y/v00"}""").id
+        val b = rig.store.insert(ApplyService.FILL, "b", 0, ApplyService.QUEUED, user, null, """{"cargo_folder":"application-packages/x/y/v00"}""").id
         assertEquals(2, failing.recoverInterrupted())
         assertEquals(ApplyService.EXPIRED, rig.store.byId(a)?.status)
         assertEquals(ApplyService.EXPIRED, rig.store.byId(b)?.status)
