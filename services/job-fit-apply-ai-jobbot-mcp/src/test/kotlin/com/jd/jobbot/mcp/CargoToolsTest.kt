@@ -184,7 +184,7 @@ class CargoToolsTest {
         assertTrue(t.readFile(req("path" to "application-packages/apple/tools/v03/apply-2p/Richard-Hatcher-Resume.pdf")).fails().contains("binary"))
         assertTrue(t.readFile(req("path" to "../../etc/passwd")).fails().isNotBlank())
         assertTrue(t.readFile(req("path" to ".git/config")).fails().contains("not available"))
-        assertTrue(t.readFile(req("path" to "applications")).fails().contains("cargo_files"))
+        assertTrue(t.readFile(req("path" to "application-packages")).fails().contains("cargo_files"))
         val short = t.readFile(req("path" to "application-packages/apple/tools/v03/APPLICATION_PACKAGE.md", "max_chars" to 500)).ok()
         assertEquals(500, short["content"]!!.jsonPrimitive.content.length)
         assertEquals("true", short["truncated"]!!.jsonPrimitive.content)
@@ -252,7 +252,7 @@ class CargoToolsTest {
         assertEquals("application-answers.md", rig.outbox.pending().single().documentName)
         assertTrue(rig.tools.sendFile(req("path" to "../checkout/../x")).fails().isNotBlank())
         assertTrue(rig.tools.sendFile(req("path" to ".git/config")).fails().isNotBlank())
-        assertTrue(rig.tools.sendFile(req("path" to "applications")).fails().contains("folder"))
+        assertTrue(rig.tools.sendFile(req("path" to "application-packages")).fails().contains("folder"))
         assertEquals(1, rig.outbox.pending().size)
     }
 
