@@ -56,8 +56,8 @@ class CargoTools(
 
         server.addTool(
             name = "cargo_get_packet",
-            description = "One packet in full: its APPLICATION_PACKET.md, STATUS.md, application-answers.md and the files it " +
-                "holds. Give `folder` (applications/<company>/<role>/vNN) or `company` (and `role` if the company has several).",
+            description = "One packet in full: its APPLICATION_PACKAGE.md, STATUS.md, application-answers.md and the files it " +
+                "holds. Give `folder` (application-packages/<company>/<role>/vNN) or `company` (and `role` if the company has several).",
             inputSchema = props(emptyList(), Triple("folder", "string", "Exact packet folder"), Triple("company", "string", "Company, e.g. apple"), Triple("role", "string", "Part of the role title")),
             toolAnnotations = ro,
         ) { req -> getPacket(req) }
@@ -171,7 +171,7 @@ class CargoTools(
         return ok(buildJsonObject {
             put("packet", describe(p, clock.instant()))
             put("files", buildJsonArray { repo.list(p.folder).forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } })
-            put("application_packet_md", text("APPLICATION_PACKET.md", 8_000))
+            put("application_package_md", text("APPLICATION_PACKAGE.md", 8_000))
             put("status_md", text("STATUS.md", 6_000))
             put("application_answers_md", text("application-answers.md", 8_000))
             put("job_posting_md", text("job-posting.md", 6_000)?.let { UNTRUSTED + it })
@@ -363,7 +363,7 @@ class CargoTools(
         val uploadRel = p.upload!!
         val file = runCatching { repo.resolve(uploadRel) }.getOrNull() ?: return Skipped("${p.company} — ${p.title}: the upload file $uploadRel is missing.")
         val bytes = Files.readAllBytes(file)
-        val expected = Packets.uploadHash(Packets.readText(repo.resolve("${p.folder}/APPLICATION_PACKET.md")))
+        val expected = Packets.uploadHash(Packets.readText(repo.resolve("${p.folder}/APPLICATION_PACKAGE.md")))
         if (expected != null && !Packets.sha256Hex(bytes).startsWith(expected)) {
             return Skipped("${p.company} — ${p.title}: the résumé doesn't match the hash the packet lists, so it isn't the version the packet describes.")
         }

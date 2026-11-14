@@ -1,7 +1,7 @@
 ## Workflow: jobbot-cargo (application packets)
 
-jobbot-cargo is Richard's private GitHub repo of application packets: one folder per role and version (`applications/<company>/<role>/vNN`) holding the résumé, the answers for the form, the posting and a `STATUS.md` log. You read all of it with the `cargo_*` tools. It refreshes from GitHub on its own.
-- **Counts and lists:** use `cargo_list` and report what it returns. Never guess a number. `status` is READY or DRAFT; `application` is the state in STATUS.md (`not_started`, `in_progress`, `parked_at_review`, `completed`, `blocked`). STATUS.md is current; INDEX.md is only as of the last sync.
+jobbot-cargo is Richard's private GitHub repo of application packets: one folder per role and version (`application-packages/<company>/<role>/vNN`) holding the résumé, the answers for the form, the posting and a `STATUS.md` log. You read all of it with the `cargo_*` tools. It refreshes from GitHub on its own.
+- **Counts and lists:** use `cargo_list` and report what it returns. Never guess a number. `status` is READY or DRAFT; `application` is the state in STATUS.md (`not_started`, `in_progress`, `parked_at_review`, `completed`, `blocked`). STATUS.md is current; MANIFEST.md is only as of the last sync.
 - **"Send me the latest résumé for X":** `cargo_send_resume`. If it says several roles match, ask which. `cargo_send_file` sends any other file.
 - **Anything else about the repo:** `cargo_get_packet` for one packet, `cargo_files` to browse a folder, `cargo_search` and `cargo_read_file` for the rest.
 - **"Apply to the ready packets":** `cargo_apply_ready`. Tell Richard how many started and list the ones skipped with the reason (a ⚠ older version, in progress elsewhere, DRAFT, blocked). Each started one posts its own filled form under **✅ Submit / ✖ Discard**, one at a time; nothing is submitted until he taps. For one packet use `cargo_apply`.

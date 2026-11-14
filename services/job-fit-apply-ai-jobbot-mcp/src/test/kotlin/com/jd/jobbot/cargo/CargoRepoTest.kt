@@ -149,7 +149,7 @@ class CargoRepoTest {
     fun `only packet folders can be written`() {
         remote.packet("acme", "sdet"); remote.publish()
         val r = repo()
-        for (bad in listOf("../outside", "applications/acme/sdet", "applications/acme/sdet/v00/../v00/x", "/etc", "README.md", "applications/acme/nope/v09", ".git")) {
+        for (bad in listOf("../outside", "application-packages/acme/sdet", "application-packages/acme/sdet/v00/../v00/x", "/etc", "README.md", "application-packages/acme/nope/v09", ".git")) {
             assertFailsWith<CargoRepo.CargoException>(bad) { r.appendStatus(bad, "blocked", "x") }
         }
     }
@@ -167,7 +167,7 @@ class CargoRepoTest {
         val folder = remote.packet("acme", "sdet"); remote.publish()
         val git = Wrapped { n ->
             if (n == 1) {
-                remote.pushFromElsewhere("applications/acme/other-note.md", "someone else pushed")
+                remote.pushFromElsewhere("application-packages/acme/other-note.md", "someone else pushed")
                 GitResult(1, "! [rejected] HEAD -> main (fetch first)")
             } else null
         }
@@ -175,7 +175,7 @@ class CargoRepoTest {
         assertTrue(result.pushed, result.message)
         assertEquals(2, git.pushes)
         val verify = remote.freshClone()
-        assertTrue(Files.exists(verify.resolve("applications/acme/other-note.md")), "the other push survived")
+        assertTrue(Files.exists(verify.resolve("application-packages/acme/other-note.md")), "the other push survived")
         assertTrue(Files.readString(verify.resolve("$folder/STATUS.md")).contains("| blocked | x"))
     }
 
@@ -233,7 +233,7 @@ class CargoRepoTest {
         val git = Wrapped { n ->
             if (n == 1) {
                 CargoRemote.git(remote.seed, "pull", "--rebase", "origin", "main")
-                CargoRemote.git(remote.seed, "rm", "-r", "-q", "applications/acme")
+                CargoRemote.git(remote.seed, "rm", "-r", "-q", "application-packages/acme")
                 remote.publish("someone deleted the packet")
                 GitResult(1, "! [rejected] HEAD -> main (fetch first)")
             } else null
@@ -264,8 +264,8 @@ class CargoRepoTest {
         remote.publish()
         val r = repo(); r.sync()
         assertEquals(2, r.find("Apple").size)
-        assertEquals(listOf("applications/apple/sdet-t3e/v00"), r.find("apple", "t3e").map { it.folder })
-        assertEquals(listOf("applications/becu/sdet/v00"), r.find("BECU").map { it.folder })
+        assertEquals(listOf("application-packages/apple/sdet-t3e/v00"), r.find("apple", "t3e").map { it.folder })
+        assertEquals(listOf("application-packages/becu/sdet/v00"), r.find("BECU").map { it.folder })
         assertEquals(emptyList(), r.find("nobody"))
     }
 
@@ -273,11 +273,11 @@ class CargoRepoTest {
     fun `reads are confined to the checkout`() {
         remote.packet("acme", "sdet"); remote.publish()
         val r = repo(); r.sync()
-        for (bad in listOf("../remote.git/HEAD", "applications/../../x", ".git/config", ".git", "")) {
+        for (bad in listOf("../remote.git/HEAD", "application-packages/../../x", ".git/config", ".git", "")) {
             assertFailsWith<CargoRepo.CargoException>(bad) { r.resolve(bad) }
         }
-        assertFailsWith<CargoRepo.CargoException> { r.resolve("applications/acme/nope") }
-        assertTrue(Files.isRegularFile(r.resolve("applications/acme/sdet/v00/job-posting.md")))
+        assertFailsWith<CargoRepo.CargoException> { r.resolve("application-packages/acme/nope") }
+        assertTrue(Files.isRegularFile(r.resolve("application-packages/acme/sdet/v00/job-posting.md")))
     }
 
     @Test
@@ -295,11 +295,11 @@ class CargoRepoTest {
     fun `list hides git and marks folders`() {
         remote.packet("acme", "sdet"); remote.publish()
         val r = repo(); r.sync()
-        assertEquals(listOf("applications/"), r.list(""))
-        val files = r.list("applications/acme/sdet/v00")
-        assertTrue("applications/acme/sdet/v00/APPLICATION_PACKET.md" in files, files.toString())
-        assertTrue("applications/acme/sdet/v00/apply-2p/" in files, files.toString())
-        assertFailsWith<CargoRepo.CargoException> { r.list("applications/acme/sdet/v00/job-posting.md") }
+        assertEquals(listOf("application-packages/"), r.list(""))
+        val files = r.list("application-packages/acme/sdet/v00")
+        assertTrue("application-packages/acme/sdet/v00/APPLICATION_PACKAGE.md" in files, files.toString())
+        assertTrue("application-packages/acme/sdet/v00/apply-2p/" in files, files.toString())
+        assertFailsWith<CargoRepo.CargoException> { r.list("application-packages/acme/sdet/v00/job-posting.md") }
     }
 
     @Test
@@ -310,7 +310,7 @@ class CargoRepoTest {
         val r = repo(); r.sync()
         val hits = r.search("sponsorship")
         assertEquals(2, hits.size)
-        assertTrue(hits.any { it.startsWith("applications/acme/sdet/v00/application-answers.md:1:") })
+        assertTrue(hits.any { it.startsWith("application-packages/acme/sdet/v00/application-answers.md:1:") })
         assertEquals(1, r.search("sponsorship", limit = 1).size)
         assertEquals(emptyList(), r.search("Richard Hatcher resume text".replace("resume", "zzznotthere")))
         assertFailsWith<CargoRepo.CargoException> { r.search("  ") }
@@ -337,7 +337,7 @@ class CargoRepoTest {
         val tokenFile = Files.writeString(tmp.resolve("token"), "github_pat_SECRETVALUE123")
         val r = repo(ProcessGit(tokenFile))
         r.sync()
-        r.appendStatus("applications/acme/sdet/v00", "blocked", "x")
+        r.appendStatus("application-packages/acme/sdet/v00", "blocked", "x")
         val config = Files.readString(checkout.resolve(".git/config"))
         assertFalse(config.contains("SECRETVALUE123") || config.contains("extraheader", ignoreCase = true), config)
     }
@@ -358,8 +358,8 @@ class CargoRepoTest {
     @Test
     fun `a text file that is not valid UTF-8 does not break search`() {
         remote.packet("acme", "sdet", answers = "Sponsorship: No\n"); remote.publish()
-        remote.write("applications/acme/sdet/v00/notes.md", "caf\u00e9 sponsorship note")
-        java.nio.file.Files.write(remote.seed.resolve("applications/acme/sdet/v00/latin1.txt"), "sponsorship caf\u00e9".toByteArray(Charsets.ISO_8859_1))
+        remote.write("application-packages/acme/sdet/v00/notes.md", "caf\u00e9 sponsorship note")
+        java.nio.file.Files.write(remote.seed.resolve("application-packages/acme/sdet/v00/latin1.txt"), "sponsorship caf\u00e9".toByteArray(Charsets.ISO_8859_1))
         remote.publish("latin1")
         val r = repo(); r.sync()
         val hits = r.search("sponsorship")
@@ -461,6 +461,6 @@ class CargoRepoTest {
             assertEquals(null, r.restoreAfterInterruption(folder, "restarted"), "$name: nothing to restore")
         }
         val after = remote.freshClone("untouched")
-        assertEquals(1, Files.readString(after.resolve("applications/done/sdet/v00/STATUS.md")).lines().count { it.startsWith("- ") })
+        assertEquals(1, Files.readString(after.resolve("application-packages/done/sdet/v00/STATUS.md")).lines().count { it.startsWith("- ") })
     }
 }

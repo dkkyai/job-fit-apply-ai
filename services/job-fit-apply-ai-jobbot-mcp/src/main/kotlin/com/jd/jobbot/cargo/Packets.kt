@@ -8,14 +8,14 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * One application packet: the newest `vNN` folder of one role, as `APPLICATION_PACKET.md` and `STATUS.md` describe it.
+ * One application packet: the newest `vNN` folder of one role, as `APPLICATION_PACKAGE.md` and `STATUS.md` describe it.
  * [application] is the last state in STATUS.md (`not_started` when there is none): STATUS.md is always current,
- * INDEX.md only as of the last sync, so this never reads INDEX.md.
+ * MANIFEST.md only as of the last sync, so this never reads MANIFEST.md.
  */
 data class Packet(
     val company: String,
     val title: String,
-    /** Repo-relative, e.g. `applications/apple/some-role/v03`. */
+    /** Repo-relative, e.g. `application-packages/apple/some-role/v03`. */
     val folder: String,
     val version: Int,
     val status: String,
@@ -42,9 +42,9 @@ object Packets {
     private val STATUS_LINE = Regex("""^-\s+(\S+)\s+\|\s*([A-Za-z0-9_-]+)\s*(?:\|\s*(.*?))?\s*$""")
     private val HASH_ROW = Regex("""^\|\s*`([^`]+)`\s*\|[^|]*UPLOAD[^|]*\|\s*`([0-9a-f]{6,64})`\s*\|""", RegexOption.MULTILINE)
 
-    /** The newest version of every role under `applications/`. */
+    /** The newest version of every role under `application-packages/`. */
     fun scan(root: Path): List<Packet> {
-        val apps = root.resolve("applications")
+        val apps = root.resolve("application-packages")
         if (!Files.isDirectory(apps)) return emptyList()
         val out = mutableListOf<Packet>()
         Files.newDirectoryStream(apps).use { companies ->
@@ -62,7 +62,7 @@ object Packets {
             s.mapNotNull { d -> VERSION_DIR.matchEntire(d.fileName.toString())?.let { it.groupValues[1].toInt() to d } }
         }.sortedBy { it.first }
         val (version, dir) = versions.lastOrNull() ?: return null
-        val packetFile = dir.resolve("APPLICATION_PACKET.md")
+        val packetFile = dir.resolve("APPLICATION_PACKAGE.md")
         if (!Files.isRegularFile(packetFile)) return null
         val front = frontMatter(readText(packetFile))
         val status = readStatus(dir)
@@ -136,7 +136,7 @@ object Packets {
 }
 
 /**
- * Whether a packet may be applied to, by the rules its own INDEX.md and APPLICATION_PACKET.md state:
+ * Whether a packet may be applied to, by the rules its own MANIFEST.md and APPLICATION_PACKAGE.md state:
  * READY (a DRAFT only when Richard says so) and `not_started` or `in_progress`; `completed` never; `blocked`
  * waits for Richard; a ⚠ (an older version already worked) asks Richard first.
  */

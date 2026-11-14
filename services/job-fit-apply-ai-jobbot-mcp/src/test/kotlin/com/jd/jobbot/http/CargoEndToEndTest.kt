@@ -206,7 +206,7 @@ class CargoEndToEndTest {
         assertEquals("true", item["has_document"]!!.jsonPrimitive.content)
         assertEquals("Richard-Hatcher-Resume.pdf", item["document_name"]!!.jsonPrimitive.content)
         val bytes = get("/plugin/outbox/${item["id"]!!.jsonPrimitive.content}/document").readRawBytes()
-        assertTrue(bytes.contentEquals(remote.resumes.getValue("applications/flex/sdet/v00")), "the exact file in the packet")
+        assertTrue(bytes.contentEquals(remote.resumes.getValue("application-packages/flex/sdet/v00")), "the exact file in the packet")
         post("/plugin/outbox/${item["id"]!!.jsonPrimitive.content}/delivered", "{}")
         assertEquals(0, outboxItems().size, "delivered items leave the outbox")
     }
@@ -220,16 +220,16 @@ class CargoEndToEndTest {
         // Nothing is submitted by the model: both applications wait for a tap, and GitHub already says so.
         val reviews = outboxItems().filter { it["text"]!!.jsonPrimitive.content.startsWith("Ready to submit") }
         assertEquals(2, reviews.size)
-        assertEquals(listOf("in_progress", "parked_at_review"), statusOnRemote("applications/apple/tools/v03"))
-        assertEquals(listOf("in_progress", "parked_at_review"), statusOnRemote("applications/apple/sdet/v02"))
+        assertEquals(listOf("in_progress", "parked_at_review"), statusOnRemote("application-packages/apple/tools/v03"))
+        assertEquals(listOf("in_progress", "parked_at_review"), statusOnRemote("application-packages/apple/sdet/v02"))
 
         val review = reviews.first { it["text"]!!.jsonPrimitive.content.contains("Tools Engineer") }
         val submitId = review["buttons"]!!.jsonArray.first().jsonObject["callback_data"]!!.jsonPrimitive.content.substringAfter(':').toLong()
         val tap = Json.parseToJsonElement(post("/plugin/tap", tapBody("submit", submitId)).bodyAsText()).jsonObject
         assertEquals("done", tap["outcome"]!!.jsonPrimitive.content)
-        assertEquals(listOf("in_progress", "parked_at_review", "completed"), statusOnRemote("applications/apple/tools/v03"))
-        assertEquals(listOf("in_progress", "parked_at_review"), statusOnRemote("applications/apple/sdet/v02"), "the other one still waits for its own tap")
-        assertEquals(emptyList(), statusOnRemote0("applications/tiktok/qa/v00"), "the DRAFT was never touched")
+        assertEquals(listOf("in_progress", "parked_at_review", "completed"), statusOnRemote("application-packages/apple/tools/v03"))
+        assertEquals(listOf("in_progress", "parked_at_review"), statusOnRemote("application-packages/apple/sdet/v02"), "the other one still waits for its own tap")
+        assertEquals(emptyList(), statusOnRemote0("application-packages/tiktok/qa/v00"), "the DRAFT was never touched")
 
         // And a second "apply to all the ready packets" starts nothing: the first is completed, the second is parked.
         val again = mcp { c -> Json.parseToJsonElement(c.call("cargo_apply_ready")).jsonObject }
@@ -242,7 +242,7 @@ class CargoEndToEndTest {
         mcp { c -> c.call("cargo_apply_ready") }
         assertEquals(2, jobs.size)
         for (job in jobs) {
-            val folder = if (job.title == "Tools Engineer") "applications/apple/tools/v03" else "applications/apple/sdet/v02"
+            val folder = if (job.title == "Tools Engineer") "application-packages/apple/tools/v03" else "application-packages/apple/sdet/v02"
             assertTrue(job.resumePdf!!.contentEquals(remote.resumes.getValue(folder)), "${job.title} uploads its own résumé")
             assertTrue(job.answers!!.contains("Sponsorship: No"))
             assertEquals("years: 15+", job.profileYaml)
@@ -251,29 +251,29 @@ class CargoEndToEndTest {
 
     @Test
     fun `two clients asking for the same packet at once start one application`() = runBlocking {
-        val results = (1..4).map { async { mcp { c -> c.callTool("cargo_apply", mapOf("folder" to "applications/apple/tools/v03")).isError } } }.awaitAll()
+        val results = (1..4).map { async { mcp { c -> c.callTool("cargo_apply", mapOf("folder" to "application-packages/apple/tools/v03")).isError } } }.awaitAll()
         assertEquals(1, results.count { it != true }, results.toString())
         assertEquals(1, jobs.size)
-        assertEquals(1, statusOnRemote("applications/apple/tools/v03").count { it == "in_progress" })
+        assertEquals(1, statusOnRemote("application-packages/apple/tools/v03").count { it == "in_progress" })
     }
 
     @Test
     fun `a DRAFT is only applied to with Richard's words, and they land in STATUS`() = runBlocking {
         mcp { c ->
-            assertTrue(c.callExpectingError("cargo_apply", mapOf("folder" to "applications/tiktok/qa/v00")).contains("needs Richard's approval"))
+            assertTrue(c.callExpectingError("cargo_apply", mapOf("folder" to "application-packages/tiktok/qa/v00")).contains("needs Richard's approval"))
             assertEquals(0, jobs.size)
-            c.call("cargo_apply", mapOf("folder" to "applications/tiktok/qa/v00", "approval_quote" to "go ahead with the tiktok draft"))
+            c.call("cargo_apply", mapOf("folder" to "application-packages/tiktok/qa/v00", "approval_quote" to "go ahead with the tiktok draft"))
         }
         assertEquals(1, jobs.size)
-        val status = Files.readString(remote.freshClone().resolve("applications/tiktok/qa/v00/STATUS.md"))
+        val status = Files.readString(remote.freshClone().resolve("application-packages/tiktok/qa/v00/STATUS.md"))
         assertTrue(status.contains("draft approved: \"go ahead with the tiktok draft\""), status)
     }
 
     @Test
     fun `the only thing the model can write is a status line, and it is pushed`() = runBlocking {
-        mcp { c -> c.call("cargo_append_status", mapOf("folder" to "applications/apple/tools/v03", "state" to "blocked", "note" to "needs a phone code")) }
+        mcp { c -> c.call("cargo_append_status", mapOf("folder" to "application-packages/apple/tools/v03", "state" to "blocked", "note" to "needs a phone code")) }
         val changed = CargoRemote.git(remote.freshClone(), "log", "-1", "--name-only", "--format=%an|%s").lines().filter { it.isNotBlank() }
-        assertEquals(listOf("JobBot|status: apple blocked", "applications/apple/tools/v03/STATUS.md"), changed)
+        assertEquals(listOf("JobBot|status: apple blocked", "application-packages/apple/tools/v03/STATUS.md"), changed)
     }
 
     @Test
@@ -288,7 +288,7 @@ class CargoEndToEndTest {
         val id = review["buttons"]!!.jsonArray.first().jsonObject["callback_data"]!!.jsonPrimitive.content.substringAfter(':').toLong()
         assertEquals("done", Json.parseToJsonElement(post("/plugin/tap", tapBody("submit", id)).bodyAsText()).jsonObject["outcome"]!!.jsonPrimitive.content)
         assertTrue(outboxItems().last()["text"]!!.jsonPrimitive.content.startsWith("Submitted: Job at jobs.lever.co"))
-        val lines = listOf("applications/apple/tools/v03", "applications/apple/sdet/v02", "applications/flex/sdet/v00", "applications/tiktok/qa/v00").flatMap { statusOnRemote0(it) }
+        val lines = listOf("application-packages/apple/tools/v03", "application-packages/apple/sdet/v02", "application-packages/flex/sdet/v00", "application-packages/tiktok/qa/v00").flatMap { statusOnRemote0(it) }
         assertEquals(1, lines.size, "only Flex's seeded line exists: a pasted link wrote nothing to the cargo repo")
     }
 
@@ -317,7 +317,7 @@ class CargoEndToEndTest {
 
     @Test
     fun `jdstatus shows pasted-link and packet applications without job numbers`() = runBlocking {
-        mcp { c -> c.call("cargo_apply", mapOf("folder" to "applications/apple/tools/v03")) }
+        mcp { c -> c.call("cargo_apply", mapOf("folder" to "application-packages/apple/tools/v03")) }
         val text = Json.parseToJsonElement(get("/plugin/status").bodyAsText()).jsonObject["text"]!!.jsonPrimitive.content
         assertTrue(text.contains("fill (not a JFAA job)"), text)
         assertFalse(text.contains("fill #J0"), text)

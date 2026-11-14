@@ -94,7 +94,7 @@ class CargoRepo(
         val rel = folder.trim().trim('/')
         if (!FOLDER.matches(rel)) return false
         val d = dir.resolve(rel)
-        return Files.isDirectory(d) && Files.isRegularFile(d.resolve("APPLICATION_PACKET.md"))
+        return Files.isDirectory(d) && Files.isRegularFile(d.resolve("APPLICATION_PACKAGE.md"))
     }
 
     /**
@@ -164,12 +164,12 @@ class CargoRepo(
         if (!FOLDER.matches(rel)) throw CargoException("Not a packet folder: $folder")
         val sync = sync(force = true)
         val packetDir = dir.toRealPath().resolve(rel)
-        if (!Files.isDirectory(packetDir) || !Files.isRegularFile(packetDir.resolve("APPLICATION_PACKET.md"))) {
+        if (!Files.isDirectory(packetDir) || !Files.isRegularFile(packetDir.resolve("APPLICATION_PACKAGE.md"))) {
             throw CargoException("No packet at $rel.")
         }
         val line = "- ${clock.instant().let { Instant.ofEpochSecond(it.epochSecond) }} | $state | ${note.replace(Regex("\\s+"), " ").trim().take(MAX_NOTE)}"
         val file = packetDir.resolve("STATUS.md")
-        val front = Packets.frontMatter(Packets.readText(packetDir.resolve("APPLICATION_PACKET.md")))
+        val front = Packets.frontMatter(Packets.readText(packetDir.resolve("APPLICATION_PACKAGE.md")))
         val existing = if (Files.isRegularFile(file)) Packets.readText(file) else ""
         val text = buildString {
             if (existing.isEmpty()) append("# STATUS — ${front["company"] ?: ""}: ${front["title"] ?: rel}\n\n")
@@ -222,7 +222,7 @@ class CargoRepo(
     companion object {
         /** The states one application attempt writes: the packet is mid-attempt while its last line is one of them. */
         private val ATTEMPT_STATES = setOf("in_progress", "parked_at_review")
-        private val FOLDER = Regex("""^applications/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/v\d+$""")
+        private val FOLDER = Regex("""^application-packages/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/v\d+$""")
         private const val MAX_NOTE = 600
         private const val MAX_SEARCH_BYTES = 1_000_000L
         private const val PUSH_ATTEMPTS = 3

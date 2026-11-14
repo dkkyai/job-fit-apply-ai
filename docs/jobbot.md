@@ -153,7 +153,7 @@ With `JOBBOT_DRY_RUN=true` it runs these checks and stops.
 
 ## Application packets (jobbot-cargo)
 
-`jobbot-cargo` is a private GitHub repo (`dkkyai/jobbot-cargo`) of application packets: `applications/<company>/<role>/vNN/` with `APPLICATION_PACKET.md` (status READY/DRAFT, apply URL, the file to upload), `application-answers.md`, `job-posting.md`, the résumé files and an append-only `STATUS.md`. JobBot reads all of it and writes exactly one thing: lines appended to `STATUS.md`.
+`jobbot-cargo` is a private GitHub repo (`dkkyai/jobbot-cargo`) of application packets: `application-packages/<company>/<role>/vNN/` with `APPLICATION_PACKAGE.md` (status READY/DRAFT, apply URL, the file to upload), `application-answers.md`, `job-posting.md`, the résumé files and an append-only `STATUS.md`. JobBot reads all of it and writes exactly one thing: lines appended to `STATUS.md`.
 
 **What you can ask in Telegram:** "how many are READY", "how many are in DRAFT", "what haven't we applied to", "send me the latest résumé for Apple", "apply to all the ready packets", "apply to the BECU one", or any question about the repo's contents.
 
@@ -183,7 +183,7 @@ With `JOBBOT_DRY_RUN=true` it runs these checks and stops.
 
 **Checkout.** `<data root>/jobbot-cargo`, mounted at `/cargo` in `jobbot-mcp`. It is refreshed at most once a minute (and before every apply and write). If GitHub is unreachable the tools say so and serve the last copy. STATUS.md is merged with git's union rule in this checkout (`.git/info/attributes`, not in the repo), so another agent appending to the same file at the same moment keeps both lines instead of conflicting. A conflict nothing can merge is aborted, never left half-rebased. A STATUS line that could not be pushed stays committed locally and is pushed by the next sync. `make doctor` checks the token file, its mode and the last sync.
 
-**Limits.** The model has no shell and no file edits: it cannot change a résumé, an answers file or anything else. Only the PDF is uploaded; the .docx and .txt copies are for you (`cargo_send_resume` with `format`). `INDEX.md` is never read for state, because it is only as current as its last sync.
+**Limits.** The model has no shell and no file edits: it cannot change a résumé, an answers file or anything else. Only the PDF is uploaded; the .docx and .txt copies are for you (`cargo_send_resume` with `format`). `MANIFEST.md` is never read for state, because it is only as current as its last sync.
 
 ## Card template
 
