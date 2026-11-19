@@ -65,15 +65,24 @@ class TikTokAdapter(
     private fun headers(employer: Employer): Map<String, String> {
         val origin = employer.host?.let { "https://$it" } ?: "https://lifeattiktok.com"
         return mapOf(
-            "website-path" to (employer.websitePath ?: "tiktok"),
+            "website-path" to websitePath(employer),
             "Origin" to origin,
             "Referer" to "$origin/",
         )
     }
 
+    /**
+     * The portal's website-path: [Employer.websitePath] when configured, else the default for
+     * the portal the entry points at — "usds" for a careers-host entry, "tiktok" for Life.
+     * host and websitePath are set as a pair by gen_employers; this keeps the search URL, the
+     * header and the posting link on the same portal even if only one of them is configured.
+     */
+    private fun websitePath(employer: Employer): String =
+        employer.websitePath ?: if (employer.host != null) "usds" else "tiktok"
+
     private fun postingUrl(employer: Employer, id: String): String =
-        if (employer.host != null && employer.websitePath != null)
-            "https://${employer.host}/${employer.websitePath}/position/$id/detail"
+        if (employer.host != null)
+            "https://${employer.host}/${websitePath(employer)}/position/$id/detail"
         else "https://lifeattiktok.com/search/$id"
 
     companion object {
