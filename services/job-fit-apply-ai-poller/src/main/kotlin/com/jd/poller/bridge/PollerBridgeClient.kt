@@ -63,7 +63,11 @@ open class PollerBridgeClient(
         }
     }
 
-    /** Download an artifact at a bridge-relative path (e.g. /api/jobs/x/resume.pdf) to a temp file, or null. */
+    /**
+     * Download an artifact at a bridge-relative path (e.g. /api/jobs/x/resume.pdf) to a temp file, or null.
+     * The caller owns the returned file and must delete it when done — no deleteOnExit(), since the poller
+     * JVM runs for days and each registration would sit in the shutdown-hook list until exit.
+     */
     open fun downloadArtifact(relativePath: String, suffix: String): File? {
         if (relativePath.isBlank()) return null
         val get = HttpGet("$baseUrl$relativePath")
@@ -73,8 +77,12 @@ open class PollerBridgeClient(
                 return@execute null
             }
             val tmp = File.createTempFile("poller-artifact-", suffix)
-            tmp.deleteOnExit()
-            tmp.outputStream().use { out -> resp.entity.writeTo(out) }
+            try {
+                tmp.outputStream().use { out -> resp.entity.writeTo(out) }
+            } catch (e: Exception) {
+                tmp.delete()   // a partial download never reaches the caller, so clean it up here
+                throw e
+            }
             tmp
         }
     }
