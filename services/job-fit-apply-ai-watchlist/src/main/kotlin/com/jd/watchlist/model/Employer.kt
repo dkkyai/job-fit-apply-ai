@@ -36,6 +36,12 @@ data class Employer(
     /** Eightfold API flavour: "pcsx" (newer search) or "v2" (apply/v2). */
     val api: String? = null,
     /**
+     * TikTok: the portal's `website-path` header value, when the employer is not on the main
+     * Life at TikTok portal ("usds" for the TikTok USDS Joint Venture board); on that portal it
+     * is also the posting path segment. [host] then names the portal's careers host.
+     */
+    val websitePath: String? = null,
+    /**
      * html: the regex an absolute link must match to be a posting; group 1 (or the whole match) is
      * the posting id. [feed] is the list page; `{term}` and `{page}` in it are filled from the
      * search terms and 1..[pages].

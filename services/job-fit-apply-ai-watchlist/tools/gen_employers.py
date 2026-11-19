@@ -96,6 +96,9 @@ def by_url(url, ats, r):
         return {"ats": "phenom", "host": u.netloc, "location": "Washington"}
     if u.netloc == "api.lifeattiktok.com":
         return {"ats": "tiktok", "location": "CT_157"}
+    if u.netloc == "careers.tiktokusds.com":
+        # TikTok USDS Joint Venture board: same search API family, other host + website-path.
+        return {"ats": "tiktok", "location": "CT_157", "host": "careers.tiktokusds.com", "website_path": "usds"}
     if u.netloc.endswith(".icims.com") and u.path.rstrip("/") == "/jobs/search":
         kept = urlencode([(k, v) for k, vs in q.items() if k in ("ss", "searchKeyword", "searchLocation") for v in vs])
         return {"ats": "icims", "feed": f"https://{u.netloc}/jobs/search" + (f"?{kept}" if kept else "")}
