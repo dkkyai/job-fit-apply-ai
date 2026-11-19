@@ -104,6 +104,17 @@ class TikTokAdapterTest {
     }
 
     @Test
+    fun `USDS portal posts to the careers host with the usds website-path and links to the USDS detail page`() {
+        val http = FakeHttp(posts = mapOf("https://careers.tiktokusds.com/api/v1/search/job/posts" to { _: String -> resource("tiktok.json") }))
+        val postings = TikTokAdapter(http, listOf("test")).list(
+            Employer(company = "TikTok USDS Joint Venture", ats = "tiktok", location = "CT_157", host = "careers.tiktokusds.com", websitePath = "usds")
+        )
+        assertEquals("usds", http.postHeaders.single()["website-path"])
+        assertEquals("https://careers.tiktokusds.com/usds/position/7668837276597127477/detail", postings[0].url)
+        assertEquals("Seattle", postings[0].location)
+    }
+
+    @Test
     fun `defaults to Seattle when no city codes are configured`() {
         val http = FakeHttp(posts = mapOf("https://api.lifeattiktok.com/api/v1/public/supplier/search/job/posts" to { _: String -> """{"data":{"count":0,"job_post_list":[]}}""" }))
         TikTokAdapter(http, listOf("qa")).list(Employer(company = "TikTok", ats = "tiktok"))

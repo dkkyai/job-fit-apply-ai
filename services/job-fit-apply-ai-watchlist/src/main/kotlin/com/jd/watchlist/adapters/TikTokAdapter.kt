@@ -5,9 +5,13 @@ import com.jd.watchlist.model.Employer
 import com.jd.watchlist.model.Posting
 
 /**
- * Life at TikTok's public job search (TikTok / ByteDance Seattle–Bellevue). POSTed per search term
- * with city codes from [Employer.location] (comma-separated, e.g. "CT_157" = Seattle); the API only
- * answers with the `website-path: tiktok` header. Description and requirements come inline.
+ * TikTok's public job search, on either of its two portals: Life at TikTok (TikTok / ByteDance
+ * Seattle–Bellevue) or the TikTok USDS Joint Venture board (careers.tiktokusds.com), which posts
+ * separately — the same role appears once per city there, never on Life at TikTok. POSTed per
+ * search term with city codes from [Employer.location] (comma-separated, e.g. "CT_157" = Seattle,
+ * the same code on both portals); the API only answers with the portal's `website-path` header
+ * (`tiktok`, or [Employer.websitePath] — "usds" — when [Employer.host] names the USDS host).
+ * Description and requirements come inline.
  */
 class TikTokAdapter(
     private val http: Http,
@@ -30,7 +34,7 @@ class TikTokAdapter(
                         "recruitment_id_list" to emptyList<String>(),
                     )
                 )
-                val data = json.readTree(http.postJson(SEARCH_URL, body, HEADERS)).path("data")
+                val data = json.readTree(http.postJson(searchUrl(employer), body, headers(employer))).path("data")
                 val posts = data.path("job_post_list")
                 for (p in posts) {
                     val id = p.path("id").asText("")
@@ -44,7 +48,7 @@ class TikTokAdapter(
                         externalId = id,
                         title = p.path("title").asText(""),
                         location = p.path("city_info").path("en_name").asText(""),
-                        url = "https://lifeattiktok.com/search/$id",
+                        url = postingUrl(employer, id),
                         description = description,
                     )
                 }
@@ -54,10 +58,27 @@ class TikTokAdapter(
         return seen.values.toList()
     }
 
+    /** The USDS portal serves its search from the careers host itself, not the supplier API host. */
+    private fun searchUrl(employer: Employer): String =
+        employer.host?.let { "https://$it/api/v1/search/job/posts" } ?: SEARCH_URL
+
+    private fun headers(employer: Employer): Map<String, String> {
+        val origin = employer.host?.let { "https://$it" } ?: "https://lifeattiktok.com"
+        return mapOf(
+            "website-path" to (employer.websitePath ?: "tiktok"),
+            "Origin" to origin,
+            "Referer" to "$origin/",
+        )
+    }
+
+    private fun postingUrl(employer: Employer, id: String): String =
+        if (employer.host != null && employer.websitePath != null)
+            "https://${employer.host}/${employer.websitePath}/position/$id/detail"
+        else "https://lifeattiktok.com/search/$id"
+
     companion object {
         const val SEATTLE = "CT_157"
         private const val PAGE = 50
         private const val SEARCH_URL = "https://api.lifeattiktok.com/api/v1/public/supplier/search/job/posts"
-        private val HEADERS = mapOf("website-path" to "tiktok", "Origin" to "https://lifeattiktok.com", "Referer" to "https://lifeattiktok.com/")
     }
 }
